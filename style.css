@@ -60,6 +60,13 @@ main {
   letter-spacing: 0.1em;
 }
 
+.type-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  margin-top: -2px;
+}
+
 .bar {
   height: 16px;
   background: var(--panel);
@@ -412,7 +419,7 @@ button.boss-btn.tier-medium { background: #ff1744; box-shadow: 0 0 14px rgba(255
 button.boss-btn.tier-hard { background: #7a1fff; box-shadow: 0 0 14px rgba(122, 31, 255, 0.6); }
 
 /* ---- Jokerroboten ---- */
-#wildcard-prompt, #wildcard-attack-prompt {
+#wildcard-prompt, #wildcard-attack-prompt, #equipment-prompt {
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -425,7 +432,20 @@ button.boss-btn.tier-hard { background: #7a1fff; box-shadow: 0 0 14px rgba(122, 
 
 /* En ID-regel med display:flex vinner annars över webbläsarens inbyggda [hidden]{display:none}
    — utan de här raderna visas rutorna permanent, även med hidden-attributet satt. */
-#wildcard-prompt[hidden], #wildcard-attack-prompt[hidden] { display: none; }
+#wildcard-prompt[hidden], #wildcard-attack-prompt[hidden], #equipment-prompt[hidden] { display: none; }
+
+/* ---- Monstervärlden ---- */
+#explore-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  max-width: 960px;
+  margin: 0 auto 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+#explore-bar[hidden] { display: none; }
 
 .wildcard-attack-list { flex-direction: column; width: 100%; }
 
@@ -458,3 +478,52 @@ button.wildcard-attack-btn .desc { display: block; font-weight: 400; color: var(
 
 .wildcard-box .boss-title { color: var(--epic); text-shadow: 0 0 10px rgba(180, 107, 255, 0.6); }
 #wildcard-name-input { width: min(260px, 100%); }
+
+#wildcard-attack-text {
+  width: min(320px, 100%);
+  padding: 9px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid #2a3556;
+  border-radius: 6px;
+  resize: vertical;
+}
+#wildcard-attack-current { max-width: min(320px, 100%); }
+
+.wildcard-attack-row {
+  width: min(320px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.wildcard-attack-color-row { display: flex; align-items: center; gap: 8px; }
+#wildcard-attack-dmg {
+  width: 90px;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid #2a3556;
+  border-radius: 6px;
+}
+#wildcard-attack-color {
+  width: 40px;
+  height: 32px;
+  padding: 2px;
+  background: var(--panel);
+  border: 1px solid #2a3556;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#wildcard-attack-head, #wildcard-attack-extra {
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid #2a3556;
+  border-radius: 6px;
+}

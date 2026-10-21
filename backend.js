@@ -90,12 +90,19 @@
       return { acct: this.view() };
     }
 
-    async startMatch(robot, mode, bossId) {
-      const match = S.startMatch(this.acct, robot, mode, Math.random, bossId);
+    async startMatch(robot, mode, bossId, monsterId) {
+      const match = S.startMatch(this.acct, robot, mode, Math.random, bossId, monsterId);
       if (match.error) throw new Error(match.error);
       this.match = match;
       this.save();
       return { acct: this.view(), match: { token: 'local', ...match } };
+    }
+
+    async equipItem(itemId) {
+      const result = S.equipItem(this.acct, itemId);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
     }
 
     async finishMatch(match, won) {
@@ -128,6 +135,34 @@
 
     async chooseWildcardSpecial(type) {
       const result = S.chooseWildcardSpecial(this.acct, type);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
+    async setCustomWildcardAttack(type, name, desc, dmg, heal, types) {
+      const result = S.setCustomWildcardSpecial(this.acct, type, name, desc, dmg, heal, types);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
+    async setWildcardColor(hex) {
+      const result = S.setWildcardColor(this.acct, hex);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
+    async setWildcardHead(head) {
+      const result = S.setWildcardHead(this.acct, head);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
+    async setWildcardExtra(extra) {
+      const result = S.setWildcardExtra(this.acct, extra);
       if (result.error) throw new Error(result.error);
       this.save();
       return { acct: this.view() };
@@ -201,5 +236,138 @@
     importGuest(inv, boxes) { return this.api('/api/import-guest', { inv, boxes }); }
   }
 
-  return { LocalBackend, RemoteBackend, readGuestSave, clearGuestSave };
+  // Används bara av Claude-artefaktversionen (ingen egen server där): sparar kontot i
+  // artefaktens egen delade databas, under den här tittarens privata data/users/<id>/-gren
+  // (ingen annan — inte ens artefaktens ägare — kan läsa den grenen). Samma anropsmönster
+  // som LocalBackend, bara att save() skriver till db i stället för localStorage.
+  class ArtifactBackend {
+    constructor() {
+      this.kind = 'artifact';
+      this.username = null;
+      this.acct = S.newAccount();
+      this.match = null;
+      this.ref = null;
+    }
+
+    view() {
+      return S.view(this.acct, todayKey(), minutesToMidnight());
+    }
+
+    async save() {
+      if (!this.ref) return;
+      try {
+        await this.ref.set(this.acct);
+      } catch (e) {
+        // Spar-fel (t.ex. tillfälligt frånkopplad) — spelet funkar ändå vidare under
+        // sessionen, bara att det senaste draget inte hann sparas.
+      }
+    }
+
+    // Letar upp claude.use('db')/('user') och antingen den här tittarens sparfil eller
+    // skapar en ny. Kastar om artefakt-körtiden saknas helt, eller tittaren saknar en
+    // egen identitet här — game.js fångar det och faller tillbaka på LocalBackend (gäst,
+    // sparas bara i den här webbläsaren).
+    async load() {
+      if (!window.claude || typeof window.claude.use !== 'function') throw new Error('Artefakt-körtiden saknas.');
+      const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+      if (!db || !user) throw new Error('db-funktionen är inte tillgänglig här.');
+      const id = await user.id();
+      if (!id) throw new Error('Ingen egen identitet att spara mot här.');
+      this.ref = db.doc(`data/users/${id}/save`);
+      const snap = await this.ref.get();
+      if (snap.exists) {
+        this.acct = S.sanitize(snap.data());
+      } else {
+        this.acct = S.newAccount();
+        await this.ref.set(this.acct);
+      }
+      return { acct: this.view() };
+    }
+
+    async select(robot) {
+      if (S.count(this.acct, robot) > 0) this.acct.selected = robot;
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async startMatch(robot, mode, bossId, monsterId) {
+      const match = S.startMatch(this.acct, robot, mode, Math.random, bossId, monsterId);
+      if (match.error) throw new Error(match.error);
+      this.match = match;
+      await this.save();
+      return { acct: this.view(), match: { token: 'artifact', ...match } };
+    }
+
+    async equipItem(itemId) {
+      const result = S.equipItem(this.acct, itemId);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async finishMatch(match, won) {
+      if (!this.match) throw new Error('Ingen match pågår.');
+      const result = S.finishMatch(this.acct, this.match, won, Math.random);
+      this.match = null;
+      await this.save();
+      return { acct: this.view(), result };
+    }
+
+    async openBox() {
+      const prize = S.openBox(this.acct, Math.random);
+      if (!prize) throw new Error('Du har inga lådor.');
+      await this.save();
+      return { acct: this.view(), prize };
+    }
+
+    async claimDaily() {
+      const ok = S.claimDaily(this.acct, todayKey());
+      await this.save();
+      return { acct: this.view(), ok };
+    }
+
+    async nameWildcard(name) {
+      const result = S.nameWildcard(this.acct, name);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async chooseWildcardSpecial(type) {
+      const result = S.chooseWildcardSpecial(this.acct, type);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async setCustomWildcardAttack(type, name, desc, dmg, heal, types) {
+      const result = S.setCustomWildcardSpecial(this.acct, type, name, desc, dmg, heal, types);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async setWildcardColor(hex) {
+      const result = S.setWildcardColor(this.acct, hex);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async setWildcardHead(head) {
+      const result = S.setWildcardHead(this.acct, head);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async setWildcardExtra(extra) {
+      const result = S.setWildcardExtra(this.acct, extra);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+  }
+
+  return { LocalBackend, RemoteBackend, ArtifactBackend, readGuestSave, clearGuestSave };
 });

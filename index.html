@@ -1,170 +1,223 @@
 <!doctype html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Robotbattle</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robotbattle</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main>
-    <div id="account-row">
-      <span id="account-bar"></span>
-      <button id="btn-account" type="button" class="linklike">Logga in / skapa konto</button>
-    </div>
+<main>
+  <div id="account-row">
+    <span id="account-bar"></span>
+    <button id="btn-account" type="button" class="linklike" hidden>Logga in / skapa konto</button>
+  </div>
 
-    <div id="wildcard-prompt" hidden>
-      <div class="wildcard-box">
-        <p id="wildcard-prompt-title" class="boss-title">DU FICK JOKERROBOTEN!</p>
-        <p class="hint">Den är din att döpa — vad ska den heta?</p>
-        <input id="wildcard-name-input" type="text" maxlength="20" placeholder="Ge den ett namn">
-        <p id="wildcard-name-error" class="error"></p>
-        <button id="btn-save-wildcard-name" type="button">Spara namn</button>
+  <div id="wildcard-prompt" hidden>
+    <div class="wildcard-box">
+      <p id="wildcard-prompt-title" class="boss-title">DU FICK JOKERROBOTEN!</p>
+      <p class="hint">Den är din att döpa — vad ska den heta?</p>
+      <input id="wildcard-name-input" type="text" maxlength="20" placeholder="Ge den ett namn">
+      <p id="wildcard-name-error" class="error"></p>
+      <button id="btn-save-wildcard-name" type="button">Spara namn</button>
+    </div>
+  </div>
+
+  <div id="wildcard-attack-prompt" hidden>
+    <div class="wildcard-box">
+      <p class="boss-title">BESKRIV JOKERNS ATTACK</p>
+      <p class="hint">Skriv hur du vill att den ska fungera — Claude tolkar texten och designar en attack åt dig.</p>
+      <p id="wildcard-attack-current" class="hint"></p>
+      <textarea id="wildcard-attack-text" rows="3" maxlength="300" placeholder="T.ex. en attack som stjäl kraft från motståndaren och fryser fast dem en stund..."></textarea>
+
+      <div class="wildcard-attack-row">
+        <label for="wildcard-attack-dmg">Hur mycket den tar (valfritt, 5–45)</label>
+        <input id="wildcard-attack-dmg" type="number" min="5" max="45" placeholder="Claude väljer åt dig">
       </div>
-    </div>
 
-    <div id="wildcard-attack-prompt" hidden>
-      <div class="wildcard-box">
-        <p class="boss-title">VÄLJ JOKERNS ATTACK</p>
-        <p class="hint">Annars styrs attacken automatiskt av namnet du gett den.</p>
-        <div id="wildcard-attack-list" class="buttons wildcard-attack-list"></div>
-        <button id="btn-wildcard-attack-close" type="button" class="secondary">Stäng</button>
-      </div>
-    </div>
-
-    <div id="arena-label"></div>
-    <div id="hud">
-      <div class="side">
-        <div class="row">
-          <span id="name-player" class="label">DU</span>
+      <div class="wildcard-attack-row">
+        <label for="wildcard-attack-color">Färg</label>
+        <div class="wildcard-attack-color-row">
+          <input id="wildcard-attack-color" type="color">
+          <button id="btn-reset-wildcard-color" type="button" class="linklike">Återställ färg</button>
         </div>
-        <div class="bar"><div id="hp-player" class="fill player"></div></div>
-        <div class="bar thin"><div id="en-player" class="fill energy"></div></div>
       </div>
-      <div class="side right">
-        <div class="row">
-          <span id="name-ai" class="label">AI</span>
+
+      <div class="wildcard-attack-row">
+        <label for="wildcard-attack-head">Huvudform</label>
+        <select id="wildcard-attack-head"></select>
+      </div>
+
+      <div class="wildcard-attack-row">
+        <label for="wildcard-attack-extra">Extradetalj</label>
+        <select id="wildcard-attack-extra"></select>
+      </div>
+
+      <p id="wildcard-attack-error" class="error"></p>
+      <div class="buttons">
+        <button id="btn-generate-wildcard-attack" type="button">Skapa attack</button>
+        <button id="btn-reset-wildcard-attack" type="button" class="secondary" hidden>Återställ till namnet</button>
+      </div>
+      <button id="btn-wildcard-attack-close" type="button" class="secondary">Stäng</button>
+    </div>
+  </div>
+
+  <div id="equipment-prompt" hidden>
+    <div class="wildcard-box">
+      <p class="boss-title">UTRUSTNING</p>
+      <p id="equipment-current" class="hint"></p>
+      <button id="btn-unequip" type="button" class="linklike" hidden>Ta av</button>
+      <div id="equipment-list" class="cards"></div>
+      <button id="btn-equipment-close" type="button" class="secondary">Stäng</button>
+    </div>
+  </div>
+
+  <div id="explore-bar" hidden>
+    <span id="explore-hint"></span>
+    <div class="buttons">
+      <button id="btn-explore-equipment" type="button" class="secondary">Utrustning</button>
+      <button id="btn-explore-back" type="button" class="secondary">Tillbaka</button>
+    </div>
+  </div>
+
+  <div id="arena-label"></div>
+  <div id="hud">
+    <div class="side">
+      <div class="row">
+        <span id="name-player" class="label">DU</span>
+      </div>
+      <span id="type-player" class="type-label"></span>
+      <div class="bar"><div id="hp-player" class="fill player"></div></div>
+      <div class="bar thin"><div id="en-player" class="fill energy"></div></div>
+    </div>
+    <div class="side right">
+      <div class="row">
+        <span id="name-ai" class="label">AI</span>
+      </div>
+      <span id="type-ai" class="type-label"></span>
+      <div class="bar"><div id="hp-ai" class="fill ai"></div></div>
+      <div class="bar thin"><div id="en-ai" class="fill energy"></div></div>
+    </div>
+  </div>
+
+  <div id="stage">
+    <canvas id="game" width="960" height="540"></canvas>
+
+    <div id="overlay">
+      <section id="screen-menu">
+        <h1>ROBOTBATTLE</h1>
+        <p>Slåss mot AI-robotar och vinn nya robotar till din samling.</p>
+        <table class="controls">
+          <tr><td><b>A</b> / <b>D</b> eller <b>←</b> / <b>→</b></td><td>gå</td></tr>
+          <tr><td><b>W</b> eller <b>↑</b></td><td>hoppa</td></tr>
+          <tr><td><b>Mellanslag</b> eller <b>J</b></td><td>vanlig attack</td></tr>
+          <tr><td><b>E</b> eller <b>K</b></td><td>specialattack (kostar 50 energi)</td></tr>
+        </table>
+        <p class="hint">Allt går att spela med vänster hand: A, D, W, mellanslag och E.</p>
+        <button id="btn-play" type="button" disabled>Spela (Enter)</button>
+      </section>
+
+      <section id="screen-auth" hidden>
+        <h2>Konto</h2>
+        <p class="hint">Logga in för att spara din samling på servern och spela vänmatcher online.</p>
+        <input id="auth-username" type="text" placeholder="Användarnamn" autocomplete="username" maxlength="16">
+        <input id="auth-password" type="password" placeholder="Lösenord (minst 6 tecken)" autocomplete="current-password" maxlength="100">
+        <p id="auth-error" class="error"></p>
+        <div class="buttons">
+          <button id="btn-login" type="button">Logga in</button>
+          <button id="btn-register" type="button" class="secondary">Skapa konto</button>
         </div>
-        <div class="bar"><div id="hp-ai" class="fill ai"></div></div>
-        <div class="bar thin"><div id="en-ai" class="fill energy"></div></div>
-      </div>
+        <button id="btn-auth-back" type="button" class="linklike">Tillbaka</button>
+      </section>
+
+      <section id="screen-select" hidden>
+        <h2>Välj din robot</h2>
+        <p id="collection" class="hint"></p>
+        <p id="level-info" class="hint"></p>
+        <div class="bar xp"><div id="xp-fill" class="fill xp"></div></div>
+        <div id="cards"></div>
+        <p id="detail" class="hint"></p>
+        <button id="btn-rename-wildcard" type="button" class="linklike" hidden>Döp om jokern</button>
+        <button id="btn-choose-wildcard-attack" type="button" class="linklike" hidden>Beskriv jokerns attack</button>
+        <div id="boss-banner">
+          <p class="boss-title">⚠ MYSTISKA ROBOTAR ⚠</p>
+          <p class="hint">Ingen vet vem de är förrän du besegrar dem, en gång var. De blir hårdare ju längre striden pågår — och går att utmana igen när du vill, oavsett nivå.</p>
+          <div id="boss-buttons" class="buttons"></div>
+        </div>
+        <div class="buttons">
+          <button id="btn-monsters" type="button" class="secondary">Monstervärlden</button>
+          <button id="btn-equipment" type="button" class="secondary">Utrustning</button>
+        </div>
+        <div class="buttons">
+          <button id="mode-normal" type="button" class="mode">Vanlig match</button>
+          <button id="mode-stake" type="button" class="mode">Insatsmatch</button>
+        </div>
+        <p id="mode-info" class="hint"></p>
+        <p id="select-error" class="error"></p>
+        <div class="buttons">
+          <button id="btn-fight" type="button">Kämpa! (Enter)</button>
+          <button id="btn-boxes" type="button" class="secondary">Öppna låda</button>
+          <button id="btn-daily" type="button" class="daily">Hämta daglig låda</button>
+        </div>
+        <p id="daily-info" class="hint"></p>
+        <div class="buttons">
+          <button id="btn-friend" type="button" class="secondary">Vänmatch (online)</button>
+        </div>
+        <p id="friend-hint" class="hint"></p>
+        <div class="buttons">
+          <button id="btn-import-guest" type="button" class="daily" hidden>Importera gästsamling</button>
+        </div>
+        <p id="import-info" class="hint"></p>
+      </section>
+
+      <section id="screen-friend" hidden>
+        <h2>Vänmatch</h2>
+        <p id="friend-status" class="hint"></p>
+        <div id="friend-create" class="buttons">
+          <button id="btn-create-room" type="button">Skapa rum</button>
+        </div>
+        <div id="friend-join" class="buttons">
+          <input id="friend-code-input" type="text" placeholder="Rumskod" maxlength="4" autocapitalize="characters">
+          <button id="btn-join-room" type="button" class="secondary">Gå med</button>
+        </div>
+        <div id="friend-code" hidden>
+          <p>Rumskod:</p>
+          <p id="friend-code-text" class="code"></p>
+          <p class="hint">Ge koden till din vän så de kan gå med.</p>
+        </div>
+        <button id="btn-friend-cancel" type="button" class="linklike">Tillbaka</button>
+      </section>
+
+      <section id="screen-result" hidden>
+        <h1 id="result-title"></h1>
+        <p id="result-text"></p>
+        <div id="reward"></div>
+        <div class="buttons">
+          <button id="btn-again" type="button">Kämpa igen (Enter)</button>
+          <button id="btn-open-result" type="button" class="secondary">Öppna låda</button>
+          <button id="btn-change" type="button" class="secondary">Byt robot</button>
+          <button id="btn-rematch" type="button" hidden>Revansch</button>
+          <button id="btn-leave-friend" type="button" class="secondary" hidden>Lämna</button>
+        </div>
+      </section>
+
+      <section id="screen-box" hidden>
+        <h2>Låda</h2>
+        <div id="box-stage">
+          <div id="box-art" class="crate"><div class="lid"></div><div class="crate-body"></div></div>
+          <div id="box-reveal"></div>
+        </div>
+        <p id="box-text" class="hint"></p>
+        <div class="buttons">
+          <button id="btn-open" type="button">Öppna låda</button>
+          <button id="btn-box-back" type="button" class="secondary">Tillbaka</button>
+        </div>
+      </section>
     </div>
-
-    <div id="stage">
-      <canvas id="game" width="960" height="540"></canvas>
-
-      <div id="overlay">
-        <section id="screen-menu">
-          <h1>ROBOTBATTLE</h1>
-          <p>Slåss mot AI-robotar, vinn nya robotar till din samling — eller utmana en vän online.</p>
-          <table class="controls">
-            <tr><td><b>A</b> / <b>D</b> eller <b>←</b> / <b>→</b></td><td>gå</td></tr>
-            <tr><td><b>W</b> eller <b>↑</b></td><td>hoppa</td></tr>
-            <tr><td><b>Mellanslag</b> eller <b>J</b></td><td>vanlig attack</td></tr>
-            <tr><td><b>E</b> eller <b>K</b></td><td>specialattack (kostar 50 energi)</td></tr>
-          </table>
-          <p class="hint">Allt går att spela med vänster hand: A, D, W, mellanslag och E.</p>
-          <button id="btn-play" type="button" disabled>Spela (Enter)</button>
-        </section>
-
-        <section id="screen-auth" hidden>
-          <h2>Konto</h2>
-          <p class="hint">Logga in för att spara din samling på servern och spela vänmatcher online.</p>
-          <input id="auth-username" type="text" placeholder="Användarnamn" autocomplete="username" maxlength="16">
-          <input id="auth-password" type="password" placeholder="Lösenord (minst 6 tecken)" autocomplete="current-password" maxlength="100">
-          <p id="auth-error" class="error"></p>
-          <div class="buttons">
-            <button id="btn-login" type="button">Logga in</button>
-            <button id="btn-register" type="button" class="secondary">Skapa konto</button>
-          </div>
-          <button id="btn-auth-back" type="button" class="linklike">Tillbaka</button>
-        </section>
-
-        <section id="screen-select" hidden>
-          <h2>Välj din robot</h2>
-          <p id="collection" class="hint"></p>
-          <p id="level-info" class="hint"></p>
-          <div class="bar xp"><div id="xp-fill" class="fill xp"></div></div>
-          <div id="cards"></div>
-          <p id="detail" class="hint"></p>
-          <button id="btn-rename-wildcard" type="button" class="linklike" hidden>Döp om jokern</button>
-          <button id="btn-choose-wildcard-attack" type="button" class="linklike" hidden>Välj jokerns attack</button>
-          <div id="boss-banner">
-            <p class="boss-title">⚠ MYSTISKA ROBOTAR ⚠</p>
-            <p class="hint">Ingen vet vem de är förrän du besegrar dem, en gång var. De blir hårdare ju längre striden pågår — och går att utmana igen när du vill, oavsett nivå.</p>
-            <div id="boss-buttons" class="buttons"></div>
-          </div>
-          <div class="buttons">
-            <button id="mode-normal" type="button" class="mode">Vanlig match</button>
-            <button id="mode-stake" type="button" class="mode">Insatsmatch</button>
-          </div>
-          <p id="mode-info" class="hint"></p>
-          <p id="select-error" class="error"></p>
-          <div class="buttons">
-            <button id="btn-fight" type="button">Kämpa! (Enter)</button>
-            <button id="btn-boxes" type="button" class="secondary">Öppna låda</button>
-            <button id="btn-daily" type="button" class="daily">Hämta daglig låda</button>
-          </div>
-          <p id="daily-info" class="hint"></p>
-          <div class="buttons">
-            <button id="btn-friend" type="button" class="secondary">Vänmatch (online)</button>
-          </div>
-          <p id="friend-hint" class="hint"></p>
-          <div class="buttons">
-            <button id="btn-import-guest" type="button" class="daily" hidden>Importera gästsamling</button>
-          </div>
-          <p id="import-info" class="hint"></p>
-        </section>
-
-        <section id="screen-friend" hidden>
-          <h2>Vänmatch</h2>
-          <p id="friend-status" class="hint"></p>
-          <div id="friend-create" class="buttons">
-            <button id="btn-create-room" type="button">Skapa rum</button>
-          </div>
-          <div id="friend-join" class="buttons">
-            <input id="friend-code-input" type="text" placeholder="Rumskod" maxlength="4" autocapitalize="characters">
-            <button id="btn-join-room" type="button" class="secondary">Gå med</button>
-          </div>
-          <div id="friend-code" hidden>
-            <p>Rumskod:</p>
-            <p id="friend-code-text" class="code"></p>
-            <p class="hint">Ge koden till din vän så de kan gå med.</p>
-          </div>
-          <button id="btn-friend-cancel" type="button" class="linklike">Tillbaka</button>
-        </section>
-
-        <section id="screen-result" hidden>
-          <h1 id="result-title"></h1>
-          <p id="result-text"></p>
-          <div id="reward"></div>
-          <div class="buttons">
-            <button id="btn-again" type="button">Kämpa igen (Enter)</button>
-            <button id="btn-open-result" type="button" class="secondary">Öppna låda</button>
-            <button id="btn-change" type="button" class="secondary">Byt robot</button>
-            <button id="btn-rematch" type="button" hidden>Revansch</button>
-            <button id="btn-leave-friend" type="button" class="secondary" hidden>Lämna</button>
-          </div>
-        </section>
-
-        <section id="screen-box" hidden>
-          <h2>Låda</h2>
-          <div id="box-stage">
-            <div id="box-art" class="crate"><div class="lid"></div><div class="crate-body"></div></div>
-            <div id="box-reveal"></div>
-          </div>
-          <p id="box-text" class="hint"></p>
-          <div class="buttons">
-            <button id="btn-open" type="button">Öppna låda</button>
-            <button id="btn-box-back" type="button" class="secondary">Tillbaka</button>
-          </div>
-        </section>
-      </div>
-    </div>
-  </main>
-  <script src="shared.js"></script>
-  <script src="backend.js"></script>
-  <script src="netplay.js"></script>
-  <script src="game.js"></script>
+  </div>
+</main>
+<script src="shared.js"></script>
+<script src="backend.js"></script>
+<script src="game.js"></script>
 </body>
 </html>

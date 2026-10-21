@@ -14,6 +14,7 @@
     legendary: { label: 'Legendarisk', weight: 2, rank: 3 },
     boss: { label: 'Mystisk', weight: 0, rank: 4 },
     wildcard: { label: 'Joker', weight: 0, rank: 2 },
+    monster: { label: 'Monster', weight: 0, rank: 5 },
   };
 
   // ---------- Typer ----------
@@ -90,17 +91,21 @@
   // wildcardSpecialFor() längre ner. Alla är EGNA mekaniker som ingen annan robot har — se
   // SPECIALS i game.js, till skillnad från den allra första lösningen som bara lånade andra
   // robotars befintliga attacktyper.
+  // types här är jokerns ELEMENT (se Typer-sektionen längre ner) om just den attacken är
+  // aktiv — inte en nödvändig egenskap hos mekaniken i sig, bara vilket element som känns rätt
+  // för just den här jokervarianten (t.ex. känns offer-sig-för-skada eldigt). Påverkar
+  // skadeberäkningen i hurt(), precis som för vilken annan robot som helst.
   const WILDCARD_SPECIALS = [
-    { type: 'copycat', name: 'Jokerkopia', dmg: 18, desc: 'Imiterar och använder motståndarens egen specialattack mot dem.' },
-    { type: 'gamble', name: 'Turkast', dmg: 14, desc: 'Femtiofemtio: antingen dubbel skada, eller helt bom (men du blir kort snabbare och starkare).' },
-    { type: 'swap', name: 'Ödesbyte', desc: 'Drar både dig och motståndaren mot samma liv mitt emellan — farligt om du leder, en räddning om du inte gör det.' },
-    { type: 'jinx', name: 'Förbannelse', desc: 'Tömmer motståndarens energi och halverar deras återhämtning en kort stund.' },
-    { type: 'allin', name: 'Jokersatsning', dmg: 15, desc: 'Offrar en del av ditt eget liv för en mycket hårdare smäll.' },
-    { type: 'drawcard', name: 'Korthandel', heal: 20, desc: 'Drar ett slumpat kort: snabbare & starkare, en sköld, eller läkning.' },
-    { type: 'steal', name: 'Jokerstöld', steal: 25, desc: 'Stjäl 25 energi från motståndaren åt dig själv.' },
-    { type: 'taunt', name: 'Hån', desc: 'Gör motståndaren sårbar: de tar 40 % mer skada i tre sekunder.' },
-    { type: 'prophecy', name: 'Spådom', dmg: 26, desc: 'En försenad smäll där motståndaren står just nu — hinner de flytta sig missar den.' },
-    { type: 'swapplace', name: 'Platsbyte', desc: 'Byter plats blixtsnabbt med motståndaren.' },
+    { type: 'copycat', name: 'Jokerkopia', dmg: 18, desc: 'Imiterar och använder motståndarens egen specialattack mot dem.', types: ['psykisk'] },
+    { type: 'gamble', name: 'Turkast', dmg: 14, desc: 'Femtiofemtio: antingen dubbel skada, eller helt bom (men du blir kort snabbare och starkare).', types: ['normal'] },
+    { type: 'swap', name: 'Ödesbyte', desc: 'Drar både dig och motståndaren mot samma liv mitt emellan — farligt om du leder, en räddning om du inte gör det.', types: ['spöke'] },
+    { type: 'jinx', name: 'Förbannelse', desc: 'Tömmer motståndarens energi och halverar deras återhämtning en kort stund.', types: ['mörk'] },
+    { type: 'allin', name: 'Jokersatsning', dmg: 15, desc: 'Offrar en del av ditt eget liv för en mycket hårdare smäll.', types: ['eld'] },
+    { type: 'drawcard', name: 'Korthandel', heal: 20, desc: 'Drar ett slumpat kort: snabbare & starkare, en sköld, eller läkning.', types: ['fe'] },
+    { type: 'steal', name: 'Jokerstöld', steal: 25, desc: 'Stjäl 25 energi från motståndaren åt dig själv.', types: ['mörk'] },
+    { type: 'taunt', name: 'Hån', desc: 'Gör motståndaren sårbar: de tar 40 % mer skada i tre sekunder.', types: ['strid'] },
+    { type: 'prophecy', name: 'Spådom', dmg: 26, desc: 'En försenad smäll där motståndaren står just nu — hinner de flytta sig missar den.', types: ['psykisk'] },
+    { type: 'swapplace', name: 'Platsbyte', desc: 'Byter plats blixtsnabbt med motståndaren.', types: ['spöke'] },
   ];
   const WILDCARD_SPECIAL_TYPES = new Set(WILDCARD_SPECIALS.map((s) => s.type));
 
@@ -251,7 +256,7 @@
     // en boss), men kan dyka upp oavsett vilken sällsynthet lådan rullade. Heter "???" tills
     // man själv döper den, se nameWildcard().
     {
-      id: 'wildcard', name: '???', rarity: 'wildcard', types: ['normal'],
+      id: 'wildcard', name: '???', rarity: 'wildcard', types: WILDCARD_SPECIALS[0].types,
       color: '#dfe6ff', accent: '#9b59b6', eye: '#ffd93d', head: 'round', extra: 'question',
       scale: 1, hp: 100, speed: 235, punch: 8,
       special: WILDCARD_SPECIALS[0], // förval tills man döpt den, se wildcardSpecialFor()
@@ -292,11 +297,125 @@
       scale: 1.1, hp: 112, speed: 245, punch: 9,
       special: { type: 'meteorslam', name: 'Meteorsmäll', dmg: 30, desc: 'Slår ner en jättesmäll där motståndaren står.' },
     },
+    // Monstervärlden: en helt egen sorts motståndare, skild från robotarna — går aldrig att få
+    // av en låda eller möta i en vanlig match (precis som bossar), men går heller aldrig in i
+    // samlingen om man vinner. Vinner man får man i stället ett utrustningsföremål, se
+    // EQUIPMENT/rollEquipment längre ner. Utmanas från en egen meny, se Monstervärlden i game.js.
+    {
+      id: 'gnasher', name: 'Gnasher', rarity: 'monster', monster: true, types: ['gift', 'kryp'],
+      color: '#6b8e3a', accent: '#2a3a12', eye: '#ff3030', head: 'cyclops', extra: 'spikes',
+      scale: 1.1, hp: 120, speed: 200, punch: 9,
+      special: { type: 'poison', name: 'Giftbett', dmg: 14, desc: 'Släpper ett moln som skadar över tid.' },
+    },
+    {
+      id: 'skuggvarg', name: 'Skuggvarg', rarity: 'monster', monster: true, types: ['mörk'],
+      color: '#2a2436', accent: '#120f1a', eye: '#b388ff', head: 'horn', extra: 'none',
+      scale: 1.05, hp: 110, speed: 260, punch: 10,
+      special: { type: 'flurry', name: 'Rivklor', dmg: 8, desc: 'Fyra snabba rivningar i följd, den sista hårdast.' },
+    },
+    {
+      id: 'stenkoloss', name: 'Stenkoloss', rarity: 'monster', monster: true, types: ['sten', 'mark'],
+      color: '#8a7a68', accent: '#3a3228', eye: '#ffb347', head: 'dome', extra: 'shoulders',
+      scale: 1.3, hp: 160, speed: 130, punch: 12,
+      special: { type: 'smash', name: 'Stenknytnäve', dmg: 24, desc: 'Ett tungt slag med lång räckvidd.' },
+    },
+    {
+      id: 'frostspindel', name: 'Frostspindel', rarity: 'monster', monster: true, types: ['is', 'kryp'],
+      color: '#aee8ff', accent: '#2a5a6a', eye: '#ffffff', head: 'cyclops', extra: 'spikes',
+      scale: 0.95, hp: 100, speed: 230, punch: 8,
+      special: { type: 'freeze', name: 'Frostbett', dmg: 12, desc: 'Fryser motståndaren i 1,1 sekunder.' },
+    },
+    {
+      id: 'sumpdrake', name: 'Sumpdrake', rarity: 'monster', monster: true, types: ['gift', 'vatten'],
+      color: '#4a7a5a', accent: '#1a3a28', eye: '#c8ff6b', head: 'horn', extra: 'fins',
+      scale: 1.15, hp: 130, speed: 190, punch: 9,
+      special: { type: 'poison', name: 'Giftmoln', dmg: 12, desc: 'Släpper ett moln som skadar över tid.' },
+    },
+    {
+      id: 'nattuggla', name: 'Nattuggla', rarity: 'monster', monster: true, types: ['mörk', 'flygande'],
+      color: '#3a3450', accent: '#15121f', eye: '#ffd93d', head: 'round', extra: 'jet',
+      scale: 0.9, hp: 95, speed: 270, punch: 7,
+      special: { type: 'snipe', name: 'Nattprick', dmg: 40, desc: 'Siktar med laser, sedan träffar den hårt.' },
+    },
+    {
+      id: 'lavagolem', name: 'Lavagolem', rarity: 'monster', monster: true, types: ['eld', 'sten'],
+      color: '#c23a1f', accent: '#4a1206', eye: '#ffd93d', head: 'dome', extra: 'shoulders',
+      scale: 1.25, hp: 145, speed: 120, punch: 11,
+      special: { type: 'annihilate', name: 'Lavakross', dmg: 28, desc: 'Ett förödande slag med enorm knockback.' },
+    },
+    {
+      id: 'stormfenix', name: 'Stormfenix', rarity: 'monster', monster: true, types: ['eld', 'flygande'],
+      color: '#ff8a3d', accent: '#5a2a08', eye: '#fff36b', head: 'crown', extra: 'jet',
+      scale: 1, hp: 105, speed: 250, punch: 8,
+      special: { type: 'orbital', name: 'Eldregn', dmg: 20, desc: 'Tre eldpelare slår ner. Flytta dig i tid!' },
+    },
+    {
+      id: 'kristallkrabba', name: 'Kristallkrabba', rarity: 'monster', monster: true, types: ['is', 'stål'],
+      color: '#b8e0ff', accent: '#3a5a7a', eye: '#ffffff', head: 'dome', extra: 'shield',
+      scale: 1.1, hp: 135, speed: 150, punch: 9,
+      special: { type: 'counter', name: 'Kristallskal', dmg: 18, desc: 'Blir osårbar kort och slår tillbaka om motståndaren är nära.' },
+    },
+    {
+      id: 'mygghärva', name: 'Mygghärva', rarity: 'monster', monster: true, types: ['kryp', 'gift'],
+      color: '#8acc3a', accent: '#2a4a0a', eye: '#ff3030', head: 'cyclops', extra: 'fins',
+      scale: 0.85, hp: 85, speed: 280, punch: 6,
+      special: { type: 'spread', name: 'Svärmanfall', dmg: 7, desc: 'Tre skott i solfjäder.' },
+    },
+    {
+      id: 'djupvakt', name: 'Djupvakt', rarity: 'monster', monster: true, types: ['vatten', 'spöke'],
+      color: '#2a5a7a', accent: '#0f2a3a', eye: '#7fffd4', head: 'hood', extra: 'fins',
+      scale: 1.15, hp: 125, speed: 170, punch: 9,
+      special: { type: 'grapple', name: 'Djupkrok', dmg: 16, desc: 'En krok som drar in motståndaren och slår till.' },
+    },
+    {
+      id: 'taggormen', name: 'Taggormen', rarity: 'monster', monster: true, types: ['gift', 'mark'],
+      color: '#7a3a8a', accent: '#2a0f3a', eye: '#c8ff6b', head: 'horn', extra: 'spikes',
+      scale: 1.05, hp: 115, speed: 210, punch: 10,
+      special: { type: 'meteorslam', name: 'Taggregn', dmg: 24, desc: 'Slår ner en jättesmäll där motståndaren står.' },
+    },
   ];
+
+  // ---------- Utrustning ----------
+  // Vinner man en monsterstrid får man ett slumpat föremål här, se rollEquipment() — man kan
+  // bära ETT i taget (equipItem), och det ger en permanent bonus på en av robotens grundsiffror
+  // så länge det bärs, oavsett vilken robot man spelar med eller vilken typ av match det är.
+  const EQUIPMENT = [
+    { id: 'steelshield', name: 'Stålsköld', stat: { hp: 25 }, weight: 20, desc: '+25 HP så länge den bärs.' },
+    { id: 'platearmor', name: 'Pansarplatta', stat: { hp: 12 }, weight: 30, desc: '+12 HP så länge den bärs.' },
+    { id: 'servoarms', name: 'Servoarmar', stat: { punch: 4 }, weight: 20, desc: '+4 i slagstyrka så länge de bärs.' },
+    { id: 'fangblade', name: 'Vasständer', stat: { punch: 2 }, weight: 30, desc: '+2 i slagstyrka så länge de bärs.' },
+    { id: 'turbofeet', name: 'Turbofötter', stat: { speed: 35 }, weight: 20, desc: '+35 i fart så länge de bärs.' },
+    { id: 'lightrig', name: 'Fjäderdon', stat: { speed: 18 }, weight: 30, desc: '+18 i fart så länge de bärs.' },
+  ];
+  const EQUIPMENT_IDS = new Set(EQUIPMENT.map((e) => e.id));
+
+  function rollEquipment(rng) {
+    let pick = rng() * EQUIPMENT.reduce((sum, e) => sum + e.weight, 0);
+    for (const e of EQUIPMENT) {
+      pick -= e.weight;
+      if (pick <= 0) return e;
+    }
+    return EQUIPMENT[EQUIPMENT.length - 1];
+  }
 
   const robotById = Object.fromEntries(ROBOTS.map((r) => [r.id, r]));
   const BOSS_IDS = ROBOTS.filter((r) => r.boss).map((r) => r.id);
+  const MONSTER_IDS = ROBOTS.filter((r) => r.monster).map((r) => r.id);
   const rankOf = (def) => RARITY[def.rarity].rank;
+
+  // Alla huvudformer/extradetaljer som faktiskt förekommer bland robotarna — jokerns utseende
+  // (se setWildcardHead/setWildcardExtra) får bara vara en av dessa, aldrig något påhittat.
+  const HEAD_SHAPES = [...new Set(ROBOTS.map((r) => r.head))];
+  const EXTRA_FEATURES = [...new Set(ROBOTS.map((r) => r.extra))];
+
+  // Ett exempel-specialobjekt per mekaniktyp (det första som råkar använda den, bland alla
+  // robotar plus jokerns egna) — mallen en fritt beskriven jokerattack (se
+  // customWildcardSpecial) byggs från, så att fält den mekaniken faktiskt behöver (t.ex.
+  // giftmolnets cloud-objekt) alltid finns och är korrekt ifyllda, även om bara namn,
+  // beskrivning och ev. dmg/heal kommer från den fria texten.
+  const TYPE_DEFAULTS = {};
+  for (const r of ROBOTS) if (!TYPE_DEFAULTS[r.special.type]) TYPE_DEFAULTS[r.special.type] = r.special;
+  for (const s of WILDCARD_SPECIALS) if (!TYPE_DEFAULTS[s.type]) TYPE_DEFAULTS[s.type] = s;
 
   // Enkel, stabil stränghash (FNV-1a) — bara till för att sprida ut namn över attackerna,
   // ingen säkerhetsanvändning. Gemener så att "Rex" och "rex" ger samma attack.
@@ -310,14 +429,53 @@
     return h >>> 0;
   }
 
-  // chosenType: spelarens egna, uttryckliga val (se chooseWildcardSpecial) — om satt och
-  // giltigt vinner det alltid över namnet. Annars styrs attacken av namnet som förut.
-  function wildcardSpecialFor(name, chosenType) {
+  // customSpecial: en fritt beskriven attack (se customWildcardSpecial) — vinner över allt
+  // annat när den finns. Annars chosenType: spelarens uttryckliga listval (se
+  // chooseWildcardSpecial). Annars styrs attacken av namnet, som förut.
+  function wildcardSpecialFor(name, chosenType, customSpecial) {
+    if (customSpecial && TYPE_DEFAULTS[customSpecial.type]) return customSpecial;
     if (chosenType && WILDCARD_SPECIAL_TYPES.has(chosenType)) {
       return WILDCARD_SPECIALS.find((s) => s.type === chosenType);
     }
     if (!name) return WILDCARD_SPECIALS[0];
     return WILDCARD_SPECIALS[hashName(name) % WILDCARD_SPECIALS.length];
+  }
+
+  // Rensar fri text (namn/beskrivning på en egen-designad attack): trim, enkelrum, begränsad
+  // längd. Aldrig en krasch — ett tomt/ogiltigt värde ger bara tom sträng, som sedan faller
+  // tillbaka på mekanikens eget standardnamn/beskrivning i customWildcardSpecial.
+  function cleanAttackText(raw, maxLen) {
+    if (typeof raw !== 'string') return '';
+    return raw.trim().replace(/\s+/g, ' ').slice(0, maxLen);
+  }
+
+  // Bygger en komplett, säker attack från det en fri beskrivning (tolkad av Claude via
+  // artefaktens sample-funktion, se game.js) gav: en mekaniktyp, ett namn, en beskrivning, och
+  // ev. dmg/heal. ALDRIG tillit till rådata rakt av — typen måste vara en av de verkliga
+  // mekanikerna, dmg/heal klipps till ett rimligt spann, och allt annat (t.ex. giftmolnets
+  // exakta form) ärvs orört från en beprövad mall. Returnerar null vid en ogiltig typ.
+  // Rensar ett förslag på element (t.ex. från Claudes tolkning av en fri beskrivning) till 1–2
+  // GILTIGA typnamn — annars (ogiltigt, tomt, för många) faller den tillbaka på ['normal'],
+  // aldrig en krasch eller ett påhittat typnamn som skulle krascha typeMultiplier.
+  function cleanTypes(raw) {
+    if (!Array.isArray(raw)) return ['normal'];
+    const clean = raw.filter((t) => typeof t === 'string' && TYPES[t]).slice(0, 2);
+    return clean.length ? clean : ['normal'];
+  }
+
+  function customWildcardSpecial(type, name, desc, dmg, heal, types) {
+    const base = TYPE_DEFAULTS[typeof type === 'string' ? type.trim() : ''];
+    if (!base) return null;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+    const out = { ...base };
+    const cleanName = cleanAttackText(name, 24);
+    const cleanDesc = cleanAttackText(desc, 140);
+    if (cleanName) out.name = cleanName;
+    if (cleanDesc) out.desc = cleanDesc;
+    if ('dmg' in base && typeof dmg === 'number' && Number.isFinite(dmg)) out.dmg = clamp(dmg, 5, 45);
+    if ('heal' in base && typeof heal === 'number' && Number.isFinite(heal)) out.heal = clamp(heal, 5, 30);
+    out.types = cleanTypes(types);
+    return out;
   }
 
   // ---------- Banor ----------
@@ -345,17 +503,30 @@
       gravityMul: 1, speedMul: 0.72, dmgMul: 1.35,
       sky: '#241a0e', ground: '#120c06', line: '#8a5a2a',
     },
+    // monster: true → ingår aldrig i den SLUMPADE poolen (pickArena) för vanliga matcher, bara
+    // tvingas fram uttryckligen för monsterstrider (se startMatch i game.js) — "en annan värld",
+    // inte en bana som kan dyka upp av en slump mitt i en robotmatch.
+    {
+      id: 'direworld', name: 'Monstervärlden', hint: '', monster: true,
+      gravityMul: 1, speedMul: 1, dmgMul: 1,
+      sky: '#1a0f08', ground: '#0a0503', line: '#5a3a1a',
+    },
   ];
   const arenaById = Object.fromEntries(ARENAS.map((a) => [a.id, a]));
   // rng är en funktion som ger ett tal i [0, 1) — samma mönster som rollBox/pickOpponent.
-  const pickArena = (rng) => ARENAS[Math.floor(rng() * ARENAS.length)];
+  const pickArena = (rng) => {
+    const pool = ARENAS.filter((a) => !a.monster);
+    return pool[Math.floor(rng() * pool.length)];
+  };
 
   // ---------- Konto ----------
   // Ett konto är { inv: {robotId: antal}, boxes, daily: 'ÅÅÅÅ-MM-DD', selected, level, xp }.
   function newAccount() {
     return {
       inv: { bolt: 1 }, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0,
-      wildcardName: null, wildcardSpecialType: null,
+      wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
+      wildcardHead: null, wildcardExtra: null,
+      equipmentInv: {}, equippedItem: null,
     };
   }
 
@@ -367,11 +538,20 @@
     return /^[\p{L}\p{N} '\-!?.]{1,20}$/u.test(name) ? name : null;
   }
 
+  // Giltig hexfärg (#rrggbb) — annars null, aldrig en krasch.
+  function cleanColor(raw) {
+    if (typeof raw !== 'string') return null;
+    const v = raw.trim().toLowerCase();
+    return /^#[0-9a-f]{6}$/.test(v) ? v : null;
+  }
+
   // Gör vilket sparat värde som helst till ett giltigt konto.
   function sanitize(raw) {
     const acct = {
       inv: {}, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0,
-      wildcardName: null, wildcardSpecialType: null,
+      wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
+      wildcardHead: null, wildcardExtra: null,
+      equipmentInv: {}, equippedItem: null,
     };
     if (raw && typeof raw === 'object') {
       const inv = raw.inv && typeof raw.inv === 'object' ? raw.inv : {};
@@ -387,6 +567,21 @@
       acct.wildcardName = cleanName(raw.wildcardName);
       if (typeof raw.wildcardSpecialType === 'string' && WILDCARD_SPECIAL_TYPES.has(raw.wildcardSpecialType)) {
         acct.wildcardSpecialType = raw.wildcardSpecialType;
+      }
+      if (raw.wildcardCustomSpecial && typeof raw.wildcardCustomSpecial === 'object') {
+        const c = raw.wildcardCustomSpecial;
+        acct.wildcardCustomSpecial = customWildcardSpecial(c.type, c.name, c.desc, c.dmg, c.heal, c.types);
+      }
+      acct.wildcardColor = cleanColor(raw.wildcardColor);
+      if (typeof raw.wildcardHead === 'string' && HEAD_SHAPES.includes(raw.wildcardHead)) acct.wildcardHead = raw.wildcardHead;
+      if (typeof raw.wildcardExtra === 'string' && EXTRA_FEATURES.includes(raw.wildcardExtra)) acct.wildcardExtra = raw.wildcardExtra;
+      const equipmentInv = raw.equipmentInv && typeof raw.equipmentInv === 'object' ? raw.equipmentInv : {};
+      for (const e of EQUIPMENT) {
+        const n = Math.floor(Number(equipmentInv[e.id]));
+        if (n > 0 && n < 1e6) acct.equipmentInv[e.id] = n;
+      }
+      if (typeof raw.equippedItem === 'string' && EQUIPMENT_IDS.has(raw.equippedItem) && acct.equipmentInv[raw.equippedItem] > 0) {
+        acct.equippedItem = raw.equippedItem;
       }
     }
     // Man ska alltid ha minst en Bolt — den går aldrig helt förlorad, oavsett hur kontot ser ut.
@@ -423,7 +618,7 @@
       pick -= RARITY[t].weight;
       if (pick <= 0) { tier = t; break; }
     }
-    const pool = ROBOTS.filter((r) => r.rarity === tier && !r.boss && r.id !== 'wildcard');
+    const pool = ROBOTS.filter((r) => r.rarity === tier && !r.boss && !r.monster && r.id !== 'wildcard');
     return pool[Math.floor(rng() * pool.length)];
   }
 
@@ -463,7 +658,7 @@
       pick -= RARITY[t].weight;
       if (pick <= 0) { tier = t; break; }
     }
-    const pool = ROBOTS.filter((r) => r.rarity === tier && !r.boss && r.id !== 'wildcard');
+    const pool = ROBOTS.filter((r) => r.rarity === tier && !r.boss && !r.monster && r.id !== 'wildcard');
     return pool[Math.floor(rng() * pool.length)];
   }
 
@@ -472,19 +667,24 @@
   function pickOpponent(robotId, stake, rng) {
     const def = robotById[robotId];
     const maxRank = rankOf(def) + (stake ? 0 : 1);
-    const pool = ROBOTS.filter((r) => r.id !== robotId && rankOf(r) <= maxRank && !r.boss);
+    const pool = ROBOTS.filter((r) => r.id !== robotId && rankOf(r) <= maxRank && !r.boss && !r.monster);
     return pool[Math.floor(rng() * pool.length)];
   }
 
   // Startar en match. Insatsen dras direkt, så det går inte att smita undan en förlust. Alla
   // bossar går att utmana när som helst, oavsett nivå, och om och om igen — bossId väljer
-  // vilken av dem. Ingen insats sätts på spel mot en boss.
-  function startMatch(acct, robotId, mode, rng, bossId) {
+  // vilken av dem. Ingen insats sätts på spel mot en boss. Monster fungerar likadant
+  // (monsterId väljer vilket) — helt skild meny, egen ekonomi (se finishMatch), ingen insats.
+  function startMatch(acct, robotId, mode, rng, bossId, monsterId) {
     if (!robotById[robotId] || count(acct, robotId) < 1) return { error: 'Du äger inte den roboten.' };
     acct.selected = robotId;
     if (mode === 'boss') {
       if (!BOSS_IDS.includes(bossId)) return { error: 'Okänd boss.' };
       return { robot: robotId, stake: false, opp: bossId, boss: true };
+    }
+    if (mode === 'monster') {
+      if (!MONSTER_IDS.includes(monsterId)) return { error: 'Okänt monster.' };
+      return { robot: robotId, stake: false, opp: monsterId, monster: true };
     }
     // Bolt går aldrig att sätta i insats som sista kopian — man ska alltid ha minst en kvar.
     const canStakeThis = !(robotId === 'bolt' && count(acct, robotId) <= 1);
@@ -497,10 +697,22 @@
   // insatsmatch får du tillbaka insatsen plus motståndarens robot. En bossvinst ger i stället
   // bossens robot (utan den stridstillfälliga boostern) — bossen går att utmana igen när du
   // vill, om och om igen. Förlorar du mot bossen kostar det inget — bara en ny chans.
-  // rng behövs bara vid vinst (för ett eventuellt nivåpris) — vänmatcher anropar aldrig den
-  // här funktionen.
+  // En monstervinst ger varken låda, erfarenhet eller en robot — bara ett slumpat
+  // utrustningsföremål (se rollEquipment). Helt egen, parallell ekonomi; förlorar man kostar
+  // det inget, precis som mot en boss.
+  // rng behövs bara vid vinst (för ett eventuellt nivåpris/föremål) — vänmatcher anropar
+  // aldrig den här funktionen.
   function finishMatch(acct, match, won, rng) {
-    const result = { won, stake: match.stake, gained: null, lost: null, box: won, levelUps: [], bossWon: null };
+    if (match.monster) {
+      const result = { won, stake: false, gained: null, lost: null, box: false, levelUps: [], bossWon: null, itemWon: null };
+      if (won) {
+        const item = rollEquipment(rng);
+        addEquipment(acct, item.id);
+        result.itemWon = item.id;
+      }
+      return result;
+    }
+    const result = { won, stake: match.stake, gained: null, lost: null, box: won, levelUps: [], bossWon: null, itemWon: null };
     if (won) {
       acct.boxes += 1;
       result.levelUps = addXp(acct, 1, rng);
@@ -517,6 +729,22 @@
     }
     if (!acct.inv[acct.selected]) acct.selected = Object.keys(acct.inv)[0];
     return result;
+  }
+
+  function addEquipment(acct, id) {
+    acct.equipmentInv[id] = (acct.equipmentInv[id] || 0) + 1;
+  }
+
+  // itemId === null tar av det man bär. Man måste äga minst ett exemplar för att bära det.
+  function equipItem(acct, itemId) {
+    if (itemId === null) {
+      acct.equippedItem = null;
+      return { equipped: null };
+    }
+    if (!EQUIPMENT_IDS.has(itemId)) return { error: 'Okänt föremål.' };
+    if (!(acct.equipmentInv[itemId] > 0)) return { error: 'Du äger inte det föremålet.' };
+    acct.equippedItem = itemId;
+    return { equipped: itemId };
   }
 
   function openBox(acct, rng) {
@@ -548,6 +776,12 @@
       xpNeeded: xpNeeded(level),
       wildcardName: acct.wildcardName || null,
       wildcardSpecialType: acct.wildcardSpecialType || null,
+      wildcardCustomSpecial: acct.wildcardCustomSpecial || null,
+      wildcardColor: acct.wildcardColor || null,
+      wildcardHead: acct.wildcardHead || null,
+      wildcardExtra: acct.wildcardExtra || null,
+      equipmentInv: { ...(acct.equipmentInv || {}) },
+      equippedItem: acct.equippedItem || null,
     };
   }
 
@@ -574,14 +808,70 @@
     return { type };
   }
 
+  // Sätter en fritt beskriven attack (tolkad av Claude från spelarens egen text, se game.js) —
+  // vinner över både namnet och ett ev. listval. type === null rensar bort den och går
+  // tillbaka till namn/listval igen. Bygger och validerar via customWildcardSpecial, så ett
+  // ogiltigt eller korrupt förslag kan aldrig komma in i kontot.
+  function setCustomWildcardSpecial(acct, type, name, desc, dmg, heal, types) {
+    if (count(acct, 'wildcard') < 1) return { error: 'Du äger inte den roboten än.' };
+    if (type === null) {
+      acct.wildcardCustomSpecial = null;
+      return { special: null };
+    }
+    const special = customWildcardSpecial(type, name, desc, dmg, heal, types);
+    if (!special) return { error: 'Kunde inte tolka ett giltigt attackslag.' };
+    acct.wildcardCustomSpecial = special;
+    return { special };
+  }
+
+  // Sätter hur jokern (och därmed dess attackeffekter, som ärver robotens egen färg) ser ut.
+  // hex === null återställer till standardfärgen.
+  function setWildcardColor(acct, hex) {
+    if (count(acct, 'wildcard') < 1) return { error: 'Du äger inte den roboten än.' };
+    if (hex === null) {
+      acct.wildcardColor = null;
+      return { color: null };
+    }
+    const clean = cleanColor(hex);
+    if (!clean) return { error: 'Ogiltig färg.' };
+    acct.wildcardColor = clean;
+    return { color: clean };
+  }
+
+  // Jokerns huvudform/extradetalj — rent kosmetiskt (ritas i game.js' drawRobot, påverkar
+  // ingenting i striden). hex === null återställer till standardformen/-detaljen.
+  function setWildcardHead(acct, head) {
+    if (count(acct, 'wildcard') < 1) return { error: 'Du äger inte den roboten än.' };
+    if (head === null) {
+      acct.wildcardHead = null;
+      return { head: null };
+    }
+    if (typeof head !== 'string' || !HEAD_SHAPES.includes(head)) return { error: 'Okänd huvudform.' };
+    acct.wildcardHead = head;
+    return { head };
+  }
+
+  function setWildcardExtra(acct, extra) {
+    if (count(acct, 'wildcard') < 1) return { error: 'Du äger inte den roboten än.' };
+    if (extra === null) {
+      acct.wildcardExtra = null;
+      return { extra: null };
+    }
+    if (typeof extra !== 'string' || !EXTRA_FEATURES.includes(extra)) return { error: 'Okänd detalj.' };
+    acct.wildcardExtra = extra;
+    return { extra };
+  }
+
   return {
-    RARITY, ROBOTS, robotById, rankOf, BOSS_IDS,
+    RARITY, ROBOTS, robotById, rankOf, BOSS_IDS, MONSTER_IDS,
+    EQUIPMENT, rollEquipment, addEquipment, equipItem,
     ARENAS, arenaById, pickArena,
     TYPES, typeMultiplier,
-    WILDCARD_SPECIALS, wildcardSpecialFor,
+    WILDCARD_SPECIALS, wildcardSpecialFor, TYPE_DEFAULTS, customWildcardSpecial,
+    HEAD_SHAPES, EXTRA_FEATURES,
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
-    chooseWildcardSpecial,
+    chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
     xpNeeded, addXp,
   };
 });

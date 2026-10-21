@@ -766,8 +766,7 @@ function aiInput(f, o, brain, dt) {
 
 // ---------- Input ----------
 const keys = {};
-let specialBuffer = 0;    // solo-läge: kort tidsfönster så en tidig tryckning inte missas
-let specialEdge = false;  // vänmatch: exakt en tick per tryckning, för att hålla simuleringen deterministisk
+let specialBuffer = 0;    // kort tidsfönster så en tidig tryckning inte missas, lokalt och i vänmatch
 
 function playerInput() {
   return {
@@ -778,22 +777,11 @@ function playerInput() {
   };
 }
 
-function sampleOnlineInput() {
-  const special = specialEdge;
-  specialEdge = false;
-  return {
-    dir: (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0),
-    jump: !!(keys.KeyW || keys.ArrowUp),
-    attack: !!(keys.Space || keys.KeyJ),
-    special,
-  };
-}
-
 window.addEventListener('keydown', (e) => {
   const handled = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
   if (handled.includes(e.code)) e.preventDefault();
   if (!e.repeat) {
-    if (e.code === 'KeyE' || e.code === 'KeyK') { specialBuffer = 0.15; specialEdge = true; }
+    if (e.code === 'KeyE' || e.code === 'KeyK') specialBuffer = 0.15;
     const onButton = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT');
     if (e.code === 'Enter' && !onButton) onEnter();
     const locked = (game.stake || game.online) && (game.phase === 'intro' || game.phase === 'fight');
@@ -821,6 +809,8 @@ const screens = {
 const hud = {
   namePlayer: document.getElementById('name-player'),
   nameAi: document.getElementById('name-ai'),
+  typePlayer: document.getElementById('type-player'),
+  typeAi: document.getElementById('type-ai'),
   hpPlayer: document.getElementById('hp-player'),
   hpAi: document.getElementById('hp-ai'),
   enPlayer: document.getElementById('en-player'),
@@ -845,11 +835,13 @@ const game = {
   boss: false,            // pågående match är en bossmatch (okänd identitet tills vunnen)
   bossTime: 0,             // hur länge bossmatchen pågått, styr hur boostad bossen är
   bossTier: null,          // {skill, enrageMax, enrageSeconds} för just den här bossens svårighetsgrad
+  monster: false,          // pågående match är en monsterstrid (egen bana, ger utrustning i stället för låda)
+  explore: null,           // {player, monsters, near, attackHeld} medan man går runt i Monstervärlden
   arena: arenaById.classic, // banan som pågående/senaste match spelades på, se pickArena()
   matchToken: null,       // matchen som pågår mot AI, från net.startMatch()
   result: null,
   opening: false,
-  online: null,   // {room, slot, introTicks, ended, oppName} medan en vänmatch pågår
+  online: null,   // {isHost, oppName, ended, frame, lastGuestInput} medan en vänmatch pågår — se startFriendMatch()
   fighters: null, // [fighter0, fighter1] i vänmatch, i samma ordning för båda spelarna
   player: null,
   ai: null,
@@ -899,13 +891,15 @@ function showScreen(name) {
 
 // modeOverride: skickas som 'boss' + bossId av en av de egna bossknapparna (alltid
 // tillgängliga, oavsett nivå). Annars avgörs läget av de vanliga match/insats-knapparna.
-async function startMatch(modeOverride, bossId) {
+async function startMatch(modeOverride, bossId, monsterId) {
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  byId('explore-bar').hidden = true; // en match (även en ny monsterstrid) stänger av gå-runt-läget
+  if (friendRoom) leaveFriendRoom(); // en match mot AI ska aldrig lämna ett vänmatchsrum öppet i bakgrunden
   const wantStake = game.mode === 'stake' && canStake();
   byId('select-error').textContent = '';
   let started;
   try {
-    started = await net.startMatch(game.selectedId, modeOverride || (wantStake ? 'stake' : 'normal'), bossId);
+    started = await net.startMatch(game.selectedId, modeOverride || (wantStake ? 'stake' : 'normal'), bossId, monsterId);
   } catch (e) {
     byId('select-error').textContent = e.message;
     return;
@@ -914,14 +908,16 @@ async function startMatch(modeOverride, bossId) {
   game.matchToken = started.match;
   game.stake = started.match.stake;
   game.boss = !!started.match.boss;
+  game.monster = !!started.match.monster;
   game.bossTime = 0;
   game.mode = game.stake ? 'stake' : 'normal';
   // Banan slumpas lokalt för matcher mot AI — den påverkar inte ekonomin eller vem som vinner,
   // bara känslan i just den matchen, så den behöver inte vara server-synkad som i vänmatcher.
-  game.arena = Shared.pickArena(Math.random);
+  // Monstervärlden har sin egen, fasta bana i stället för en slumpad — "en annan värld".
+  game.arena = game.monster ? arenaById.direworld : Shared.pickArena(Math.random);
   showArenaLabel(game.arena);
 
-  const pDef = myDef(robotById[started.match.robot]);
+  const pDef = applyEquipment(myDef(robotById[started.match.robot]));
   const aDef = robotById[started.match.opp]; // en eventuell AI-joker är alltid namnlös, får förvalet
   game.bossTier = game.boss ? bossTier(aDef) : null;
   game.online = null;
@@ -943,7 +939,9 @@ async function startMatch(modeOverride, bossId) {
   specialBuffer = 0;
   game.phase = 'intro';
   hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
-  hud.nameAi.textContent = game.boss ? '??? · MYSTISK ROBOT' : `${aDef.name} · AI`;
+  hud.nameAi.textContent = game.boss ? '??? · MYSTISK ROBOT' : `${aDef.name} · ${game.monster ? 'MONSTER' : 'AI'}`;
+  setHudType(hud.typePlayer, pDef);
+  setHudType(hud.typeAi, aDef);
   showScreen(null);
 }
 
@@ -988,13 +986,35 @@ function displayName(def, mine) {
   return (mine && def.id === 'wildcard' && game.acct && game.acct.wildcardName) || def.name;
 }
 
-// Jokerns attack beror på namnet du gett den, om du inte själv valt en attack direkt (se
-// Shared.wildcardSpecialFor och btn-choose-wildcard-attack) — den här ger tillbaka DIN egen
-// jokers riktiga attack i stället för förvalet, för kort/detaljvy och för striden. En
-// motståndares namnlösa joker (AI eller ännu inte döpt) förblir förvalet som det är.
+// Jokerns attack beror på namnet du gett den, om du inte beskrivit en egen attack i text (den
+// vinner alltid) — den här ger tillbaka DIN egen jokers riktiga attack, färg, huvudform och
+// extradetalj i stället för förvalen, för kort/detaljvy och för striden (effekternas färg ärvs
+// av robotens egen färg, se sparks()-anropen i SPECIALS). Elementet (typerna) följer alltid
+// vilken attack som råkar vara aktiv just nu — special.types, se WILDCARD_SPECIALS/
+// customWildcardSpecial i shared.js — så byter man attack byter man automatiskt element också.
+// En motståndares namnlösa joker förblir förvalet som det är.
 function myDef(def) {
   if (def.id !== 'wildcard') return def;
-  return { ...def, special: Shared.wildcardSpecialFor(game.acct && game.acct.wildcardName, game.acct && game.acct.wildcardSpecialType) };
+  const acct = game.acct;
+  const special = Shared.wildcardSpecialFor(acct && acct.wildcardName, acct && acct.wildcardSpecialType, acct && acct.wildcardCustomSpecial);
+  const color = (acct && acct.wildcardColor) || def.color;
+  const head = (acct && acct.wildcardHead) || def.head;
+  const extra = (acct && acct.wildcardExtra) || def.extra;
+  const types = special.types || def.types;
+  return { ...def, special, color, head, extra, types };
+}
+
+// Lägger på bonusen från det utrustningsföremål man bär (om något) — gäller alltid, oavsett
+// vilken robot man valt eller vilken sorts match det är (vanlig, insats, boss, monster). Man
+// kan bara bära ETT i taget, se equipItem().
+function applyEquipment(def) {
+  const itemId = game.acct && game.acct.equippedItem;
+  if (!itemId) return def;
+  const item = Shared.EQUIPMENT.find((e) => e.id === itemId);
+  if (!item) return def;
+  const out = { ...def };
+  for (const [stat, amount] of Object.entries(item.stat)) out[stat] = (out[stat] || 0) + amount;
+  return out;
 }
 
 // Typens/typernas namn (1–2 st, t.ex. "Eld/Flygande") plus vilka typer den sammanlagt är
@@ -1009,6 +1029,14 @@ function typesText(def) {
   if (strongVs.length) bits.push(`stark mot ${strongVs.map((t) => Shared.TYPES[t].label).join('/')}`);
   if (weakVs.length) bits.push(`svag mot ${weakVs.map((t) => Shared.TYPES[t].label).join('/')}`);
   return bits.length ? `${label} (${bits.join(', ')})` : label;
+}
+
+// Visar vems typ är vad under namnen i HUD:en under hela striden, inte bara innan man valt
+// robot — en kort form (bara namnen, i typens egen färg), ingen stark/svag-lista här, den finns
+// redan i detaljvyn innan matchen.
+function setHudType(el, def) {
+  el.textContent = def.types.map((t) => Shared.TYPES[t].label).join('/');
+  el.style.color = Shared.TYPES[def.types[0]].color;
 }
 
 function detailText(def) {
@@ -1046,25 +1074,29 @@ function createCard(def, { locked = false, selected = false, isNew = false, reve
   return card;
 }
 
-// Visar vem som är inloggad (eller att man spelar som gäst) överst på flera skärmar.
+// Visar om framstegen sparas till ens Claude-konto eller bara i webbläsaren som gäst.
+// (Den här byggen av spelet har ingen inloggningsknapp — se boot() nedan.)
 function renderAccountBar() {
   const bar = byId('account-bar');
-  bar.textContent = net.kind === 'remote'
-    ? `Inloggad som ${net.username}`
+  bar.textContent = net.kind === 'artifact'
+    ? 'Ditt framsteg sparas till ditt Claude-konto'
     : 'Spelar som gäst (sparas bara i den här webbläsaren)';
-  const authBtn = byId('btn-account');
-  authBtn.textContent = net.kind === 'remote' ? 'Logga ut' : 'Logga in / skapa konto';
 }
 
 function showSelect() {
   if (!game.acct) return; // kontot är inte klart inläst än (t.ex. Enter tryckt innan boot() hann klart)
+  byId('explore-bar').hidden = true; // t.ex. Escape rakt ut ur Monstervärlden, inte bara "Tillbaka"-knappen
+  game.explore = null;
+  if (friendRoom) leaveFriendRoom(); // t.ex. Escape rakt ut ur en vänmatch, inte bara "Lämna"-knappen
   game.phase = 'select';
   if (game.mode === 'stake' && !canStake()) game.mode = 'normal';
   if (!game.acct.inv[game.selectedId]) game.selectedId = Object.keys(game.acct.inv)[0];
 
   const cards = byId('cards');
   cards.replaceChildren();
-  for (const def of ROBOTS) {
+  // Monster hör inte hemma i samlingen — de går aldrig att äga/spela som, bara att utmana i
+  // Monstervärlden (se showMonsters), så de ska inte synas som ett permanent olåst "???"-kort.
+  for (const def of ROBOTS.filter((r) => !r.monster)) {
     const n = invCount(def.id);
     const card = createCard(myDef(def), { locked: n === 0, selected: n > 0 && def.id === game.selectedId, compact: true, n });
     if (n > 0) {
@@ -1120,8 +1152,8 @@ function showSelect() {
     : `Nästa dagliga låda om ${dailyCountdown()}.`;
   byId('btn-boxes').hidden = game.acct.boxes === 0;
   byId('btn-boxes').textContent = `Öppna låda (${game.acct.boxes})`;
-  byId('btn-friend').disabled = net.kind !== 'remote';
-  byId('friend-hint').textContent = net.kind === 'remote' ? '' : 'Logga in för att spela mot en vän online.';
+  byId('btn-friend').disabled = !roomCap;
+  byId('friend-hint').textContent = roomCap ? '' : 'Vänmatcher går inte att spela i den här vyn just nu.';
 
   // Gästsamlingen ligger kvar i webbläsaren även efter inloggning. Ge en enkel väg att lägga
   // till den i kontot i stället för att den bara blir liggande oanvänd.
@@ -1135,6 +1167,148 @@ function showSelect() {
   renderAccountBar();
   showScreen('select');
 }
+
+// ---------- Monstervärlden ----------
+// En helt egen VÄRLD, skild från robotarna: man går runt på en egen bana med sin VALDA robot
+// (se game.selectedId) bland monster utplacerade i bilden, och utmanar det man går fram till
+// (mellanslag/J) — precis som en vanlig match, men vinner man blir priset ett
+// utrustningsföremål i stället för en låda/robot, se finishMatch i shared.js. Monster går
+// aldrig att äga eller spela som, bara att utmana, om och om igen, precis som bossarna.
+const EXPLORE_RANGE = 70; // hur nära man måste gå för att kunna utmana ett monster
+
+function showMonsters() {
+  if (!game.acct) return;
+  game.phase = 'monsters';
+  game.arena = arenaById.direworld;
+  showArenaLabel(game.arena);
+
+  const monsterDefs = ROBOTS.filter((r) => r.monster);
+  const margin = 90;
+  game.explore = {
+    player: new Fighter(applyEquipment(myDef(robotById[game.selectedId])), 60, 1),
+    monsters: monsterDefs.map((def, i) => new Fighter(
+      def, margin + (i * (W - 2 * margin)) / Math.max(1, monsterDefs.length - 1), -1,
+    )),
+    near: null,
+    attackHeld: false,
+  };
+  byId('explore-bar').hidden = false;
+  byId('explore-hint').textContent = 'Gå med A/D eller piltangenterna.';
+  showScreen(null);
+}
+
+function updateExplore(dt) {
+  const ex = game.explore;
+  if (!ex) return;
+  const input = playerInput();
+  const p = ex.player;
+  p.time += dt;
+  const walk = input.dir * p.def.speed;
+  p.moving = walk !== 0;
+  if (p.moving) p.walkT += dt;
+  if (input.dir) p.facing = input.dir;
+  p.x = clamp(p.x + walk * dt, p.w / 2, W - p.w / 2);
+
+  let near = null;
+  for (const m of ex.monsters) {
+    m.time += dt;
+    m.facing = m.x >= p.x ? -1 : 1;
+    if (Math.abs(m.x - p.x) < EXPLORE_RANGE) near = m;
+  }
+  ex.near = near;
+
+  if (near && input.attack && !ex.attackHeld) startMatch('monster', null, near.def.id);
+  ex.attackHeld = input.attack;
+
+  byId('explore-hint').textContent = near
+    ? `MELLANSLAG/J: Utmana ${near.def.name}`
+    : 'Gå med A/D eller piltangenterna.';
+}
+
+function drawExplore() {
+  const ex = game.explore;
+  if (!ex) return;
+  const arenaId = game.arena.id;
+  if (!backgroundCache[arenaId]) backgroundCache[arenaId] = buildBackground(game.arena);
+  ctx.drawImage(backgroundCache[arenaId], 0, 0);
+  for (const m of ex.monsters) {
+    drawFighter(m, false, false);
+    if (ex.near === m) {
+      ctx.font = 'bold 16px ui-monospace, Menlo, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffd93d';
+      ctx.fillText(m.def.name, m.x, m.y - m.h - 14);
+    }
+  }
+  drawFighter(ex.player, true, false);
+}
+
+// ---- Utrustning (öppningsbar både från Monstervärlden och väljarskärmen, samma ruta) ----
+function renderEquipmentModal() {
+  const current = byId('equipment-current');
+  if (game.acct.equippedItem) {
+    const item = Shared.EQUIPMENT.find((e) => e.id === game.acct.equippedItem);
+    current.textContent = item ? `Du bär: ${item.name} — ${item.desc}` : '';
+  } else {
+    current.textContent = 'Du bär ingen utrustning just nu.';
+  }
+  byId('btn-unequip').hidden = !game.acct.equippedItem;
+
+  const list = byId('equipment-list');
+  list.replaceChildren();
+  const ownedIds = Object.keys(game.acct.equipmentInv).filter((id) => game.acct.equipmentInv[id] > 0);
+  if (!ownedIds.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = 'Du har ingen utrustning än — vinn en monsterstrid för att få ditt första föremål.';
+    list.appendChild(p);
+  }
+  for (const id of ownedIds) {
+    const item = Shared.EQUIPMENT.find((e) => e.id === id);
+    if (!item) continue;
+    const n = game.acct.equipmentInv[id];
+    const equipped = game.acct.equippedItem === id;
+    const card = document.createElement('div');
+    card.className = `card compact${equipped ? ' selected' : ''}`;
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = `${item.name} ×${n}`;
+    const desc = document.createElement('div');
+    desc.className = 'stats';
+    desc.textContent = item.desc;
+    card.append(name, desc);
+    if (!equipped) {
+      card.classList.add('pickable');
+      card.addEventListener('click', () => reequip(id));
+    }
+    list.appendChild(card);
+  }
+}
+
+// Byter utrustning och, om man råkar stå mitt i Monstervärlden just då, uppdaterar den egna
+// robotens fart/liv där på en gång (annars skulle man behöva lämna och gå in igen).
+async function reequip(id) {
+  try {
+    const r = await net.equipItem(id);
+    applyAcct(r.acct);
+  } catch (e) {
+    // Inget att göra — kontot hann ändras. Rita bara om med det som faktiskt gäller nu.
+  }
+  renderEquipmentModal();
+  if (game.explore) game.explore.player.def = applyEquipment(myDef(robotById[game.selectedId]));
+}
+
+byId('btn-explore-equipment').addEventListener('click', () => {
+  renderEquipmentModal();
+  byId('equipment-prompt').hidden = false;
+});
+byId('btn-equipment-close').addEventListener('click', () => { byId('equipment-prompt').hidden = true; });
+byId('btn-unequip').addEventListener('click', () => reequip(null));
+byId('btn-explore-back').addEventListener('click', () => {
+  byId('explore-bar').hidden = true;
+  game.explore = null;
+  showSelect();
+});
 
 async function importGuestCollection() {
   const guest = Backend.readGuestSave();
@@ -1163,6 +1337,27 @@ function rewardItem(caption, def, opts) {
   byId('reward').appendChild(wrap);
 }
 
+// Utrustning är inte en robot (ingen canvas/sprite att rita), så den får ett enklare kort —
+// samma .card-utseende, bara utan bilden.
+function rewardEquipment(caption, item) {
+  const wrap = document.createElement('div');
+  wrap.className = 'reward-item';
+  const head = document.createElement('div');
+  head.className = 'reward-title';
+  head.textContent = caption;
+  const card = document.createElement('div');
+  card.className = 'card rare';
+  const name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = item.name;
+  const desc = document.createElement('div');
+  desc.className = 'stats';
+  desc.textContent = item.desc;
+  card.append(name, desc);
+  wrap.append(head, card);
+  byId('reward').appendChild(wrap);
+}
+
 function showResult() {
   const r = game.result;
   const friend = !!r.friend;
@@ -1181,6 +1376,14 @@ function showResult() {
       rewardItem('AVSLÖJAD!', robotById[r.bossWon], { isNew: true, n: invCount(r.bossWon) });
     } else {
       text = 'Den mystiska roboten var för stark den här gången. Den väntar kvar — försök igen.';
+    }
+  } else if (game.monster) {
+    if (r.itemWon) {
+      const item = Shared.EQUIPMENT.find((e) => e.id === r.itemWon);
+      text = 'Du besegrade monstret och fick ett utrustningsföremål!';
+      if (item) rewardEquipment('DU FICK ETT FÖREMÅL!', item);
+    } else {
+      text = 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
     }
   } else if (r.won) {
     text = r.gained ? 'Du vann motståndarens robot och fick en låda!' : 'Du fick en låda!';
@@ -1300,48 +1503,175 @@ byId('btn-save-wildcard-name').addEventListener('click', saveWildcardName);
 byId('wildcard-name-input').addEventListener('keydown', (e) => { if (e.code === 'Enter') saveWildcardName(); });
 byId('btn-rename-wildcard').addEventListener('click', () => openWildcardPrompt(true));
 
-// Listar jokerns sex attacker (plus "Automatiskt", som återgår till namn-styrt läge) som
-// klickbara knappar — markerar den som är aktiv just nu, oavsett om det är ett uttryckligt val
-// eller det namnet råkar ge.
-function renderWildcardAttackList() {
-  const list = byId('wildcard-attack-list');
-  list.replaceChildren();
-  const isAuto = !game.acct.wildcardSpecialType;
-  const addOption = (type, name, desc) => {
-    const active = type === 'auto' ? isAuto : type === game.acct.wildcardSpecialType;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `wildcard-attack-btn${active ? ' active' : ''}`;
-    const n = document.createElement('span');
-    n.className = 'name';
-    n.textContent = name;
-    const d = document.createElement('span');
-    d.className = 'desc';
-    d.textContent = desc;
-    btn.append(n, d);
-    btn.addEventListener('click', async () => {
-      try {
-        const r = await net.chooseWildcardSpecial(type);
-        applyAcct(r.acct);
-        renderWildcardAttackList();
-        if (game.phase === 'select') showSelect();
-      } catch (e) {
-        // Inget att välja attack för (t.ex. om kontot hunnit ändras) — stäng bara, samma
-        // skydd som saveWildcardName har mot att fastna i en ruta som aldrig kan lyckas.
-        if (invCount('wildcard') < 1) byId('wildcard-attack-prompt').hidden = true;
-      }
-    });
-    list.appendChild(btn);
+// Beskriv-jokerns-attack: man skriver fritt hur man vill att den ska fungera, och Claude (via
+// artefaktens sample-funktion) tolkar det till en av de riktiga mekanikerna i spelet plus ett
+// eget namn och en egen beskrivning — se Shared.customWildcardSpecial för hur svaret
+// valideras/begränsas innan det någonsin kan påverka striden.
+let wildcardAttackBusy = false;
+
+const HEAD_LABELS = { box: 'Fyrkantigt', round: 'Runt', dome: 'Kupol', cyclops: 'Cyklop', hood: 'Huva', horn: 'Horn', crown: 'Krona' };
+const EXTRA_LABELS = {
+  none: 'Inget', antenna: 'Antenn', shoulders: 'Axelskydd', fins: 'Fenor', cannon: 'Kanon',
+  shield: 'Sköld', jet: 'Jetpack', cape: 'Cape', spikes: 'Taggar', question: 'Frågetecken (originalet)',
+};
+
+// Fylls bara en gång — själva alternativen ändras aldrig, bara vilket som är valt.
+function populateWildcardAppearanceSelects() {
+  const headSel = byId('wildcard-attack-head');
+  const extraSel = byId('wildcard-attack-extra');
+  const addOpt = (sel, value, label) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = label;
+    sel.appendChild(o);
   };
-  addOption('auto', 'Automatiskt', `Styrs av namnet du gett den (just nu: ${Shared.wildcardSpecialFor(game.acct.wildcardName, null).name}).`);
-  for (const s of Shared.WILDCARD_SPECIALS) addOption(s.type, s.name, s.desc);
+  addOpt(headSel, '', 'Standard');
+  for (const h of Shared.HEAD_SHAPES) addOpt(headSel, h, HEAD_LABELS[h] || h);
+  addOpt(extraSel, '', 'Standard');
+  for (const e of Shared.EXTRA_FEATURES) addOpt(extraSel, e, EXTRA_LABELS[e] || e);
+}
+populateWildcardAppearanceSelects();
+
+function renderWildcardAttackPanel() {
+  const current = byId('wildcard-attack-current');
+  const custom = game.acct.wildcardCustomSpecial;
+  const typeLabel = (special) => (special.types || ['normal']).map((t) => Shared.TYPES[t].label).join('/');
+  if (custom) {
+    current.textContent = `Nuvarande (egen): ${custom.name} (${typeLabel(custom)}) — ${custom.desc}`;
+  } else {
+    const auto = Shared.wildcardSpecialFor(game.acct.wildcardName, game.acct.wildcardSpecialType);
+    current.textContent = `Nuvarande (styrs av namnet): ${auto.name} (${typeLabel(auto)}) — ${auto.desc}`;
+  }
+  byId('btn-reset-wildcard-attack').hidden = !custom;
+  byId('wildcard-attack-error').textContent = '';
+  byId('wildcard-attack-color').value = game.acct.wildcardColor || robotById.wildcard.color;
+  byId('wildcard-attack-dmg').value = custom && typeof custom.dmg === 'number' ? custom.dmg : '';
+  byId('wildcard-attack-head').value = game.acct.wildcardHead || '';
+  byId('wildcard-attack-extra').value = game.acct.wildcardExtra || '';
+}
+
+function wildcardAttackErrorText(code) {
+  switch (code) {
+    case 'not_granted': return 'Du har inte tillåtit att den här sidan frågar Claude.';
+    case 'rate_limited': return 'För många förfrågningar just nu — försök igen om en liten stund.';
+    case 'refused': return 'Claude avböjde den beskrivningen — försök skriva något annat.';
+    case 'session_expired': return 'Din inloggning har gått ut — ladda om sidan.';
+    case 'sampling_disabled': case 'not_declared': case 'capability_disabled': case 'capability_removed':
+      return 'Den här funktionen är inte tillgänglig just nu.';
+    default: return 'Något gick fel — försök igen.';
+  }
+}
+
+async function generateWildcardAttack() {
+  const err = byId('wildcard-attack-error');
+  const text = byId('wildcard-attack-text').value.trim();
+  err.textContent = '';
+  if (!text) { err.textContent = 'Skriv först hur du vill att attacken ska fungera.'; return; }
+  if (wildcardAttackBusy) return;
+  wildcardAttackBusy = true;
+  const btn = byId('btn-generate-wildcard-attack');
+  btn.disabled = true;
+  btn.textContent = 'Tänker...';
+  try {
+    if (!window.claude || typeof window.claude.use !== 'function') throw { code: 'not_declared' };
+    const sample = await window.claude.use('sample');
+    if (!sample) throw { code: 'not_declared' };
+    const typeLines = Object.entries(Shared.TYPE_DEFAULTS).map(([t, s]) => `- ${t}: ${s.desc}`).join('\n');
+    const elementNames = Object.keys(Shared.TYPES).join(', ');
+    const prompt = `Du designar en specialattack för en robot i ett enkelt tvåspelar-fightingspel, utifrån hur en spelare beskriver den.\n\n`
+      + `Spelarens beskrivning: "${text}"\n\n`
+      + `Välj EN av dessa färdiga mekaniker som passar beskrivningen bäst (ange typens exakta namn i "type"):\n${typeLines}\n\n`
+      + `Välj också 1-2 element som matchar attackens TEMA (ange i "types", en lista) bland exakt dessa namn: ${elementNames}.\n\n`
+      + `Svara ENDAST med ett JSON-objekt på exakt denna form, inget annat:\n`
+      + `{"type": "<en av mekanikerna ovan, exakt stavad>", "types": ["<ett eller två av elementen ovan, exakt stavade>"], "name": "<ett kort svenskt attacknamn, max 24 tecken>", "desc": "<en kort svensk beskrivning av attacken, max 140 tecken>", "dmg": <ett heltal 5-45, utelämna fältet helt om mekaniken inte gör direkt skada>, "heal": <ett heltal 5-30, utelämna fältet helt om mekaniken inte läker>}`;
+    const data = await sample.json(prompt, { modelTier: 'quick' });
+    if (!data || typeof data !== 'object' || !Shared.TYPE_DEFAULTS[data.type]) {
+      err.textContent = 'Kunde inte tolka ett giltigt attackslag ur det svaret — försök beskriva på ett annat sätt.';
+      return;
+    }
+    // Ditt eget siffervärde (om du fyllt i ett) vinner alltid över det Claude föreslog —
+    // customWildcardSpecial klipper det ändå till ett säkert spann (5–45). Elementen
+    // (data.types) rensas/valideras där också — ett ogiltigt förslag faller bara tillbaka på
+    // Normal i stället för att krascha.
+    const dmgField = byId('wildcard-attack-dmg').value.trim();
+    const dmg = dmgField ? Number(dmgField) : data.dmg;
+    const r = await net.setCustomWildcardAttack(data.type, data.name, data.desc, dmg, data.heal, data.types);
+    applyAcct(r.acct);
+    renderWildcardAttackPanel();
+    if (game.phase === 'select') showSelect();
+  } catch (e) {
+    if (invCount('wildcard') < 1) { byId('wildcard-attack-prompt').hidden = true; return; }
+    err.textContent = wildcardAttackErrorText(e && e.code);
+  } finally {
+    wildcardAttackBusy = false;
+    btn.disabled = false;
+    btn.textContent = 'Skapa attack';
+  }
+}
+
+async function resetWildcardAttack() {
+  try {
+    const r = await net.setCustomWildcardAttack(null);
+    applyAcct(r.acct);
+    renderWildcardAttackPanel();
+    if (game.phase === 'select') showSelect();
+  } catch (e) {
+    if (invCount('wildcard') < 1) byId('wildcard-attack-prompt').hidden = true;
+  }
 }
 
 byId('btn-choose-wildcard-attack').addEventListener('click', () => {
-  renderWildcardAttackList();
+  renderWildcardAttackPanel();
   byId('wildcard-attack-prompt').hidden = false;
 });
 byId('btn-wildcard-attack-close').addEventListener('click', () => { byId('wildcard-attack-prompt').hidden = true; });
+byId('btn-generate-wildcard-attack').addEventListener('click', generateWildcardAttack);
+byId('btn-reset-wildcard-attack').addEventListener('click', resetWildcardAttack);
+
+// Färgen sparas direkt när man väljer en ny, oberoende av "Skapa attack" — inget att tolka,
+// så det finns ingen anledning att vänta.
+byId('wildcard-attack-color').addEventListener('change', async () => {
+  try {
+    const r = await net.setWildcardColor(byId('wildcard-attack-color').value);
+    applyAcct(r.acct);
+    if (game.phase === 'select') showSelect();
+  } catch (e) {
+    if (invCount('wildcard') < 1) byId('wildcard-attack-prompt').hidden = true;
+  }
+});
+byId('btn-reset-wildcard-color').addEventListener('click', async () => {
+  try {
+    const r = await net.setWildcardColor(null);
+    applyAcct(r.acct);
+    renderWildcardAttackPanel();
+    if (game.phase === 'select') showSelect();
+  } catch (e) {
+    if (invCount('wildcard') < 1) byId('wildcard-attack-prompt').hidden = true;
+  }
+});
+
+// Huvudform och extradetalj sparas precis som färgen: direkt när man väljer, oavsett
+// "Skapa attack" — rent kosmetiskt, inget att tolka.
+byId('wildcard-attack-head').addEventListener('change', async () => {
+  const v = byId('wildcard-attack-head').value;
+  try {
+    const r = await net.setWildcardHead(v || null);
+    applyAcct(r.acct);
+    if (game.phase === 'select') showSelect();
+  } catch (e) {
+    if (invCount('wildcard') < 1) byId('wildcard-attack-prompt').hidden = true;
+  }
+});
+byId('wildcard-attack-extra').addEventListener('change', async () => {
+  const v = byId('wildcard-attack-extra').value;
+  try {
+    const r = await net.setWildcardExtra(v || null);
+    applyAcct(r.acct);
+    if (game.phase === 'select') showSelect();
+  } catch (e) {
+    if (invCount('wildcard') < 1) byId('wildcard-attack-prompt').hidden = true;
+  }
+});
 
 // ---------- Konto (inloggning) ----------
 function showAuth() {
@@ -1386,18 +1716,48 @@ byId('btn-register').addEventListener('click', () => submitAuth('register'));
 byId('btn-auth-back').addEventListener('click', showSelect);
 byId('auth-password').addEventListener('keydown', (e) => { if (e.code === 'Enter') submitAuth('login'); });
 
-// ---------- Vänmatch ----------
-let friendRoom = null;
-
-function wsUrl() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${location.host}/ws`;
-}
+// ---------- Vänmatch (realtid via Claude-sidans "room"-förmåga) ----------
+// Det finns ingen egen server i den här byggen — "rummet" är artefaktens egen
+// realtidskanal (claude.use('room')) mellan alla som har sidan öppen just nu.
+// Den som skapar rummet blir alltid "värd" och kör den riktiga fysiksimuleringen
+// för BÅDA robotarna (sin egen + den mottagna indatan från gästen); gästen kör
+// ingen egen fysik alls, bara det senaste tillstånd värden skickat — annars finns
+// ingen gemensam sanning att hålla de två sidorna i otakt mot. Det gör lösningen
+// okänslig för att meddelanden tappas bort (inget kräver att alla tickar kommer
+// fram, bara att det SENASTE tillståndet gör det, och "rummet" lovar själv inget
+// om leverans eller ordning).
+let roomCap = null;        // claude.use('room') — null om vänmatcher inte går att spela i den här vyn
+let friendRoom = null;      // det gemensamma "rummet" (NamedRoom) just nu, eller null
+let friendUnsubs = [];       // avregistreringsfunktioner för rummets lyssnare, körs vid "Lämna"
 
 function friendMessage(text) { byId('friend-status').textContent = text; }
 
-function backToFriendLobby(message) {
+function randomRoomCode() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let s = '';
+  for (let i = 0; i < 4; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+// Robotens FAKTISKA utseende/attack/utrustning, precis som i en match mot AI — så
+// att en jokerägares egen attack/färg/utrustning syns korrekt för motståndaren också,
+// utan att behöva räknas ut på nytt av någon server.
+function myFriendDef() { return applyEquipment(myDef(robotById[game.selectedId])); }
+function myFriendName() { return displayName(robotById[game.selectedId], true); }
+
+function stopFriendListening() {
+  for (const un of friendUnsubs) { try { un(); } catch (e) { /* redan avregistrerad */ } }
+  friendUnsubs = [];
+}
+
+function leaveFriendRoom() {
+  stopFriendListening();
+  if (friendRoom) { friendRoom.leave().catch(() => {}); friendRoom = null; }
   game.online = null;
+}
+
+function backToFriendLobby(message) {
+  leaveFriendRoom();
   byId('friend-code').hidden = true;
   byId('friend-join').hidden = false;
   byId('friend-create').hidden = false;
@@ -1405,28 +1765,13 @@ function backToFriendLobby(message) {
   if (game.phase !== 'menu') { game.phase = 'friend'; showScreen('friend'); }
 }
 
-function leaveFriendRoom() {
-  if (friendRoom) { friendRoom.leave(); friendRoom = null; }
-  game.online = null;
-}
-
-async function ensureFriendRoom() {
-  if (friendRoom) return friendRoom;
-  const room = await NetPlay.connect(wsUrl());
-  friendRoom = room;
-  room.on('error', (m) => friendMessage(m.error));
-  room.on('left', (m) => { friendRoom = null; backToFriendLobby(m.reason); });
-  room.on('start', (m) => startFriendMatch(room, m));
-  room.on('desync', () => {
-    friendMessage('Matchen gick i otakt mellan er två och avbröts. Försök igen.');
-    if (friendRoom) { friendRoom.leave(); friendRoom = null; }
-    backToFriendLobby();
-  });
-  return room;
+function friendPeerLeftMidMatch() {
+  backToFriendLobby('Din vän lämnade matchen.');
 }
 
 function showFriend() {
-  if (net.kind !== 'remote') { showSelect(); return; }
+  if (!roomCap) { showSelect(); return; }
+  leaveFriendRoom();
   game.phase = 'friend';
   byId('friend-code').hidden = true;
   byId('friend-join').hidden = false;
@@ -1436,54 +1781,99 @@ function showFriend() {
   showScreen('friend');
 }
 
+// Bevakar om motståndaren (värden eller gästen, beroende på vem som frågar) dyker
+// upp eller försvinner, via rummets delade "vem är här"-lista — inte via ett eget
+// "hej"-meddelande, som annars skulle kunna hinna missas av den som ansluter sist.
+function watchForOpponent(room, opponentRole, onFound, onLost) {
+  return room.onPeers(() => {
+    const opp = room.peers().find((p) => !p.isMe && p.presence && p.presence.role === opponentRole && p.presence.def);
+    if (!game.online) { if (opp) onFound(opp); }
+    else if (!game.online.ended && !opp) onLost();
+  });
+}
+
+function normalizeFriendInput(data) {
+  if (!data || typeof data !== 'object') return { ...IDLE };
+  return {
+    dir: data.dir === 1 ? 1 : data.dir === -1 ? -1 : 0,
+    jump: !!data.jump,
+    attack: !!data.attack,
+    special: !!data.special,
+  };
+}
+
 async function createFriendRoom() {
-  friendMessage('Ansluter...');
+  if (!roomCap) { friendMessage('Vänmatcher går inte att spela i den här vyn.'); return; }
+  leaveFriendRoom();
+  friendMessage('Skapar rum...');
+  const code = randomRoomCode();
   let room;
   try {
-    room = await ensureFriendRoom();
+    room = await roomCap.join(code);
   } catch (e) {
-    friendMessage('Kunde inte ansluta till servern.');
+    friendMessage('Kunde inte skapa rummet. Försök igen.');
     return;
   }
-  room.on('created', (m) => {
-    byId('friend-join').hidden = true;
-    byId('friend-create').hidden = true;
-    byId('friend-code').hidden = false;
-    byId('friend-code-text').textContent = m.code;
-    friendMessage('Väntar på att din vän går med...');
-  });
-  room.create(game.selectedId);
+  friendRoom = room;
+  byId('friend-join').hidden = true;
+  byId('friend-create').hidden = true;
+  byId('friend-code').hidden = false;
+  byId('friend-code-text').textContent = code.toUpperCase();
+  friendMessage('Väntar på att din vän går med...');
+  // Lyssnarna måste finnas INNAN presence() sätts — annars kan gästen (eller värden,
+  // vid en snabb anslutning) i teorin hinna svara innan den egna sidan ens lyssnar.
+  friendUnsubs.push(watchForOpponent(room, 'guest', (guestPeer) => hostStartMatch(room, guestPeer), friendPeerLeftMidMatch));
+  friendUnsubs.push(room.on('rematch', (msg) => {
+    if (msg.isMe || !game.online || game.phase !== 'over') return;
+    hostRestartMatch(room);
+  }));
+  friendUnsubs.push(room.on('input', (msg) => {
+    if (msg.isMe || !game.online || !game.online.isHost) return;
+    game.online.lastGuestInput = normalizeFriendInput(msg.data);
+  }));
+  await room.presence({ role: 'host', name: myFriendName(), def: myFriendDef() });
 }
 
 async function joinFriendRoom() {
-  const code = byId('friend-code-input').value.trim().toUpperCase();
-  if (!/^[A-Z]{4}$/.test(code)) { friendMessage('Ange den fyrbokstaviga rumskoden.'); return; }
+  if (!roomCap) { friendMessage('Vänmatcher går inte att spela i den här vyn.'); return; }
+  const code = byId('friend-code-input').value.trim().toLowerCase();
+  if (!/^[a-z0-9]{4}$/.test(code)) { friendMessage('Ange den fyrtecken-koden du fick av din vän.'); return; }
+  leaveFriendRoom();
   friendMessage('Ansluter...');
   let room;
   try {
-    room = await ensureFriendRoom();
+    room = await roomCap.join(code);
   } catch (e) {
-    friendMessage('Kunde inte ansluta till servern.');
+    friendMessage('Kunde inte ansluta. Kontrollera koden och försök igen.');
     return;
   }
-  room.join(code, game.selectedId);
+  friendRoom = room;
+  friendMessage('Väntar på värden...');
+  // Samma sak här: registrera lyssnarna FÖRE presence(), så värden aldrig kan hinna
+  // svara (t.ex. ett startmeddelande) innan den här sidan faktiskt lyssnar efter det.
+  friendUnsubs.push(room.on('start', (msg) => { if (!msg.isMe) guestStartMatch(room, msg.data); }));
+  friendUnsubs.push(room.on('state', (msg) => {
+    if (msg.isMe || !game.online || game.online.isHost) return;
+    applyFriendState(msg.data);
+  }));
+  friendUnsubs.push(room.on('end', (msg) => {
+    if (msg.isMe || !game.online || game.online.isHost) return;
+    guestEndMatch(msg.data);
+  }));
+  friendUnsubs.push(watchForOpponent(room, 'host', () => {}, friendPeerLeftMidMatch));
+  await room.presence({ role: 'guest', name: myFriendName(), def: myFriendDef() });
 }
 
-function startFriendMatch(room, msg) {
-  // Banan väljs av servern och skickas med i start-meddelandet (samma för båda spelarna) —
-  // annars skulle de två klienternas lockstep-simulering kunna råka divergera.
-  game.arena = arenaById[msg.arena] || arenaById.classic;
+function beginFriendMatch(isHost, payload) {
+  game.friendLast = payload; // återanvänds av värden vid revansch
+  game.arena = arenaById[payload.arenaId] || arenaById.classic;
   showArenaLabel(game.arena);
-  // Jokerns attack beror på ägarens namn — servern räknade ut den (se startRoom i server.js)
-  // och skickade med den i players[i].wildcardSpecial, så båda sidor är överens utan att
-  // behöva känna till varandras namn.
-  const friendDef = (p) => (p.robot === 'wildcard' && p.wildcardSpecial ? { ...robotById.wildcard, special: p.wildcardSpecial } : robotById[p.robot]);
-  const f0 = new Fighter(friendDef(msg.players[0]), W * 0.25, 1);
-  const f1 = new Fighter(friendDef(msg.players[1]), W * 0.75, -1);
-  game.fighters = [f0, f1];
-  game.player = game.fighters[msg.slot];
-  game.ai = game.fighters[1 - msg.slot];
-  game.online = { room, slot: msg.slot, introTicks: 144, ended: false, oppName: msg.players[1 - msg.slot].name };
+  const hostF = new Fighter(payload.host.def, W * 0.25, 1);
+  const guestF = new Fighter(payload.guest.def, W * 0.75, -1);
+  game.fighters = [hostF, guestF];
+  game.player = isHost ? hostF : guestF;
+  game.ai = isHost ? guestF : hostF;
+  game.online = { isHost, oppName: isHost ? payload.guest.name : payload.host.name, ended: false, frame: 0, lastGuestInput: { ...IDLE } };
   game.projectiles = [];
   game.waves = [];
   game.beams = [];
@@ -1495,19 +1885,168 @@ function startFriendMatch(room, msg) {
   game.result = null;
   game.mode = 'friend';
   game.stake = false;
+  game.boss = false;
+  game.monster = false;
   specialBuffer = 0;
-  specialEdge = false;
+  game.introT = 2.4;
+  game.banner = 0;
   game.phase = 'intro';
   hud.namePlayer.textContent = `DU · ${displayName(game.player.def, true)}`;
   hud.nameAi.textContent = `${game.ai.def.name} · ${game.online.oppName}`;
+  setHudType(hud.typePlayer, game.player.def);
+  setHudType(hud.typeAi, game.ai.def);
   showScreen(null);
 }
 
-function endOnlineMatch() {
+function hostStartMatch(room, guestPeer) {
+  const arena = Shared.pickArena(Math.random);
+  const payload = {
+    arenaId: arena.id,
+    host: { name: myFriendName(), def: myFriendDef() },
+    guest: { name: guestPeer.presence.name || 'Vän', def: guestPeer.presence.def },
+  };
+  room.emit('start', payload).catch(() => {});
+  beginFriendMatch(true, payload);
+}
+
+function hostRestartMatch(room) {
+  if (!game.friendLast) return;
+  const arena = Shared.pickArena(Math.random);
+  const payload = { ...game.friendLast, arenaId: arena.id };
+  room.emit('start', payload).catch(() => {});
+  beginFriendMatch(true, payload);
+}
+
+function guestStartMatch(room, payload) {
+  if (!payload) return;
+  beginFriendMatch(false, payload);
+}
+
+function hostEndMatch(winnerIsHost) {
   game.phase = 'over';
-  game.winner = game.player.hp > 0 ? game.player : game.ai;
+  game.winner = winnerIsHost ? game.player : game.ai;
   game.overT = 1.6;
-  game.result = { won: game.winner === game.player, friend: true, oppName: game.online.oppName };
+  game.result = { won: winnerIsHost, friend: true, oppName: game.online.oppName };
+}
+
+function guestEndMatch(data) {
+  if (!game.online) return;
+  game.online.ended = true;
+  game.phase = 'over';
+  const iWon = !(data && data.winnerIsHost);
+  game.winner = iWon ? game.player : game.ai;
+  game.overT = 1.6;
+  game.result = { won: iWon, friend: true, oppName: game.online.oppName };
+}
+
+function sanitizeNum(v, fallback) { return typeof v === 'number' && Number.isFinite(v) ? v : fallback; }
+
+// Hela fighterns synliga tillstånd — "skicka absolut tillstånd", inte deltan, precis
+// som rummets egen rekommendation: tappas ett meddelande bort spelar det ingen roll,
+// nästa som kommer fram beskriver ändå hela sanningen på nytt.
+function fighterSnapshot(f) {
+  return {
+    x: f.x, y: f.y, facing: f.facing, vy: f.vy, kx: f.kx, onGround: f.onGround,
+    hp: f.hp, energy: f.energy, act: f.act, atkCd: f.atkCd, hurt: f.hurt, invuln: f.invuln,
+    flash: f.flash, dashT: f.dashT, buffT: f.buffT, shieldT: f.shieldT, reflectT: f.reflectT,
+    frozenT: f.frozenT, jinxT: f.jinxT, vulnT: f.vulnT, dead: f.dead, moving: f.moving,
+    time: f.time, walkT: f.walkT, enrage: f.enrage,
+  };
+}
+
+// Gästens sida litar aldrig blint på nätverksdata — allt som inte är ett giltigt tal
+// faller tillbaka till det gästen redan visade, i stället för att t.ex. rita en
+// NaN-position eller krascha.
+function applyFighterSnapshot(f, snap) {
+  if (!snap || typeof snap !== 'object') return;
+  const prevHp = f.hp;
+  f.x = sanitizeNum(snap.x, f.x);
+  f.y = sanitizeNum(snap.y, f.y);
+  f.facing = snap.facing === -1 ? -1 : 1;
+  f.vy = sanitizeNum(snap.vy, f.vy);
+  f.kx = sanitizeNum(snap.kx, f.kx);
+  f.onGround = !!snap.onGround;
+  f.hp = clamp(sanitizeNum(snap.hp, f.hp), 0, f.maxHp);
+  f.energy = clamp(sanitizeNum(snap.energy, f.energy), 0, MAX_ENERGY);
+  f.act = snap.act && typeof snap.act === 'object' ? snap.act : null;
+  f.atkCd = sanitizeNum(snap.atkCd, f.atkCd);
+  f.hurt = sanitizeNum(snap.hurt, f.hurt);
+  f.invuln = sanitizeNum(snap.invuln, f.invuln);
+  f.flash = sanitizeNum(snap.flash, f.flash);
+  f.dashT = sanitizeNum(snap.dashT, f.dashT);
+  f.buffT = sanitizeNum(snap.buffT, f.buffT);
+  f.shieldT = sanitizeNum(snap.shieldT, f.shieldT);
+  f.reflectT = sanitizeNum(snap.reflectT, f.reflectT);
+  f.frozenT = sanitizeNum(snap.frozenT, f.frozenT);
+  f.jinxT = sanitizeNum(snap.jinxT, f.jinxT);
+  f.vulnT = sanitizeNum(snap.vulnT, f.vulnT);
+  f.dead = !!snap.dead;
+  f.moving = !!snap.moving;
+  f.time = sanitizeNum(snap.time, f.time);
+  f.walkT = sanitizeNum(snap.walkT, f.walkT);
+  f.enrage = sanitizeNum(snap.enrage, f.enrage);
+  if (f.hp < prevHp) { // enda sättet gästen vet att något träffade — inga egna fysikanrop att haka på
+    sparks(f.x, f.y - f.h * 0.6, f.def.color, prevHp - f.hp >= 15 ? 18 : 10);
+    game.shake = Math.max(game.shake, prevHp - f.hp >= 15 ? 0.25 : 0.1);
+  }
+}
+
+function applyFriendState(data) {
+  if (!data || !game.fighters) return;
+  const [f0, f1] = game.fighters;
+  applyFighterSnapshot(f0, data.f0);
+  applyFighterSnapshot(f1, data.f1);
+}
+
+function sendFriendInput() {
+  if (!friendRoom) return;
+  friendRoom.emit('input', playerInput()).catch(() => {});
+}
+
+function sendFriendState() {
+  if (!friendRoom) return;
+  const [f0, f1] = game.fighters;
+  friendRoom.emit('state', { f0: fighterSnapshot(f0), f1: fighterSnapshot(f1) }).catch(() => {});
+}
+
+// Ett steg i en pågående vänmatch. Bara värden kör den riktiga fysiken (för BÅDA
+// robotarna) och sänder tillstånd ut i ~20 Hz; gästen skickar bara sin egen indata
+// (i samma takt) och ritar vad värden senast sa — ingen egen simulering alls, så de
+// två sidorna kan aldrig råka hamna i otakt med varandra.
+function updateFriendMatch(dt) {
+  const om = game.online;
+  if (game.phase === 'intro') {
+    game.introT -= dt;
+    if (game.introT <= 0) { game.phase = 'fight'; game.banner = 0.7; }
+  }
+  game.banner = Math.max(0, game.banner - dt);
+  const fighting = game.phase === 'fight';
+  om.frame++;
+  const throttled = om.frame % 3 === 0; // ~20 Hz vid 60 fps
+
+  if (om.isHost) {
+    const [f0, f1] = game.fighters;
+    f0.step(dt, fighting ? playerInput() : IDLE, f1, fighting);
+    f1.step(dt, fighting ? om.lastGuestInput : IDLE, f0, fighting);
+    if (fighting) {
+      separate(f0, f1);
+      updateProjectiles(dt);
+      updateWaves(dt);
+      updateBeams(dt);
+      updateStrikes(dt);
+      updateMines(dt);
+      updateClouds(dt);
+      if (!om.ended && (f0.hp <= 0 || f1.hp <= 0)) {
+        om.ended = true;
+        const winnerIsHost = f0.hp > 0;
+        if (friendRoom) friendRoom.emit('end', { winnerIsHost }).catch(() => {});
+        hostEndMatch(winnerIsHost);
+      }
+    }
+    if (throttled) sendFriendState();
+  } else if (throttled) {
+    sendFriendInput();
+  }
 }
 
 byId('btn-create-room').addEventListener('click', createFriendRoom);
@@ -1515,14 +2054,12 @@ byId('btn-join-room').addEventListener('click', joinFriendRoom);
 byId('friend-code-input').addEventListener('keydown', (e) => { if (e.code === 'Enter') joinFriendRoom(); });
 byId('btn-friend-cancel').addEventListener('click', () => { leaveFriendRoom(); showSelect(); });
 byId('btn-rematch').addEventListener('click', () => {
-  if (!game.online) return;
-  game.online.room.rematch();
-  friendMessage('Väntar på att din vän också vill ha revansch...');
-  game.phase = 'friend';
-  byId('friend-code').hidden = true;
-  byId('friend-join').hidden = true;
-  byId('friend-create').hidden = true;
-  showScreen('friend');
+  if (!friendRoom || !game.online) return;
+  if (game.online.isHost) hostRestartMatch(friendRoom);
+  else {
+    byId('result-text').textContent = 'Väntar på att din vän också vill ha revansch...';
+    friendRoom.emit('rematch', {}).catch(() => {});
+  }
 });
 byId('btn-leave-friend').addEventListener('click', () => { leaveFriendRoom(); showSelect(); });
 
@@ -1536,48 +2073,16 @@ byId('btn-open-result').addEventListener('click', showBox);
 byId('btn-open').addEventListener('click', openBox);
 byId('btn-box-back').addEventListener('click', showSelect);
 byId('btn-friend').addEventListener('click', showFriend);
+byId('btn-monsters').addEventListener('click', showMonsters);
+byId('btn-equipment').addEventListener('click', () => {
+  renderEquipmentModal();
+  byId('equipment-prompt').hidden = false;
+});
 byId('mode-normal').addEventListener('click', () => { game.mode = 'normal'; showSelect(); });
 byId('mode-stake').addEventListener('click', () => { game.mode = 'stake'; showSelect(); });
 
 // ---------- Uppdatering ----------
 const IDLE = { dir: 0, jump: false, attack: false, special: false };
-
-// Ett simuleringssteg i en vänmatch. inA/inB är i slot-ordning (0, 1) — samma anrop på båda
-// klienterna, oavsett vem som är "jag" — det är det som håller de två sidorna synkade.
-// Returnerar false för att säga åt netplay.js att sluta simulera fler tickar i den här
-// omgången, så att båda sidor stannar på exakt samma ticknummer när matchen tar slut —
-// annars kan den ena sidan råka hinna köra några extra (ofarliga men onödiga) tickar bara
-// för att fler av dess indata redan hunnit komma fram över nätet.
-function fightTick(inA, inB, fighting) {
-  const [f0, f1] = game.fighters;
-  f0.step(STEP, inA, f1, fighting);
-  f1.step(STEP, inB, f0, fighting);
-  if (fighting) {
-    separate(f0, f1);
-    updateProjectiles(STEP);
-    updateWaves(STEP);
-    updateBeams(STEP);
-    updateStrikes(STEP);
-    updateMines(STEP);
-    updateClouds(STEP);
-    if (!game.online.ended && (f0.hp <= 0 || f1.hp <= 0)) {
-      game.online.ended = true;
-      endOnlineMatch();
-    }
-  }
-  return !game.online.ended;
-}
-
-function hashOnline() {
-  const [f0, f1] = game.fighters;
-  return [Math.round(f0.x * 8), Math.round(f0.y * 8), f0.hp, Math.round(f1.x * 8), Math.round(f1.y * 8), f1.hp];
-}
-
-function updateOnline() {
-  const om = game.online;
-  if (om.ended) return;
-  om.room.advance(sampleOnlineInput, (inA, inB) => fightTick(inA, inB, om.room.tick >= om.introTicks), hashOnline);
-}
 
 function update(dt) {
   game.shake = Math.max(0, game.shake - dt);
@@ -1590,12 +2095,14 @@ function update(dt) {
   }
   game.particles = game.particles.filter((p) => p.life > 0);
 
+  if (game.phase === 'monsters') { updateExplore(dt); return; }
+
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
     || game.phase === 'friend' || game.phase === 'box') return;
 
   if (game.online) {
-    updateOnline();
+    updateFriendMatch(dt);
   } else {
     if (game.phase === 'intro') {
       game.introT -= dt;
@@ -2118,6 +2625,7 @@ function drawBanner(text, size) {
 }
 
 function draw() {
+  if (game.phase === 'monsters') { drawExplore(); return; }
   const arenaId = game.arena.id;
   if (!backgroundCache[arenaId]) backgroundCache[arenaId] = buildBackground(game.arena);
   const { player, ai } = game;
@@ -2139,20 +2647,15 @@ function draw() {
   }
   ctx.restore();
 
-  if (game.online) {
-    const om = game.online;
-    if (!om.ended && om.room.tick < om.introTicks) drawBanner(String(Math.ceil((om.introTicks - om.room.tick) / 60)), 120);
-    else if (!om.ended && om.room.tick < om.introTicks + 42) drawBanner('KÄMPA!', 84);
-    else if (om.ended) drawBanner('K.O.', 96);
-    if (!om.ended && om.room.stalled) {
-      ctx.font = '18px ui-monospace, Menlo, monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText('Väntar på din vän...', W / 2, H - 24);
-    }
-  } else if (game.phase === 'intro') drawBanner(String(Math.ceil(game.introT / 0.8)), 120);
+  if (game.phase === 'intro') drawBanner(String(Math.ceil(game.introT / 0.8)), 120);
   else if (game.banner > 0) drawBanner('KÄMPA!', 84);
   else if (game.phase === 'over') drawBanner('K.O.', 96);
+  if (game.online && !game.online.ended && friendRoom && !friendRoom.connected()) {
+    ctx.font = '18px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillText('Ansluter om...', W / 2, H - 24);
+  }
 
   if (player) {
     hud.hpPlayer.style.width = `${(player.hp / player.maxHp) * 100}%`;
@@ -2179,22 +2682,25 @@ function frame(now) {
 }
 
 // ---------- Start ----------
-// Försöker logga in med en befintlig session mot servern; annars spelar man som gäst med
-// samlingen sparad lokalt i webbläsaren. Fungerar även utan server (öppnad som lokal fil).
+// Försöker spara mot artefaktens egen databas (under den här tittarens privata gren) —
+// annars (öppnad utanför claude.ai, eller ingen egen identitet att spara mot här) spelar
+// man som gäst med samlingen sparad lokalt i webbläsaren i stället.
 async function boot() {
   try {
-    const remote = new Backend.RemoteBackend();
-    const me = await remote.me();
-    if (me) {
-      net = remote;
-      applyAcct(me.acct);
-    } else {
-      const r = await net.load();
-      applyAcct(r.acct);
-    }
+    const artifact = new Backend.ArtifactBackend();
+    const r = await artifact.load();
+    net = artifact;
+    applyAcct(r.acct);
   } catch (e) {
     const r = await net.load();
     applyAcct(r.acct);
+  }
+  // Vänmatcher kräver artefaktens egen realtidskanal — går inte att öppna lokalt
+  // (t.ex. utanför claude.ai) eller om den här tittaren inte fick tillgång till den.
+  try {
+    roomCap = (window.claude && typeof window.claude.use === 'function') ? await window.claude.use('room') : null;
+  } catch (e) {
+    roomCap = null;
   }
   renderAccountBar();
   byId('btn-play').disabled = false;
