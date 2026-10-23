@@ -23,8 +23,6 @@ const MIN_MATCH_MS = 5000;
 const IMPORT_MAX_PER_ROBOT = 50;   // gräns per robotslag vid import av en gästsamling
 const IMPORT_MAX_ROBOTS = 200;     // gräns på totalen, så en klient inte kan hitta på en jättesamling
 const IMPORT_MAX_BOXES = 50;
-const INPUT_DELAY = 6;
-const ROOM_WAIT_MS = 10 * 60 * 1000;
 
 const STATIC_FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
@@ -33,7 +31,6 @@ const STATIC_FILES = {
   '/game.js': ['game.js', 'text/javascript; charset=utf-8'],
   '/shared.js': ['shared.js', 'text/javascript; charset=utf-8'],
   '/backend.js': ['backend.js', 'text/javascript; charset=utf-8'],
-  '/netplay.js': ['netplay.js', 'text/javascript; charset=utf-8'],
 };
 
 const SECURITY_HEADERS = {
@@ -153,7 +150,6 @@ setInterval(() => {
   for (const [key, list] of hits) if (!list.some((t) => now - t < 3600 * 1000)) hits.delete(key);
   for (const [key, s] of Object.entries(db.sessions)) if (s.exp < now) delete db.sessions[key];
   for (const [token, m] of matches) if (now - m.startedAt > 30 * 60 * 1000) matches.delete(token);
-  for (const [code, room] of rooms) if (!room.players[1] && now - room.created > ROOM_WAIT_MS) closeRoom(code, 'Rummet gick ut.');
 }, 60 * 1000).unref();
 
 // ---------- HTTP ----------
@@ -278,10 +274,10 @@ const routes = {
   },
 
   'POST /api/match/start': async (req, res, session) => {
-    const { robot, mode, bossId } = await readBody(req);
+    const { robot, mode, bossId, monsterId } = await readBody(req);
     const acct = session.user.acct;
-    const wantMode = mode === 'stake' ? 'stake' : mode === 'boss' ? 'boss' : 'normal';
-    const match = S.startMatch(acct, robot, wantMode, randomFloat, typeof bossId === 'string' ? bossId : null);
+    const wantMode = mode === 'stake' ? 'stake' : mode === 'boss' ? 'boss' : mode === 'monster' ? 'monster' : 'normal';
+    const match = S.startMatch(acct, robot, wantMode, randomFloat, typeof bossId === 'string' ? bossId : null, typeof monsterId === 'string' ? monsterId : null);
     if (match.error) throw new HttpError(400, match.error);
     const token = crypto.randomBytes(16).toString('hex');
     matches.delete(activeMatch.get(session.key));
@@ -334,6 +330,46 @@ const routes = {
     return { acct: acctView(session.user) };
   },
 
+  'POST /api/wildcard/attack': async (req, res, session) => {
+    const { type, name, desc, dmg, heal, types } = await readBody(req);
+    const result = S.setCustomWildcardSpecial(session.user.acct, type, name, desc, dmg, heal, types);
+    if (result.error) throw new HttpError(400, result.error);
+    saveSoon();
+    return { acct: acctView(session.user) };
+  },
+
+  'POST /api/wildcard/color': async (req, res, session) => {
+    const { hex } = await readBody(req);
+    const result = S.setWildcardColor(session.user.acct, typeof hex === 'string' ? hex : null);
+    if (result.error) throw new HttpError(400, result.error);
+    saveSoon();
+    return { acct: acctView(session.user) };
+  },
+
+  'POST /api/wildcard/head': async (req, res, session) => {
+    const { head } = await readBody(req);
+    const result = S.setWildcardHead(session.user.acct, typeof head === 'string' ? head : null);
+    if (result.error) throw new HttpError(400, result.error);
+    saveSoon();
+    return { acct: acctView(session.user) };
+  },
+
+  'POST /api/wildcard/extra': async (req, res, session) => {
+    const { extra } = await readBody(req);
+    const result = S.setWildcardExtra(session.user.acct, typeof extra === 'string' ? extra : null);
+    if (result.error) throw new HttpError(400, result.error);
+    saveSoon();
+    return { acct: acctView(session.user) };
+  },
+
+  'POST /api/equip': async (req, res, session) => {
+    const { itemId } = await readBody(req);
+    const result = S.equipItem(session.user.acct, typeof itemId === 'string' ? itemId : null);
+    if (result.error) throw new HttpError(400, result.error);
+    saveSoon();
+    return { acct: acctView(session.user) };
+  },
+
   // Lägger en gäst-samling (sparad i klientens webbläsare) till kontot. Insatsen skickas av
   // klienten och är alltså inte pålitlig i sig — den begränsas hårt här så att ingen kan
   // hitta på en jättesamling åt sig själv. Additivt: kan inte ta bort robotar, bara lägga till.
@@ -381,114 +417,90 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// ---------- Vänmatcher (WebSocket) ----------
-// Servern är bara en förmedlare: båda spelarna kör samma simulering och skickar
-// sina knapptryckningar via servern. Vänmatcher påverkar inte någons samling.
-const rooms = new Map();
+// ---------- Vänmatcher: ett generiskt "rum"-relä (WebSocket) ----------
+// Servern vet ingenting om spelregler här — den är bara en förmedlare mellan alla
+// som gått med i samma rumskod, precis som Claude-sidans egen "room"-förmåga:
+// "presence" (vem är här, med vilken data) delas till alla i rummet, och fria
+// meddelanden ("emit") vidarebefordras till alla i rummet. Klienten (game.js, via
+// Backend.connectWsRoom i backend.js) avgör själv vem som är värd och kör den
+// riktiga fysiksimuleringen — servern bryr sig inte. Ingen inloggning krävs för
+// att gå med i ett rum: robotarna som visas är ändå bara det var och en själv valt.
+const wsRooms = new Map(); // rumskod -> Map(peerId -> { ws, presence })
+const ROOM_CODE_RE = /^[a-z0-9]{4,24}$/;
+const MAX_ROOM_PEERS = 8; // generös gräns, inte bara 2 — t.ex. om någon råkar ansluta två gånger
 
 function wsSend(ws, message) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message));
 }
 
-function newRoomCode() {
-  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  for (;;) {
-    let code = '';
-    for (let i = 0; i < 4; i++) code += letters[crypto.randomInt(letters.length)];
-    if (!rooms.has(code)) return code;
-  }
+function roomPeersSnapshot(room) {
+  return [...room.entries()].map(([id, p]) => ({ id, presence: p.presence }));
 }
 
-function closeRoom(code, reason) {
-  const room = rooms.get(code);
+function broadcastWsPeers(code) {
+  const room = wsRooms.get(code);
   if (!room) return;
-  rooms.delete(code);
-  for (const p of room.players) {
-    if (!p) continue;
-    p.ws.room = null;
-    wsSend(p.ws, { t: 'left', reason });
+  const snapshot = roomPeersSnapshot(room);
+  for (const [id, p] of room) {
+    wsSend(p.ws, { t: 'peers', room: code, peers: snapshot.map((e) => ({ id: e.id, presence: e.presence, isMe: e.id === id })) });
   }
 }
 
-function leaveRoom(ws, reason) {
-  if (ws.room) closeRoom(ws.room.code, reason);
-}
-
-function startRoom(room) {
-  room.rematch = [false, false];
-  // Banan slumpas EN gång här och skickas med till båda spelarna — annars kan de två
-  // klienternas lockstep-simulering divergera om de råkade välja olika banor var för sig.
-  const arena = S.pickArena(randomFloat).id;
-  // Jokerns attack beror på ägarens eget namn på den — servern räknar ut den en gång här
-  // (samma delade funktion som klienten) och skickar med den, så att båda sidor i matchen
-  // alltid är överens om vilken attack en jokerspelare faktiskt har, utan att avslöja namnet.
-  const wildcardSpecial = (p) => (p.robot === 'wildcard' ? S.wildcardSpecialFor(p.ws.user.acct.wildcardName, p.ws.user.acct.wildcardSpecialType) : undefined);
-  room.players.forEach((p, slot) => {
-    wsSend(p.ws, {
-      t: 'start',
-      slot,
-      delay: INPUT_DELAY,
-      arena,
-      players: room.players.map((q) => ({ name: q.name, robot: q.robot, wildcardSpecial: wildcardSpecial(q) })),
-    });
-  });
-}
-
-function ownedRobot(user, robot) {
-  return typeof robot === 'string' && S.robotById[robot] && S.count(user.acct, robot) > 0;
+function leaveWsRoom(ws) {
+  if (!ws.roomCode) return;
+  const room = wsRooms.get(ws.roomCode);
+  if (room) {
+    room.delete(ws.peerId);
+    if (room.size === 0) wsRooms.delete(ws.roomCode);
+    else broadcastWsPeers(ws.roomCode);
+  }
+  ws.roomCode = null;
 }
 
 function onMessage(ws, msg) {
   switch (msg.t) {
-    case 'create': {
-      leaveRoom(ws, 'Du skapade ett nytt rum.');
-      if (!ownedRobot(ws.user, msg.robot)) return wsSend(ws, { t: 'error', error: 'Du äger inte den roboten.' });
-      const code = newRoomCode();
-      const room = { code, players: [{ ws, name: ws.user.name, robot: msg.robot, key: ws.userKey }, null], created: Date.now(), rematch: [false, false] };
-      rooms.set(code, room);
-      ws.room = room;
-      ws.slot = 0;
-      return wsSend(ws, { t: 'created', code });
-    }
     case 'join': {
-      const code = typeof msg.code === 'string' ? msg.code.trim().toUpperCase() : '';
-      const room = rooms.get(code);
-      if (!room || room.players[1]) return wsSend(ws, { t: 'error', error: 'Rummet finns inte eller är fullt.' });
-      if (room.players[0].key === ws.userKey) return wsSend(ws, { t: 'error', error: 'Du kan inte gå med i ditt eget rum.' });
-      if (!ownedRobot(ws.user, msg.robot)) return wsSend(ws, { t: 'error', error: 'Du äger inte den roboten.' });
-      leaveRoom(ws, 'Du gick med i ett annat rum.');
-      room.players[1] = { ws, name: ws.user.name, robot: msg.robot, key: ws.userKey };
-      ws.room = room;
-      ws.slot = 1;
-      return startRoom(room);
+      if (typeof msg.room !== 'string' || !ROOM_CODE_RE.test(msg.room)) return wsSend(ws, { t: 'error', error: 'Ogiltig rumskod.' });
+      leaveWsRoom(ws);
+      let room = wsRooms.get(msg.room);
+      if (!room) { room = new Map(); wsRooms.set(msg.room, room); }
+      if (room.size >= MAX_ROOM_PEERS) return wsSend(ws, { t: 'error', error: 'Rummet är fullt.' });
+      room.set(ws.peerId, { ws, presence: {} });
+      ws.roomCode = msg.room;
+      wsSend(ws, { t: 'joined', room: msg.room });
+      broadcastWsPeers(msg.room);
+      return;
     }
-    case 'in': {
-      const room = ws.room;
-      if (!room || !room.players[1]) return null;
-      if (!Number.isInteger(msg.tick) || msg.tick < 0 || msg.tick > 1e7) return null;
-      if (!Number.isInteger(msg.bits) || msg.bits < 0 || msg.bits > 31) return null;
-      return wsSend(room.players[1 - ws.slot].ws, { t: 'in', tick: msg.tick, bits: msg.bits });
+    case 'presence': {
+      const room = ws.roomCode && wsRooms.get(ws.roomCode);
+      if (!room || !room.has(ws.peerId)) return;
+      if (!msg.patch || typeof msg.patch !== 'object' || Array.isArray(msg.patch)) return;
+      const entry = room.get(ws.peerId);
+      const next = { ...entry.presence };
+      for (const k of Object.keys(msg.patch)) {
+        if (typeof k !== 'string' || k.length > 64) continue;
+        if (msg.patch[k] === null) delete next[k]; else next[k] = msg.patch[k];
+      }
+      if (JSON.stringify(next).length > 8192) return wsSend(ws, { t: 'error', error: 'Presence för stor.' });
+      entry.presence = next;
+      return broadcastWsPeers(ws.roomCode);
     }
-    case 'h': {
-      const room = ws.room;
-      if (!room || !room.players[1] || typeof msg.h !== 'string' || msg.h.length > 64) return null;
-      return wsSend(room.players[1 - ws.slot].ws, { t: 'h', tick: msg.tick, h: msg.h });
-    }
-    case 'rematch': {
-      const room = ws.room;
-      if (!room || !room.players[1]) return null;
-      room.rematch[ws.slot] = true;
-      if (room.rematch[0] && room.rematch[1]) return startRoom(room);
-      return wsSend(room.players[1 - ws.slot].ws, { t: 'rematch' });
+    case 'emit': {
+      const room = ws.roomCode && wsRooms.get(ws.roomCode);
+      if (!room || !room.has(ws.peerId)) return;
+      if (typeof msg.topic !== 'string' || msg.topic.length > 64) return;
+      if (JSON.stringify(msg.data === undefined ? null : msg.data).length > 16384) return wsSend(ws, { t: 'error', error: 'Meddelandet är för stort.' });
+      for (const [id, p] of room) wsSend(p.ws, { t: 'event', room: ws.roomCode, topic: msg.topic, data: msg.data, isMe: id === ws.peerId });
+      return;
     }
     case 'leave':
-      return leaveRoom(ws, 'Din vän lämnade.');
+      return leaveWsRoom(ws);
     default:
-      return null;
+      return;
   }
 }
 
-const wss = new WebSocketServer({ noServer: true, maxPayload: 2048 });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 
 server.on('upgrade', (req, socket, head) => {
   const reject = (status) => {
@@ -498,7 +510,7 @@ server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname !== '/ws') return reject('404 Not Found');
   // Webbläsare skickar alltid Origin. Den måste vara samma sida, annars kan en annan webbplats
-  // kapa anslutningen med din inloggning.
+  // öppna en anslutning mot din WebSocket-server bakom din rygg.
   if (req.headers.origin) {
     try {
       if (new URL(req.headers.origin).host !== req.headers.host) return reject('403 Forbidden');
@@ -506,12 +518,9 @@ server.on('upgrade', (req, socket, head) => {
       return reject('403 Forbidden');
     }
   }
-  const session = sessionOf(req);
-  if (!session) return reject('401 Unauthorized');
   return wss.handleUpgrade(req, socket, head, (ws) => {
-    ws.user = session.user;
-    ws.userKey = session.key;
-    ws.room = null;
+    ws.peerId = crypto.randomBytes(8).toString('hex');
+    ws.roomCode = null;
     ws.alive = true;
     ws.msgCount = 0;
     ws.on('pong', () => { ws.alive = true; });
@@ -525,7 +534,7 @@ server.on('upgrade', (req, socket, head) => {
       }
       if (msg && typeof msg === 'object') onMessage(ws, msg);
     });
-    ws.on('close', () => leaveRoom(ws, 'Din vän tappade anslutningen.'));
+    ws.on('close', () => leaveWsRoom(ws));
     ws.on('error', () => ws.terminate());
   });
 });

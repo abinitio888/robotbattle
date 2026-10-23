@@ -1078,9 +1078,21 @@ function createCard(def, { locked = false, selected = false, isNew = false, reve
 // (Den här byggen av spelet har ingen inloggningsknapp — se boot() nedan.)
 function renderAccountBar() {
   const bar = byId('account-bar');
-  bar.textContent = net.kind === 'artifact'
-    ? 'Ditt framsteg sparas till ditt Claude-konto'
-    : 'Spelar som gäst (sparas bara i den här webbläsaren)';
+  const btn = byId('btn-account');
+  if (net.kind === 'artifact') {
+    // Claude-sidan har redan en identitet (tittarens eget Claude-konto) — en egen
+    // inloggningsknapp här skulle bara leda till ett API som inte finns där.
+    bar.textContent = 'Ditt framsteg sparas till ditt Claude-konto';
+    btn.hidden = true;
+  } else if (net.kind === 'remote') {
+    bar.textContent = `Inloggad som ${net.username} — framsteget sparas på kontot`;
+    btn.hidden = false;
+    btn.textContent = 'Logga ut';
+  } else {
+    bar.textContent = 'Spelar som gäst (sparas bara i den här webbläsaren)';
+    btn.hidden = false;
+    btn.textContent = 'Logga in / skapa konto';
+  }
 }
 
 function showSelect() {
@@ -2692,15 +2704,34 @@ async function boot() {
     net = artifact;
     applyAcct(r.acct);
   } catch (e) {
-    const r = await net.load();
-    applyAcct(r.acct);
+    // Inte på claude.ai (eller ingen egen identitet att spara mot där) — på en riktig,
+    // egen webbsida kan den här sidans EGEN server ha ett konto man redan är inloggad
+    // på (en cookie från förra besöket); annars blir man gäst, sparad bara lokalt.
+    let resumed = false;
+    try {
+      const remote = new Backend.RemoteBackend();
+      const r = await remote.me();
+      if (r) { net = remote; applyAcct(r.acct); resumed = true; }
+    } catch (e2) { /* ingen egen server här (t.ex. GitHub Pages) — bli gäst nedan */ }
+    if (!resumed) {
+      const r = await net.load();
+      applyAcct(r.acct);
+    }
   }
-  // Vänmatcher kräver artefaktens egen realtidskanal — går inte att öppna lokalt
-  // (t.ex. utanför claude.ai) eller om den här tittaren inte fick tillgång till den.
+  // Vänmatcher behöver en realtidskanal: Claude-sidans egen (claude.use('room')) om vi
+  // körs där, annars den här sidans EGEN server (om den finns) — annars är de avstängda,
+  // t.ex. på GitHub Pages som bara serverar statiska filer utan en egen WebSocket.
   try {
     roomCap = (window.claude && typeof window.claude.use === 'function') ? await window.claude.use('room') : null;
   } catch (e) {
     roomCap = null;
+  }
+  if (!roomCap) {
+    try {
+      roomCap = await Backend.connectWsRoom();
+    } catch (e) {
+      roomCap = null;
+    }
   }
   renderAccountBar();
   byId('btn-play').disabled = false;

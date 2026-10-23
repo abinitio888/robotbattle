@@ -227,13 +227,18 @@
     }
 
     select(robot) { return this.api('/api/select', { robot }); }
-    startMatch(robot, mode, bossId) { return this.api('/api/match/start', { robot, mode, bossId }); }
+    startMatch(robot, mode, bossId, monsterId) { return this.api('/api/match/start', { robot, mode, bossId, monsterId }); }
     finishMatch(match, won) { return this.api('/api/match/finish', { token: match.token, won }); }
     openBox() { return this.api('/api/box/open', {}); }
     claimDaily() { return this.api('/api/daily/claim', {}); }
     nameWildcard(name) { return this.api('/api/wildcard/name', { name }); }
     chooseWildcardSpecial(type) { return this.api('/api/wildcard/special', { type }); }
     importGuest(inv, boxes) { return this.api('/api/import-guest', { inv, boxes }); }
+    equipItem(itemId) { return this.api('/api/equip', { itemId }); }
+    setCustomWildcardAttack(type, name, desc, dmg, heal, types) { return this.api('/api/wildcard/attack', { type, name, desc, dmg, heal, types }); }
+    setWildcardColor(hex) { return this.api('/api/wildcard/color', { hex }); }
+    setWildcardHead(head) { return this.api('/api/wildcard/head', { head }); }
+    setWildcardExtra(extra) { return this.api('/api/wildcard/extra', { extra }); }
   }
 
   // Används bara av Claude-artefaktversionen (ingen egen server där): sparar kontot i
@@ -369,5 +374,102 @@
     }
   }
 
-  return { LocalBackend, RemoteBackend, ArtifactBackend, readGuestSave, clearGuestSave };
+  // ---------- Vänmatch utan Claude-sidan: samma "room"-form över en egen WebSocket ----------
+  // Claude-sidans vänmatchskod (game.js) pratar bara med ett objekt format som
+  // claude.use('room') ger: join(namn) -> {emit, on, presence, peers, onPeers, leave,
+  // connected}. Den här funktionen ger exakt samma form, men över DEN HÄR sidans egna
+  // WebSocket-relä (server.js) i stället — så att game.js:s vänmatchskod kan användas
+  // oförändrad här också. Den här sidans server är bara en förmedlare, precis som
+  // Claude-sidans rum: den avgör ingenting om spelregler, bara vidarebefordrar
+  // "presence" och fria meddelanden mellan alla som gått med i samma rumskod.
+  function wsUrl() {
+    const proto = typeof location !== 'undefined' && location.protocol === 'https:' ? 'wss' : 'ws';
+    const host = typeof location !== 'undefined' ? location.host : '';
+    return `${proto}://${host}/ws`;
+  }
+
+  function makeWsRoomCap(socket) {
+    let closed = false;
+    const rooms = new Map(); // kod -> { topicFns: Map(topic -> Set(fn)), peerFns: Set(fn), lastPeers: [] }
+    socket.addEventListener('close', () => { closed = true; });
+    socket.addEventListener('message', (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (!msg || typeof msg !== 'object' || typeof msg.room !== 'string') return;
+      const r = rooms.get(msg.room);
+      if (!r) return;
+      if (msg.t === 'peers' && Array.isArray(msg.peers)) {
+        r.lastPeers = msg.peers.map((p) => ({
+          peer: String(p.id), by: null, isMe: !!p.isMe, sameTab: !!p.isMe, kind: 'viewer', guest: false,
+          presence: (p.presence && typeof p.presence === 'object') ? p.presence : {}, updatedAt: Date.now(),
+        }));
+        for (const fn of r.peerFns) fn({ peers: r.lastPeers });
+      } else if (msg.t === 'event' && typeof msg.topic === 'string') {
+        const fns = r.topicFns.get(msg.topic);
+        if (fns) for (const fn of fns) fn({ topic: msg.topic, data: msg.data, isMe: !!msg.isMe, sameTab: !!msg.isMe, peer: null, by: null, kind: 'viewer', guest: false });
+      }
+    });
+    function send(obj) { if (!closed && socket.readyState === socket.OPEN) socket.send(JSON.stringify(obj)); }
+    return {
+      async join(name) {
+        if (!rooms.has(name)) rooms.set(name, { topicFns: new Map(), peerFns: new Set(), lastPeers: [] });
+        const r = rooms.get(name);
+        send({ t: 'join', room: name });
+        return {
+          name,
+          async emit(topic, data) { send({ t: 'emit', room: name, topic, data }); },
+          on(topic, fn) {
+            if (!r.topicFns.has(topic)) r.topicFns.set(topic, new Set());
+            r.topicFns.get(topic).add(fn);
+            return () => { const s = r.topicFns.get(topic); if (s) s.delete(fn); };
+          },
+          async presence(patch) { send({ t: 'presence', room: name, patch }); },
+          peers() { return r.lastPeers; },
+          onPeers(fn) { r.peerFns.add(fn); fn({ peers: r.lastPeers }); return () => r.peerFns.delete(fn); },
+          connected() { return !closed && socket.readyState === socket.OPEN; },
+          onConnection(fn) { fn(!closed); return () => {}; },
+          async leave() { send({ t: 'leave', room: name }); rooms.delete(name); },
+        };
+      },
+    };
+  }
+
+  // Löser till ett "room"-likt objekt om den här sidan faktiskt körs bakom sin egen
+  // server (t.ex. på en riktig driftsatt adress), annars kastar den (t.ex. på GitHub
+  // Pages, eller öppnad direkt som en fil) — samma avslaget som claude.use('room')
+  // ger null, bara att boot() i game.js hanterar båda på samma sätt.
+  function connectWsRoom() {
+    return new Promise((resolve, reject) => {
+      if (typeof WebSocket === 'undefined') return reject(new Error('no_websocket'));
+      let settled = false;
+      let socket;
+      try {
+        socket = new WebSocket(wsUrl());
+      } catch (e) {
+        return reject(e);
+      }
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try { socket.close(); } catch (e) { /* redan stängd */ }
+        reject(new Error('timeout'));
+      }, 4000);
+      socket.addEventListener('open', () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(makeWsRoomCap(socket));
+      });
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error('ws_unavailable'));
+      };
+      socket.addEventListener('error', fail);
+      socket.addEventListener('close', fail);
+    });
+  }
+
+  return { LocalBackend, RemoteBackend, ArtifactBackend, readGuestSave, clearGuestSave, connectWsRoom };
 });
