@@ -825,6 +825,10 @@ function showArenaLabel(def) {
 // net är kontots "backend": LocalBackend sparar bara i webbläsaren (gäst, ingen inloggning
 // behövs), RemoteBackend pratar med servern (konto, kan spela vänmatcher). Byts vid inloggning.
 let net = new Backend.LocalBackend();
+// Sant bara om den här sidan faktiskt har en egen inloggningsserver att prata med (satt i
+// boot()) — t.ex. INTE på GitHub Pages, som bara kan visa sidor och aldrig kan svara på ett
+// inloggningsförsök. Styr om "Logga in / skapa konto"-knappen ens visas som gäst.
+let accountsAvailable = false;
 
 const game = {
   phase: 'menu',      // menu | auth | select | box | friend | intro | fight | over
@@ -1090,7 +1094,7 @@ function renderAccountBar() {
     btn.textContent = 'Logga ut';
   } else {
     bar.textContent = 'Spelar som gäst (sparas bara i den här webbläsaren)';
-    btn.hidden = false;
+    btn.hidden = !accountsAvailable; // t.ex. GitHub Pages har ingen egen server att logga in mot
     btn.textContent = 'Logga in / skapa konto';
   }
 }
@@ -2711,6 +2715,10 @@ async function boot() {
     try {
       const remote = new Backend.RemoteBackend();
       const r = await remote.me();
+      // me() kastar ALDRIG för "inte inloggad" (401 ger bara null) — bara om det inte
+      // finns någon server att fråga alls (t.ex. ett 404 på GitHub Pages). Når vi hit har
+      // en riktig server faktiskt svarat, oavsett om man råkade vara inloggad eller inte.
+      accountsAvailable = true;
       if (r) { net = remote; applyAcct(r.acct); resumed = true; }
     } catch (e2) { /* ingen egen server här (t.ex. GitHub Pages) — bli gäst nedan */ }
     if (!resumed) {
