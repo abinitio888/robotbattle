@@ -1695,7 +1695,11 @@ byId('btn-reset-wildcard-attack').addEventListener('click', resetWildcardAttack)
 byId('btn-pick-wildcard-type').addEventListener('click', async () => {
   const v = byId('wildcard-attack-pick').value;
   const err = byId('wildcard-attack-error');
+  const btn = byId('btn-pick-wildcard-type');
   err.textContent = '';
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Sparar...';
   try {
     // Ett direktval ska alltid vinna över en tidigare AI-beskriven attack — annars skulle den
     // fortsätta synas/gälla (wildcardSpecialFor kollar den egna, AI-beskrivna attacken FÖRST).
@@ -1707,9 +1711,18 @@ byId('btn-pick-wildcard-type').addEventListener('click', async () => {
     applyAcct(r.acct);
     renderWildcardAttackPanel();
     if (game.phase === 'select') showSelect();
+    // Bekräftelsen ("Nuvarande: ...") står högst upp i rutan — man har precis scrollat ner
+    // för att nå den här knappen, så utan att scrolla tillbaka ser det ut som att inget
+    // hände alls. Rulla upp OCH visa en tydlig bekräftelse på själva knappen en kort stund.
+    byId('wildcard-attack-prompt').scrollTo({ top: 0, behavior: 'smooth' });
+    btn.textContent = '✓ Vald!';
+    setTimeout(() => { btn.textContent = originalLabel; }, 1500);
   } catch (e) {
     if (invCount('wildcard') < 1) { byId('wildcard-attack-prompt').hidden = true; return; }
-    err.textContent = 'Något gick fel — försök igen.';
+    err.textContent = (e && e.message) || 'Något gick fel — försök igen.';
+    btn.textContent = originalLabel;
+  } finally {
+    btn.disabled = false;
   }
 });
 
