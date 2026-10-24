@@ -1567,6 +1567,13 @@ function populateWildcardAppearanceSelects() {
   for (const h of Shared.HEAD_SHAPES) addOpt(headSel, h, HEAD_LABELS[h] || h);
   addOpt(extraSel, '', 'Standard');
   for (const e of Shared.EXTRA_FEATURES) addOpt(extraSel, e, EXTRA_LABELS[e] || e);
+
+  // Direktvalet (ingen AI inblandad) — bara jokerns ursprungliga tio attacker, inte alla ~34
+  // mekaniker fritextläget kan välja bland, se chooseWildcardSpecial() i shared.js. Fungerar
+  // överallt, även där Claude inte går att fråga (den riktiga webbsidan utan en API-nyckel).
+  const pickSel = byId('wildcard-attack-pick');
+  addOpt(pickSel, 'auto', 'Styrs av namnet (som vanligt)');
+  for (const s of Shared.WILDCARD_SPECIALS) addOpt(pickSel, s.type, `${s.name} — ${s.desc}`);
 }
 populateWildcardAppearanceSelects();
 
@@ -1586,6 +1593,10 @@ function renderWildcardAttackPanel() {
   byId('wildcard-attack-dmg').value = custom && typeof custom.dmg === 'number' ? custom.dmg : '';
   byId('wildcard-attack-head').value = game.acct.wildcardHead || '';
   byId('wildcard-attack-extra').value = game.acct.wildcardExtra || '';
+  // En egen AI-beskriven attack (custom) vinner alltid över ett direktval i hur den faktiskt
+  // spelas (se wildcardSpecialFor) — så visa "auto" i direktvalet tills man uttryckligen
+  // väljer något där, i stället för att visa ett värde som inte längre stämmer.
+  byId('wildcard-attack-pick').value = (!custom && game.acct.wildcardSpecialType) ? game.acct.wildcardSpecialType : 'auto';
 }
 
 function wildcardAttackErrorText(code) {
@@ -1665,6 +1676,30 @@ byId('btn-choose-wildcard-attack').addEventListener('click', () => {
 byId('btn-wildcard-attack-close').addEventListener('click', () => { byId('wildcard-attack-prompt').hidden = true; });
 byId('btn-generate-wildcard-attack').addEventListener('click', generateWildcardAttack);
 byId('btn-reset-wildcard-attack').addEventListener('click', resetWildcardAttack);
+
+// Direktvalet fungerar överallt (ingen AI inblandad) — ett bra alternativ där fritextläget
+// inte går att använda (t.ex. den riktiga webbsidan utan en egen API-nyckel), men går lika
+// bra att använda på Claude-sidan också.
+byId('btn-pick-wildcard-type').addEventListener('click', async () => {
+  const v = byId('wildcard-attack-pick').value;
+  const err = byId('wildcard-attack-error');
+  err.textContent = '';
+  try {
+    // Ett direktval ska alltid vinna över en tidigare AI-beskriven attack — annars skulle den
+    // fortsätta synas/gälla (wildcardSpecialFor kollar den egna, AI-beskrivna attacken FÖRST).
+    if (game.acct.wildcardCustomSpecial) {
+      const r0 = await net.setCustomWildcardAttack(null);
+      applyAcct(r0.acct);
+    }
+    const r = await net.chooseWildcardSpecial(v === 'auto' ? null : v);
+    applyAcct(r.acct);
+    renderWildcardAttackPanel();
+    if (game.phase === 'select') showSelect();
+  } catch (e) {
+    if (invCount('wildcard') < 1) { byId('wildcard-attack-prompt').hidden = true; return; }
+    err.textContent = 'Något gick fel — försök igen.';
+  }
+});
 
 // Färgen sparas direkt när man väljer en ny, oberoende av "Skapa attack" — inget att tolka,
 // så det finns ingen anledning att vänta.
