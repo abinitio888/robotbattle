@@ -1743,6 +1743,10 @@ byId('auth-password').addEventListener('keydown', (e) => { if (e.code === 'Enter
 // fram, bara att det SENASTE tillståndet gör det, och "rummet" lovar själv inget
 // om leverans eller ordning).
 let roomCap = null;        // claude.use('room') — null om vänmatcher inte går att spela i den här vyn
+// Sant när roomCap kommer från den här sidans egna /api/room/*-frågning (Backend.connectPollRoom)
+// i stället för en riktig websocket/claude.use('room') — den skickar långsammare för att inte
+// svämma över med anrop, se updateFriendMatch().
+let roomIsPolling = false;
 let friendRoom = null;      // det gemensamma "rummet" (NamedRoom) just nu, eller null
 let friendUnsubs = [];       // avregistreringsfunktioner för rummets lyssnare, körs vid "Lämna"
 
@@ -2026,9 +2030,11 @@ function sendFriendState() {
 }
 
 // Ett steg i en pågående vänmatch. Bara värden kör den riktiga fysiken (för BÅDA
-// robotarna) och sänder tillstånd ut i ~20 Hz; gästen skickar bara sin egen indata
+// robotarna) och sänder tillstånd ut regelbundet; gästen skickar bara sin egen indata
 // (i samma takt) och ritar vad värden senast sa — ingen egen simulering alls, så de
-// två sidorna kan aldrig råka hamna i otakt med varandra.
+// två sidorna kan aldrig råka hamna i otakt med varandra. Takten är lägre över den här
+// sidans egen fråga-om-nytt-kanal (roomIsPolling) än över en riktig websocket/room-förmåga,
+// annars svämmar den över med anrop.
 function updateFriendMatch(dt) {
   const om = game.online;
   if (game.phase === 'intro') {
@@ -2038,7 +2044,8 @@ function updateFriendMatch(dt) {
   game.banner = Math.max(0, game.banner - dt);
   const fighting = game.phase === 'fight';
   om.frame++;
-  const throttled = om.frame % 3 === 0; // ~20 Hz vid 60 fps
+  const everyN = roomIsPolling ? 8 : 3; // ~7,5 Hz pollat, ~20 Hz över en riktig realtidskanal
+  const throttled = om.frame % everyN === 0;
 
   if (om.isHost) {
     const [f0, f1] = game.fighters;
@@ -2727,16 +2734,19 @@ async function boot() {
     }
   }
   // Vänmatcher behöver en realtidskanal: Claude-sidans egen (claude.use('room')) om vi
-  // körs där, annars den här sidans EGEN server (om den finns) — annars är de avstängda,
-  // t.ex. på GitHub Pages som bara serverar statiska filer utan en egen WebSocket.
+  // körs där, annars den här sidans EGNA /api/room/*-rutter (bara om den här sidan faktiskt
+  // har en egen server — samma sak som accountsAvailable redan avgjorde, eftersom de hör
+  // till samma driftsättning) — annars är vänmatcher avstängda, t.ex. på GitHub Pages som
+  // bara serverar statiska filer.
   try {
     roomCap = (window.claude && typeof window.claude.use === 'function') ? await window.claude.use('room') : null;
   } catch (e) {
     roomCap = null;
   }
-  if (!roomCap) {
+  if (!roomCap && accountsAvailable) {
     try {
-      roomCap = await Backend.connectWsRoom();
+      roomCap = await Backend.connectPollRoom();
+      roomIsPolling = true;
     } catch (e) {
       roomCap = null;
     }

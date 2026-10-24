@@ -3,11 +3,7 @@
   "version": "1.0.0",
   "description": "Robotbattle: fightingspel med konton, lådor och vänmatcher",
   "private": true,
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
   "dependencies": {
-    "ws": "^8.18.0"
+    "@upstash/redis": "^1.39.0"
   }
 }
