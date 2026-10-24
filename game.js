@@ -777,11 +777,13 @@ function playerInput() {
   };
 }
 
+function triggerSpecial() { specialBuffer = 0.15; }
+
 window.addEventListener('keydown', (e) => {
   const handled = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
   if (handled.includes(e.code)) e.preventDefault();
   if (!e.repeat) {
-    if (e.code === 'KeyE' || e.code === 'KeyK') specialBuffer = 0.15;
+    if (e.code === 'KeyE' || e.code === 'KeyK') triggerSpecial();
     const onButton = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT');
     if (e.code === 'Enter' && !onButton) onEnter();
     const locked = (game.stake || game.online) && (game.phase === 'intro' || game.phase === 'fight');
@@ -793,6 +795,31 @@ window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 window.addEventListener('blur', () => {
   for (const k in keys) keys[k] = false;
 });
+
+// ---------- Pekskärmskontroller (iPad/iPhone m.fl.) ----------
+// Sätter EXAKT samma keys[...]-fält som tangentbordet redan läser (playerInput() bryr sig
+// aldrig om var en tryckning kom ifrån) — så hela resten av spelet (strid, gå-runt-läget i
+// Monstervärlden osv.) fungerar oförändrat, utan att veta att pekskärmar ens finns.
+function bindTouchButton(id, onDown, onUp) {
+  // document.getElementById direkt, inte byId — den hjälpfunktionen definieras längre ner i
+  // filen (i skärm-avsnittet), och den här kodblocken körs vid sidladdning, före dess.
+  const el = document.getElementById(id);
+  if (!el) return;
+  const down = (e) => { e.preventDefault(); onDown(); };
+  const up = (e) => { e.preventDefault(); if (onUp) onUp(); };
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('pointerleave', up);
+  // Webbläsaren skickar annars en "ghost click" efter pointerup på vissa enheter, vilket kan
+  // trigga knappar som råkar ligga under fingret när man släpper.
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+bindTouchButton('touch-left', () => { keys.ArrowLeft = true; }, () => { keys.ArrowLeft = false; });
+bindTouchButton('touch-right', () => { keys.ArrowRight = true; }, () => { keys.ArrowRight = false; });
+bindTouchButton('touch-jump', () => { keys.ArrowUp = true; }, () => { keys.ArrowUp = false; });
+bindTouchButton('touch-attack', () => { keys.Space = true; }, () => { keys.Space = false; });
+bindTouchButton('touch-special', () => { triggerSpecial(); });
 
 // ---------- Spelstate ----------
 const canvas = document.getElementById('game');
