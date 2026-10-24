@@ -424,10 +424,15 @@ button.boss-btn.tier-hard { background: #7a1fff; box-shadow: 0 0 14px rgba(122, 
   inset: 0;
   z-index: 50;
   display: flex;
-  align-items: center;
+  /* flex-start, inte center: en rutas innehåll (t.ex. jokerns attackruta, med både
+     fritextläget OCH direktvalet) kan bli högre än skärmen, särskilt på ett kort fönster —
+     centrerat INNEHÅLL som overflowar klipps osynligt i båda ändar utan något sätt att
+     scrolla dit. Med flex-start och overflow-y nedan går allt att nå genom att scrolla. */
+  align-items: flex-start;
   justify-content: center;
   background: rgba(8, 11, 20, 0.85);
   padding: 16px;
+  overflow-y: auto;
 }
 
 /* En ID-regel med display:flex vinner annars över webbläsarens inbyggda [hidden]{display:none}
