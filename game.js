@@ -1237,8 +1237,15 @@ function updateExplore(dt) {
   ex.attackHeld = input.attack;
 
   byId('explore-hint').textContent = near
-    ? `MELLANSLAG/J: Utmana ${near.def.name}`
+    ? `MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)})`
     : 'Gå med A/D eller piltangenterna.';
+}
+
+// Man ska veta exakt vad ett monster ger INNAN man utmanar det — ingen slump i VILKET
+// föremål, se finishMatch() i shared.js. Namnet på den bestämda biten, för hint-texter.
+function dropName(monsterDef) {
+  const item = Shared.EQUIPMENT.find((e) => e.id === monsterDef.drop);
+  return item ? item.name : '?';
 }
 
 function drawExplore() {
@@ -1269,6 +1276,14 @@ function renderEquipmentModal() {
     current.textContent = 'Du bär ingen utrustning just nu.';
   }
   byId('btn-unequip').hidden = !game.acct.equippedItem;
+
+  // Megavapnet sätts ihop automatiskt av fem slumpade bitar (ett hopp man kan få, oavsett
+  // vilket monster man besegrar) — visa hur nära man är, så länge man inte redan har det.
+  const megaProgress = byId('equipment-mega-progress');
+  const hasMega = (game.acct.equipmentInv.megavapen || 0) > 0;
+  megaProgress.textContent = hasMega
+    ? ''
+    : `Megavapnets delar: ${game.acct.megaFragments || 0}/${game.acct.megaWeaponPieces || 5} — en liten chans att hitta en, oavsett vilket monster du besegrar.`;
 
   const list = byId('equipment-list');
   list.replaceChildren();
@@ -1398,6 +1413,13 @@ function showResult() {
       const item = Shared.EQUIPMENT.find((e) => e.id === r.itemWon);
       text = 'Du besegrade monstret och fick ett utrustningsföremål!';
       if (item) rewardEquipment('DU FICK ETT FÖREMÅL!', item);
+      if (r.megaAssembled) {
+        text += ' Och du hittade den femte och sista biten av Megavapnet — det är ihopsatt!';
+        const mega = Shared.EQUIPMENT.find((e) => e.id === Shared.MEGA_WEAPON_ID);
+        if (mega) rewardEquipment('MEGAVAPNET ÄR IHOPSATT!', mega);
+      } else if (r.fragmentWon) {
+        text += ` Du hittade dessutom en bit av Megavapnet (${r.megaFragments}/${game.acct.megaWeaponPieces || 5}).`;
+      }
     } else {
       text = 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
     }

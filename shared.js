@@ -299,76 +299,79 @@
     },
     // Monstervärlden: en helt egen sorts motståndare, skild från robotarna — går aldrig att få
     // av en låda eller möta i en vanlig match (precis som bossar), men går heller aldrig in i
-    // samlingen om man vinner. Vinner man får man i stället ett utrustningsföremål, se
-    // EQUIPMENT/rollEquipment längre ner. Utmanas från en egen meny, se Monstervärlden i game.js.
+    // samlingen om man vinner. Vinner man får man ALLTID ett bestämt utrustningsföremål (drop
+    // nedan) — alltså vet man i förväg exakt vad man får, ingen slump där. Dessutom finns
+    // alltid en liten chans (MEGA_FRAGMENT_CHANCE) att ÄVEN få en bit av Megavapnet, oavsett
+    // vilket monster man besegrar — se EQUIPMENT/MEGA_WEAPON längre ner. Utmanas från en egen
+    // meny, se Monstervärlden i game.js.
     {
-      id: 'gnasher', name: 'Gnasher', rarity: 'monster', monster: true, types: ['gift', 'kryp'],
+      id: 'gnasher', name: 'Gnasher', rarity: 'monster', monster: true, types: ['gift', 'kryp'], drop: 'servoarms',
       color: '#6b8e3a', accent: '#2a3a12', eye: '#ff3030', head: 'cyclops', extra: 'spikes',
       scale: 1.1, hp: 120, speed: 200, punch: 9,
       special: { type: 'poison', name: 'Giftbett', dmg: 14, desc: 'Släpper ett moln som skadar över tid.' },
     },
     {
-      id: 'skuggvarg', name: 'Skuggvarg', rarity: 'monster', monster: true, types: ['mörk'],
+      id: 'skuggvarg', name: 'Skuggvarg', rarity: 'monster', monster: true, types: ['mörk'], drop: 'turbofeet',
       color: '#2a2436', accent: '#120f1a', eye: '#b388ff', head: 'horn', extra: 'none',
       scale: 1.05, hp: 110, speed: 260, punch: 10,
       special: { type: 'flurry', name: 'Rivklor', dmg: 8, desc: 'Fyra snabba rivningar i följd, den sista hårdast.' },
     },
     {
-      id: 'stenkoloss', name: 'Stenkoloss', rarity: 'monster', monster: true, types: ['sten', 'mark'],
+      id: 'stenkoloss', name: 'Stenkoloss', rarity: 'monster', monster: true, types: ['sten', 'mark'], drop: 'steelshield',
       color: '#8a7a68', accent: '#3a3228', eye: '#ffb347', head: 'dome', extra: 'shoulders',
       scale: 1.3, hp: 160, speed: 130, punch: 12,
       special: { type: 'smash', name: 'Stenknytnäve', dmg: 24, desc: 'Ett tungt slag med lång räckvidd.' },
     },
     {
-      id: 'frostspindel', name: 'Frostspindel', rarity: 'monster', monster: true, types: ['is', 'kryp'],
+      id: 'frostspindel', name: 'Frostspindel', rarity: 'monster', monster: true, types: ['is', 'kryp'], drop: 'fangblade',
       color: '#aee8ff', accent: '#2a5a6a', eye: '#ffffff', head: 'cyclops', extra: 'spikes',
       scale: 0.95, hp: 100, speed: 230, punch: 8,
       special: { type: 'freeze', name: 'Frostbett', dmg: 12, desc: 'Fryser motståndaren i 1,1 sekunder.' },
     },
     {
-      id: 'sumpdrake', name: 'Sumpdrake', rarity: 'monster', monster: true, types: ['gift', 'vatten'],
+      id: 'sumpdrake', name: 'Sumpdrake', rarity: 'monster', monster: true, types: ['gift', 'vatten'], drop: 'servoarms',
       color: '#4a7a5a', accent: '#1a3a28', eye: '#c8ff6b', head: 'horn', extra: 'fins',
       scale: 1.15, hp: 130, speed: 190, punch: 9,
       special: { type: 'poison', name: 'Giftmoln', dmg: 12, desc: 'Släpper ett moln som skadar över tid.' },
     },
     {
-      id: 'nattuggla', name: 'Nattuggla', rarity: 'monster', monster: true, types: ['mörk', 'flygande'],
+      id: 'nattuggla', name: 'Nattuggla', rarity: 'monster', monster: true, types: ['mörk', 'flygande'], drop: 'turbofeet',
       color: '#3a3450', accent: '#15121f', eye: '#ffd93d', head: 'round', extra: 'jet',
       scale: 0.9, hp: 95, speed: 270, punch: 7,
       special: { type: 'snipe', name: 'Nattprick', dmg: 40, desc: 'Siktar med laser, sedan träffar den hårt.' },
     },
     {
-      id: 'lavagolem', name: 'Lavagolem', rarity: 'monster', monster: true, types: ['eld', 'sten'],
+      id: 'lavagolem', name: 'Lavagolem', rarity: 'monster', monster: true, types: ['eld', 'sten'], drop: 'steelshield',
       color: '#c23a1f', accent: '#4a1206', eye: '#ffd93d', head: 'dome', extra: 'shoulders',
       scale: 1.25, hp: 145, speed: 120, punch: 11,
       special: { type: 'annihilate', name: 'Lavakross', dmg: 28, desc: 'Ett förödande slag med enorm knockback.' },
     },
     {
-      id: 'stormfenix', name: 'Stormfenix', rarity: 'monster', monster: true, types: ['eld', 'flygande'],
+      id: 'stormfenix', name: 'Stormfenix', rarity: 'monster', monster: true, types: ['eld', 'flygande'], drop: 'lightrig',
       color: '#ff8a3d', accent: '#5a2a08', eye: '#fff36b', head: 'crown', extra: 'jet',
       scale: 1, hp: 105, speed: 250, punch: 8,
       special: { type: 'orbital', name: 'Eldregn', dmg: 20, desc: 'Tre eldpelare slår ner. Flytta dig i tid!' },
     },
     {
-      id: 'kristallkrabba', name: 'Kristallkrabba', rarity: 'monster', monster: true, types: ['is', 'stål'],
+      id: 'kristallkrabba', name: 'Kristallkrabba', rarity: 'monster', monster: true, types: ['is', 'stål'], drop: 'platearmor',
       color: '#b8e0ff', accent: '#3a5a7a', eye: '#ffffff', head: 'dome', extra: 'shield',
       scale: 1.1, hp: 135, speed: 150, punch: 9,
       special: { type: 'counter', name: 'Kristallskal', dmg: 18, desc: 'Blir osårbar kort och slår tillbaka om motståndaren är nära.' },
     },
     {
-      id: 'mygghärva', name: 'Mygghärva', rarity: 'monster', monster: true, types: ['kryp', 'gift'],
+      id: 'mygghärva', name: 'Mygghärva', rarity: 'monster', monster: true, types: ['kryp', 'gift'], drop: 'lightrig',
       color: '#8acc3a', accent: '#2a4a0a', eye: '#ff3030', head: 'cyclops', extra: 'fins',
       scale: 0.85, hp: 85, speed: 280, punch: 6,
       special: { type: 'spread', name: 'Svärmanfall', dmg: 7, desc: 'Tre skott i solfjäder.' },
     },
     {
-      id: 'djupvakt', name: 'Djupvakt', rarity: 'monster', monster: true, types: ['vatten', 'spöke'],
+      id: 'djupvakt', name: 'Djupvakt', rarity: 'monster', monster: true, types: ['vatten', 'spöke'], drop: 'platearmor',
       color: '#2a5a7a', accent: '#0f2a3a', eye: '#7fffd4', head: 'hood', extra: 'fins',
       scale: 1.15, hp: 125, speed: 170, punch: 9,
       special: { type: 'grapple', name: 'Djupkrok', dmg: 16, desc: 'En krok som drar in motståndaren och slår till.' },
     },
     {
-      id: 'taggormen', name: 'Taggormen', rarity: 'monster', monster: true, types: ['gift', 'mark'],
+      id: 'taggormen', name: 'Taggormen', rarity: 'monster', monster: true, types: ['gift', 'mark'], drop: 'fangblade',
       color: '#7a3a8a', accent: '#2a0f3a', eye: '#c8ff6b', head: 'horn', extra: 'spikes',
       scale: 1.05, hp: 115, speed: 210, punch: 10,
       special: { type: 'meteorslam', name: 'Taggregn', dmg: 24, desc: 'Slår ner en jättesmäll där motståndaren står.' },
@@ -376,27 +379,27 @@
   ];
 
   // ---------- Utrustning ----------
-  // Vinner man en monsterstrid får man ett slumpat föremål här, se rollEquipment() — man kan
-  // bära ETT i taget (equipItem), och det ger en permanent bonus på en av robotens grundsiffror
-  // så länge det bärs, oavsett vilken robot man spelar med eller vilken typ av match det är.
+  // Vinner man en monsterstrid får man ALLTID det föremål som just det monstret är satt att ge
+  // (def.drop, se ROBOTS ovan) — ingen slump i VILKET föremål, så man vet i förväg exakt vad
+  // man ska få. Man kan bära ETT i taget (equipItem), och det ger en permanent bonus på en
+  // eller flera av robotens grundsiffror så länge det bärs, oavsett vilken robot man spelar
+  // med eller vilken typ av match det är.
   const EQUIPMENT = [
-    { id: 'steelshield', name: 'Stålsköld', stat: { hp: 25 }, weight: 20, desc: '+25 HP så länge den bärs.' },
-    { id: 'platearmor', name: 'Pansarplatta', stat: { hp: 12 }, weight: 30, desc: '+12 HP så länge den bärs.' },
-    { id: 'servoarms', name: 'Servoarmar', stat: { punch: 4 }, weight: 20, desc: '+4 i slagstyrka så länge de bärs.' },
-    { id: 'fangblade', name: 'Vasständer', stat: { punch: 2 }, weight: 30, desc: '+2 i slagstyrka så länge de bärs.' },
-    { id: 'turbofeet', name: 'Turbofötter', stat: { speed: 35 }, weight: 20, desc: '+35 i fart så länge de bärs.' },
-    { id: 'lightrig', name: 'Fjäderdon', stat: { speed: 18 }, weight: 30, desc: '+18 i fart så länge de bärs.' },
+    { id: 'steelshield', name: 'Stålsköld', stat: { hp: 25 }, desc: '+25 HP så länge den bärs.' },
+    { id: 'platearmor', name: 'Pansarplatta', stat: { hp: 12 }, desc: '+12 HP så länge den bärs.' },
+    { id: 'servoarms', name: 'Servoarmar', stat: { punch: 4 }, desc: '+4 i slagstyrka så länge de bärs.' },
+    { id: 'fangblade', name: 'Vasständer', stat: { punch: 2 }, desc: '+2 i slagstyrka så länge de bärs.' },
+    { id: 'turbofeet', name: 'Turbofötter', stat: { speed: 35 }, desc: '+35 i fart så länge de bärs.' },
+    { id: 'lightrig', name: 'Fjäderdon', stat: { speed: 18 }, desc: '+18 i fart så länge de bärs.' },
+    // Megavapnet går aldrig att få direkt — bara genom att sätta ihop MEGA_WEAPON_PIECES
+    // delar, som var och en kan droppa (utöver det bestämda föremålet) efter EN monstervinst,
+    // oavsett vilket monster, se MEGA_FRAGMENT_CHANCE och finishMatch().
+    { id: 'megavapen', name: 'Megavapnet', stat: { hp: 20, punch: 6, speed: 15 }, desc: 'Sätts ihop av fem delar — +20 HP, +6 i slagstyrka och +15 i fart samtidigt, så länge det bärs.' },
   ];
   const EQUIPMENT_IDS = new Set(EQUIPMENT.map((e) => e.id));
-
-  function rollEquipment(rng) {
-    let pick = rng() * EQUIPMENT.reduce((sum, e) => sum + e.weight, 0);
-    for (const e of EQUIPMENT) {
-      pick -= e.weight;
-      if (pick <= 0) return e;
-    }
-    return EQUIPMENT[EQUIPMENT.length - 1];
-  }
+  const MEGA_WEAPON_ID = 'megavapen';
+  const MEGA_WEAPON_PIECES = 5;
+  const MEGA_FRAGMENT_CHANCE = 0.15; // 15 % chans per monstervinst, oavsett vilket monster
 
   const robotById = Object.fromEntries(ROBOTS.map((r) => [r.id, r]));
   const BOSS_IDS = ROBOTS.filter((r) => r.boss).map((r) => r.id);
@@ -526,7 +529,7 @@
       inv: { bolt: 1 }, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0,
       wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
       wildcardHead: null, wildcardExtra: null,
-      equipmentInv: {}, equippedItem: null,
+      equipmentInv: {}, equippedItem: null, megaFragments: 0,
     };
   }
 
@@ -551,7 +554,7 @@
       inv: {}, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0,
       wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
       wildcardHead: null, wildcardExtra: null,
-      equipmentInv: {}, equippedItem: null,
+      equipmentInv: {}, equippedItem: null, megaFragments: 0,
     };
     if (raw && typeof raw === 'object') {
       const inv = raw.inv && typeof raw.inv === 'object' ? raw.inv : {};
@@ -583,6 +586,7 @@
       if (typeof raw.equippedItem === 'string' && EQUIPMENT_IDS.has(raw.equippedItem) && acct.equipmentInv[raw.equippedItem] > 0) {
         acct.equippedItem = raw.equippedItem;
       }
+      acct.megaFragments = Math.max(0, Math.min(MEGA_WEAPON_PIECES - 1, Math.floor(Number(raw.megaFragments)) || 0));
     }
     // Man ska alltid ha minst en Bolt — den går aldrig helt förlorad, oavsett hur kontot ser ut.
     acct.inv.bolt = Math.max(1, acct.inv.bolt || 0);
@@ -697,18 +701,34 @@
   // insatsmatch får du tillbaka insatsen plus motståndarens robot. En bossvinst ger i stället
   // bossens robot (utan den stridstillfälliga boostern) — bossen går att utmana igen när du
   // vill, om och om igen. Förlorar du mot bossen kostar det inget — bara en ny chans.
-  // En monstervinst ger varken låda, erfarenhet eller en robot — bara ett slumpat
-  // utrustningsföremål (se rollEquipment). Helt egen, parallell ekonomi; förlorar man kostar
-  // det inget, precis som mot en boss.
-  // rng behövs bara vid vinst (för ett eventuellt nivåpris/föremål) — vänmatcher anropar
-  // aldrig den här funktionen.
+  // En monstervinst ger varken låda, erfarenhet eller en robot — bara det bestämda föremålet
+  // just det monstret ger (def.drop, aldrig slumpat), plus en liten chans (MEGA_FRAGMENT_CHANCE)
+  // att ÄVEN hitta en bit av Megavapnet. Helt egen, parallell ekonomi; förlorar man kostar det
+  // inget, precis som mot en boss.
+  // rng behövs bara vid vinst (för ett eventuellt nivåpris/föremål/Megavapen-bit) — vänmatcher
+  // anropar aldrig den här funktionen.
   function finishMatch(acct, match, won, rng) {
     if (match.monster) {
-      const result = { won, stake: false, gained: null, lost: null, box: false, levelUps: [], bossWon: null, itemWon: null };
+      const result = {
+        won, stake: false, gained: null, lost: null, box: false, levelUps: [], bossWon: null,
+        itemWon: null, fragmentWon: false, megaFragments: acct.megaFragments || 0, megaAssembled: false,
+      };
       if (won) {
-        const item = rollEquipment(rng);
-        addEquipment(acct, item.id);
-        result.itemWon = item.id;
+        const drop = robotById[match.opp] && robotById[match.opp].drop;
+        if (drop) {
+          addEquipment(acct, drop);
+          result.itemWon = drop;
+        }
+        if (rng() < MEGA_FRAGMENT_CHANCE) {
+          result.fragmentWon = true;
+          acct.megaFragments = (acct.megaFragments || 0) + 1;
+          if (acct.megaFragments >= MEGA_WEAPON_PIECES) {
+            acct.megaFragments -= MEGA_WEAPON_PIECES;
+            addEquipment(acct, MEGA_WEAPON_ID);
+            result.megaAssembled = true;
+          }
+          result.megaFragments = acct.megaFragments;
+        }
       }
       return result;
     }
@@ -782,6 +802,8 @@
       wildcardExtra: acct.wildcardExtra || null,
       equipmentInv: { ...(acct.equipmentInv || {}) },
       equippedItem: acct.equippedItem || null,
+      megaFragments: acct.megaFragments || 0,
+      megaWeaponPieces: MEGA_WEAPON_PIECES,
     };
   }
 
@@ -864,7 +886,7 @@
 
   return {
     RARITY, ROBOTS, robotById, rankOf, BOSS_IDS, MONSTER_IDS,
-    EQUIPMENT, rollEquipment, addEquipment, equipItem,
+    EQUIPMENT, MEGA_WEAPON_ID, MEGA_WEAPON_PIECES, MEGA_FRAGMENT_CHANCE, addEquipment, equipItem,
     ARENAS, arenaById, pickArena,
     TYPES, typeMultiplier,
     WILDCARD_SPECIALS, wildcardSpecialFor, TYPE_DEFAULTS, customWildcardSpecial,
