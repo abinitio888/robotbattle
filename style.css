@@ -527,3 +527,15 @@ button.wildcard-attack-btn .desc { display: block; font-weight: 400; color: var(
   border: 1px solid #2a3556;
   border-radius: 6px;
 }
+
+/* Egen rad, hela bredden — annars klämmer de långa attacknamnen ihop "Välj"-knappen till
+   nästan osynlig i en delad flex-rad (precis det som hände innan). */
+.wildcard-attack-pick {
+  width: min(320px, 100%);
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid #2a3556;
+  border-radius: 6px;
+}

@@ -1571,11 +1571,22 @@ function populateWildcardAppearanceSelects() {
   // Direktvalet (ingen AI inblandad) — bara jokerns ursprungliga tio attacker, inte alla ~34
   // mekaniker fritextläget kan välja bland, se chooseWildcardSpecial() i shared.js. Fungerar
   // överallt, även där Claude inte går att fråga (den riktiga webbsidan utan en API-nyckel).
+  // Bara namnet i listan (inte hela beskrivningen) — en lång text i en <select> kan annars
+  // tvinga undan knappen bredvid tills den blir osynlig, se renderWildcardPickDesc() för
+  // beskrivningen i stället.
   const pickSel = byId('wildcard-attack-pick');
   addOpt(pickSel, 'auto', 'Styrs av namnet (som vanligt)');
-  for (const s of Shared.WILDCARD_SPECIALS) addOpt(pickSel, s.type, `${s.name} — ${s.desc}`);
+  for (const s of Shared.WILDCARD_SPECIALS) addOpt(pickSel, s.type, s.name);
 }
 populateWildcardAppearanceSelects();
+
+function renderWildcardPickDesc() {
+  const v = byId('wildcard-attack-pick').value;
+  const desc = byId('wildcard-attack-pick-desc');
+  const special = Shared.WILDCARD_SPECIALS.find((s) => s.type === v);
+  desc.textContent = special ? special.desc : 'Jokerns attack väljs som vanligt utifrån namnet den döptes till.';
+}
+byId('wildcard-attack-pick').addEventListener('change', renderWildcardPickDesc);
 
 function renderWildcardAttackPanel() {
   const current = byId('wildcard-attack-current');
@@ -1597,6 +1608,7 @@ function renderWildcardAttackPanel() {
   // spelas (se wildcardSpecialFor) — så visa "auto" i direktvalet tills man uttryckligen
   // väljer något där, i stället för att visa ett värde som inte längre stämmer.
   byId('wildcard-attack-pick').value = (!custom && game.acct.wildcardSpecialType) ? game.acct.wildcardSpecialType : 'auto';
+  renderWildcardPickDesc();
 }
 
 function wildcardAttackErrorText(code) {
