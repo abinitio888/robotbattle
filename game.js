@@ -1478,6 +1478,7 @@ function renderBox(revealed) {
     const head = document.createElement('div');
     head.className = 'reward-title';
     head.textContent = revealed.def.id === 'wildcard' ? 'JOKERN!'
+      : revealed.def.rarity === 'divine' ? 'GUDOMLIG ROBOT!'
       : revealed.def.rarity === 'legendary' ? 'LEGENDARISK ROBOT!'
       : revealed.n === 1 ? 'NY ROBOT!' : `EXTRA KOPIA! Du har nu ${revealed.n} st.`;
     reveal.append(head, createCard(myDef(revealed.def), { isNew: revealed.n === 1, reveal: true, n: revealed.n }));

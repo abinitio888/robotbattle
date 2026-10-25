@@ -10,6 +10,7 @@
   --rare: #4da3ff;
   --epic: #b46bff;
   --legendary: #ffd93d;
+  --divine: #3ee8ff;
 }
 
 * { box-sizing: border-box; }
@@ -310,6 +311,8 @@ button:disabled {
 
 .card.legendary .rarity { color: var(--legendary); }
 .card.reveal.legendary { border-color: var(--legendary); box-shadow: 0 0 34px rgba(255, 217, 61, 0.95); }
+.card.divine .rarity { color: var(--divine); }
+.card.reveal.divine { border-color: var(--divine); box-shadow: 0 0 42px rgba(62, 232, 255, 1); }
 
 .card.compact { width: 84px; padding: 5px; gap: 0; }
 .card.compact canvas { width: 64px; height: 84px; }

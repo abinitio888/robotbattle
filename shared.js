@@ -8,13 +8,14 @@
 
   // weight = chans i procent att en låda ger just den sällsynthetsnivån.
   const RARITY = {
-    common: { label: 'Vanlig', weight: 66, rank: 0 },
+    common: { label: 'Vanlig', weight: 65, rank: 0 },
     rare: { label: 'Sällsynt', weight: 24, rank: 1 },
     epic: { label: 'Episk', weight: 8, rank: 2 },
     legendary: { label: 'Legendarisk', weight: 2, rank: 3 },
-    boss: { label: 'Mystisk', weight: 0, rank: 4 },
+    divine: { label: 'Gudomlig', weight: 1, rank: 4 },
+    boss: { label: 'Mystisk', weight: 0, rank: 5 },
     wildcard: { label: 'Joker', weight: 0, rank: 2 },
-    monster: { label: 'Monster', weight: 0, rank: 5 },
+    monster: { label: 'Monster', weight: 0, rank: 6 },
   };
 
   // ---------- Typer ----------
@@ -296,6 +297,25 @@
       color: '#ff7a3d', accent: '#5c1f0a', eye: '#ffffff', head: 'crown', extra: 'jet',
       scale: 1.1, hp: 112, speed: 245, punch: 9,
       special: { type: 'meteorslam', name: 'Meteorsmäll', dmg: 30, desc: 'Slår ner en jättesmäll där motståndaren står.' },
+    },
+    // Gudomliga: den sällsyntaste nivån man kan få av en låda (1 %), över legendariska.
+    {
+      id: 'seraph', name: 'Seraph', rarity: 'divine', types: ['fe', 'flygande'],
+      color: '#fffbe8', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'jet',
+      scale: 1.15, hp: 120, speed: 255, punch: 10,
+      special: { type: 'orbital', name: 'Himmelsdom', dmg: 30, desc: 'Tre heliga ljuspelare slår ner. Flytta dig i tid!' },
+    },
+    {
+      id: 'titan', name: 'Titan', rarity: 'divine', types: ['stål', 'strid'],
+      color: '#3a4256', accent: '#3ee8ff', eye: '#ffffff', head: 'horn', extra: 'shoulders',
+      scale: 1.25, hp: 135, speed: 220, punch: 12,
+      special: { type: 'annihilate', name: 'Gudaslag', dmg: 34, desc: 'Ett förödande slag med enorm knockback.' },
+    },
+    {
+      id: 'eclipse', name: 'Eclipse', rarity: 'divine', types: ['mörk', 'psykisk'],
+      color: '#120d24', accent: '#3ee8ff', eye: '#ff5fd2', head: 'hood', extra: 'cape',
+      scale: 1.1, hp: 115, speed: 265, punch: 10,
+      special: { type: 'teleport', name: 'Förmörkelse', dmg: 36, desc: 'Försvinner och dyker upp bakom motståndaren med ett hårt slag.' },
     },
     // Monstervärlden: en helt egen sorts motståndare, skild från robotarna — går aldrig att få
     // av en låda eller möta i en vanlig match (precis som bossar), men går heller aldrig in i
