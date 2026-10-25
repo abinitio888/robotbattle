@@ -920,9 +920,9 @@ function showScreen(name) {
   for (const [key, el] of Object.entries(screens)) el.hidden = key !== name;
 }
 
-// modeOverride: skickas som 'boss' + bossId av en av de egna bossknapparna (alltid
-// tillgängliga, oavsett nivå). Annars avgörs läget av de vanliga match/insats-knapparna.
-async function startMatch(modeOverride, bossId, monsterId) {
+// modeOverride: 'boss' från bossknappen (alltid tillgänglig, bossen slumpas) eller 'monster'
+// + monsterId. Annars avgörs läget av de vanliga match/insats-knapparna.
+async function startMatch(modeOverride, monsterId) {
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   byId('explore-bar').hidden = true; // en match (även en ny monsterstrid) stänger av gå-runt-läget
   if (friendRoom) leaveFriendRoom(); // en match mot AI ska aldrig lämna ett vänmatchsrum öppet i bakgrunden
@@ -930,7 +930,7 @@ async function startMatch(modeOverride, bossId, monsterId) {
   byId('select-error').textContent = '';
   let started;
   try {
-    started = await net.startMatch(game.selectedId, modeOverride || (wantStake ? 'stake' : 'normal'), bossId, monsterId);
+    started = await net.startMatch(game.selectedId, modeOverride || (wantStake ? 'stake' : 'normal'), monsterId);
   } catch (e) {
     byId('select-error').textContent = e.message;
     return;
@@ -1161,24 +1161,16 @@ function showSelect() {
   byId('collection').textContent = `Robotar: ${totalRobots()} st · Lådor: ${game.acct.boxes}`;
   byId('level-info').textContent = `Nivå ${game.acct.level} · ${game.acct.xp}/${game.acct.xpNeeded} XP till nästa nivå`;
   byId('xp-fill').style.width = `${(100 * game.acct.xp) / game.acct.xpNeeded}%`;
-  // Alla bossar går att utmana när som helst, oavsett nivå, och om och om igen — var och en
-  // har sin egen knapp, märkt med sin svårighetsgrad. Namnet döljs tills du vunnit mot just
-  // den, första gången.
-  const DIFFICULTY_LABEL = { easy: 'Lätt', medium: 'Medel', hard: 'Svår' };
+  // En enda bossknapp: servern slumpar vilken boss du möter, och namnet döljs tills du vunnit
+  // mot just den.
   const bossButtons = byId('boss-buttons');
   bossButtons.replaceChildren();
-  const seenInTier = {};
-  ROBOTS.filter((r) => r.boss).forEach((def) => {
-    const known = invCount(def.id) > 0;
-    const label = DIFFICULTY_LABEL[def.difficulty] || '';
-    seenInTier[def.difficulty] = (seenInTier[def.difficulty] || 0) + 1;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `boss-btn tier-${def.difficulty}`;
-    btn.textContent = known ? `Utmana ${def.name} (${label})` : `Mystisk robot ${label} ${seenInTier[def.difficulty]}`;
-    btn.addEventListener('click', () => startMatch('boss', def.id));
-    bossButtons.appendChild(btn);
-  });
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'boss-btn tier-medium';
+  btn.textContent = 'Möt en mystisk robot';
+  btn.addEventListener('click', () => startMatch('boss'));
+  bossButtons.appendChild(btn);
   byId('mode-normal').classList.toggle('active', game.mode === 'normal');
   byId('mode-stake').classList.toggle('active', game.mode === 'stake');
   byId('mode-stake').disabled = !canStake();
@@ -1260,7 +1252,7 @@ function updateExplore(dt) {
   }
   ex.near = near;
 
-  if (near && input.attack && !ex.attackHeld) startMatch('monster', null, near.def.id);
+  if (near && input.attack && !ex.attackHeld) startMatch('monster', near.def.id);
   ex.attackHeld = input.attack;
 
   byId('explore-hint').textContent = near

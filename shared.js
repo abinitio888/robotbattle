@@ -676,15 +676,14 @@
   }
 
   // Startar en match. Insatsen dras direkt, så det går inte att smita undan en förlust. Alla
-  // bossar går att utmana när som helst, oavsett nivå, och om och om igen — bossId väljer
-  // vilken av dem. Ingen insats sätts på spel mot en boss. Monster fungerar likadant
+  // bossar går att utmana när som helst, oavsett nivå, och om och om igen — vilken av dem
+  // man möter slumpas. Ingen insats sätts på spel mot en boss. Monster fungerar likadant
   // (monsterId väljer vilket) — helt skild meny, egen ekonomi (se finishMatch), ingen insats.
-  function startMatch(acct, robotId, mode, rng, bossId, monsterId) {
+  function startMatch(acct, robotId, mode, rng, monsterId) {
     if (!robotById[robotId] || count(acct, robotId) < 1) return { error: 'Du äger inte den roboten.' };
     acct.selected = robotId;
     if (mode === 'boss') {
-      if (!BOSS_IDS.includes(bossId)) return { error: 'Okänd boss.' };
-      return { robot: robotId, stake: false, opp: bossId, boss: true };
+      return { robot: robotId, stake: false, opp: BOSS_IDS[Math.floor(rng() * BOSS_IDS.length)], boss: true };
     }
     if (mode === 'monster') {
       if (!MONSTER_IDS.includes(monsterId)) return { error: 'Okänt monster.' };

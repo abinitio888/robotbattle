@@ -11,10 +11,10 @@ module.exports = dispatch({
     method: 'POST',
     async handler(req, res, body) {
       const session = await requireSession(req);
-      const { robot, mode, bossId, monsterId } = body;
+      const { robot, mode, monsterId } = body;
       const acct = session.user.acct;
       const wantMode = mode === 'stake' ? 'stake' : mode === 'boss' ? 'boss' : mode === 'monster' ? 'monster' : 'normal';
-      const match = S.startMatch(acct, robot, wantMode, randomFloat, typeof bossId === 'string' ? bossId : null, typeof monsterId === 'string' ? monsterId : null);
+      const match = S.startMatch(acct, robot, wantMode, randomFloat, typeof monsterId === 'string' ? monsterId : null);
       if (match.error) throw new HttpError(400, match.error);
       const token = crypto.randomBytes(16).toString('hex');
       await redis.set(`match:${token}`, JSON.stringify({ key: session.key, match, startedAt: Date.now() }), { ex: MATCH_TTL_SECONDS });
