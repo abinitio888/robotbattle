@@ -824,6 +824,9 @@ bindTouchButton('touch-special', () => { triggerSpecial(); });
 // ---------- Spelstate ----------
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+// 3D-renderaren (render3d.js). null om WebGL eller three.js saknas — då ritas allt i 2D som förut.
+const r3d = window.Render3D ? Render3D.init(document.getElementById('game3d')) : null;
+if (!r3d) document.getElementById('game3d').hidden = true;
 const overlay = document.getElementById('overlay');
 const screens = {
   menu: document.getElementById('screen-menu'),
@@ -1082,7 +1085,8 @@ function createCard(def, { locked = false, selected = false, isNew = false, reve
   const cv = document.createElement('canvas');
   cv.width = 130;
   cv.height = 170;
-  drawRobot(cv.getContext('2d'), def, { x: 65, y: 160, facing: 1, silhouette: locked });
+  if (r3d) r3d.drawCard(cv.getContext('2d'), def, { silhouette: locked });
+  else drawRobot(cv.getContext('2d'), def, { x: 65, y: 160, facing: 1, silhouette: locked });
   card.appendChild(cv);
 
   const add = (cls, text) => {
@@ -1270,6 +1274,20 @@ function dropName(monsterDef) {
 function drawExplore() {
   const ex = game.explore;
   if (!ex) return;
+  if (r3d) {
+    const fighters = ex.monsters.map((m) => ({ f: m, pose: fighterPose(m) }));
+    fighters.push({ f: ex.player, pose: fighterPose(ex.player), isPlayer: true });
+    r3d.render({ arena: game.arena, shake: 0, fighters });
+    ctx.clearRect(0, 0, W, H);
+    if (ex.near) {
+      const at = r3d.project(ex.near.x, ex.near.y - ex.near.h - 14);
+      ctx.font = 'bold 16px ui-monospace, Menlo, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffd93d';
+      ctx.fillText(ex.near.def.name, at.x, at.y);
+    }
+    return;
+  }
   const arenaId = game.arena.id;
   if (!backgroundCache[arenaId]) backgroundCache[arenaId] = buildBackground(game.arena);
   ctx.drawImage(backgroundCache[arenaId], 0, 0);
@@ -2754,23 +2772,42 @@ function draw() {
   const arenaId = game.arena.id;
   if (!backgroundCache[arenaId]) backgroundCache[arenaId] = buildBackground(game.arena);
   const { player, ai } = game;
+  const fighting = player && game.phase !== 'menu' && game.phase !== 'select';
 
-  ctx.save();
-  if (game.shake > 0) ctx.translate(rand(-1, 1) * game.shake * 24, rand(-1, 1) * game.shake * 24);
-  ctx.drawImage(backgroundCache[arenaId], 0, 0);
-
-  if (player && game.phase !== 'menu' && game.phase !== 'select') {
-    drawFighter(ai, false, game.boss);
-    drawFighter(player, true);
-    drawProjectiles();
-    for (const p of game.particles) {
-      ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x - 2, p.y - 2, 5, 5);
+  if (r3d) {
+    const fighters = [];
+    if (fighting) {
+      const aiPose = fighterPose(ai);
+      if (game.boss) aiPose.silhouette = true;
+      fighters.push({ f: ai, pose: aiPose }, { f: player, pose: fighterPose(player), isPlayer: true });
     }
-    ctx.globalAlpha = 1;
+    const none = [];
+    r3d.render({
+      arena: game.arena, shake: game.shake, fighters,
+      projectiles: fighting ? game.projectiles : none, beams: fighting ? game.beams : none,
+      strikes: fighting ? game.strikes : none, waves: fighting ? game.waves : none,
+      clouds: fighting ? game.clouds : none, mines: fighting ? game.mines : none,
+      particles: fighting ? game.particles : none,
+    });
+    ctx.clearRect(0, 0, W, H);
+  } else {
+    ctx.save();
+    if (game.shake > 0) ctx.translate(rand(-1, 1) * game.shake * 24, rand(-1, 1) * game.shake * 24);
+    ctx.drawImage(backgroundCache[arenaId], 0, 0);
+
+    if (fighting) {
+      drawFighter(ai, false, game.boss);
+      drawFighter(player, true);
+      drawProjectiles();
+      for (const p of game.particles) {
+        ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x - 2, p.y - 2, 5, 5);
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
   }
-  ctx.restore();
 
   if (game.phase === 'intro') drawBanner(String(Math.ceil(game.introT / 0.8)), 120);
   else if (game.banner > 0) drawBanner('KÄMPA!', 84);
