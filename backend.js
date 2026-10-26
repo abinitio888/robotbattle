@@ -239,6 +239,14 @@
     setWildcardColor(hex) { return this.api('/api/wildcard/color', { hex }); }
     setWildcardHead(head) { return this.api('/api/wildcard/head', { head }); }
     setWildcardExtra(extra) { return this.api('/api/wildcard/extra', { extra }); }
+
+    // Världskartan (bara med konto — se api/world/[action].js).
+    world() { return this.api('/api/world/state'); }
+    worldClaim(continent) { return this.api('/api/world/claim', { continent }); }
+    worldChallenge(continent) { return this.api('/api/world/challenge', { continent }); }
+    worldAnswer(id, accept) { return this.api('/api/world/answer', { id, accept }); }
+    worldCancel(id) { return this.api('/api/world/cancel', { id }); }
+    worldResult(id, won) { return this.api('/api/world/result', { id, won }); }
   }
 
   // Används bara av Claude-artefaktversionen (ingen egen server där): sparar kontot i

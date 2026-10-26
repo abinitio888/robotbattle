@@ -68,6 +68,18 @@
     </div>
   </div>
 
+  <div id="challenge-prompt" hidden>
+    <div class="wildcard-box challenge-box">
+      <p class="boss-title">⚔ DU BLIR UTMANAD! ⚔</p>
+      <p id="challenge-text"></p>
+      <p id="challenge-timer" class="hint"></p>
+      <div class="buttons">
+        <button id="btn-challenge-accept" type="button">Anta utmaningen</button>
+        <button id="btn-challenge-decline" type="button" class="secondary">Neka</button>
+      </div>
+    </div>
+  </div>
+
   <div id="equipment-prompt" hidden>
     <div class="wildcard-box">
       <p class="boss-title">UTRUSTNING</p>
@@ -154,6 +166,9 @@
           <div id="boss-buttons" class="buttons"></div>
         </div>
         <div class="buttons">
+          <button id="btn-world" type="button" class="world-btn">🌍 Världskartan</button>
+        </div>
+        <div class="buttons">
           <button id="btn-monsters" type="button" class="secondary">Monstervärlden</button>
           <button id="btn-equipment" type="button" class="secondary">Utrustning</button>
         </div>
@@ -195,6 +210,15 @@
           <p class="hint">Ge koden till din vän så de kan gå med.</p>
         </div>
         <button id="btn-friend-cancel" type="button" class="linklike">Tillbaka</button>
+      </section>
+
+      <section id="screen-world" hidden>
+        <h2>Världskartan</h2>
+        <p id="world-intro" class="hint">Varje världsdel kan ha en beskyddare. Bara en riktig spelare kan ta titeln, genom att besegra beskyddaren live. Ju högre nivå du har, desto mer av världen får du veta om.</p>
+        <div id="world-map"></div>
+        <div id="world-detail"></div>
+        <p id="world-status" class="hint"></p>
+        <button id="btn-world-back" type="button" class="linklike">Tillbaka</button>
       </section>
 
       <section id="screen-result" hidden>

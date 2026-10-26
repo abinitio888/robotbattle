@@ -952,6 +952,7 @@ const screens = {
   result: document.getElementById('screen-result'),
   box: document.getElementById('screen-box'),
   friend: document.getElementById('screen-friend'),
+  world: document.getElementById('screen-world'),
 };
 const hud = {
   namePlayer: document.getElementById('name-player'),
@@ -1560,7 +1561,14 @@ function showResult() {
   byId('reward').replaceChildren();
 
   let text;
-  if (friend) {
+  if (r.challenge) {
+    const name = continentName(r.challenge.continent);
+    const leader = r.challenge.role === 'leader';
+    if (leader && r.won) { byId('result-title').textContent = 'DU FÖRSVARADE!'; text = `Du försvarade ${name} mot ${r.oppName}!`; }
+    else if (leader) text = `${r.oppName} tog ${name} från dig. Utmana dem tillbaka!`;
+    else if (r.won) { byId('result-title').textContent = 'NY BESKYDDARE!'; text = `Du besegrade ${r.oppName} och är nu beskyddare av ${name}!`; }
+    else text = `${r.oppName} försvarade ${name}. Träna och försök igen!`;
+  } else if (friend) {
     text = r.won ? `Du besegrade ${r.oppName}!` : `${r.oppName} vann den här gången.`;
   } else if (r.error) {
     text = `Kunde inte spara resultatet: ${r.error}`;
@@ -1606,8 +1614,9 @@ function showResult() {
   byId('btn-open-result').hidden = friend || game.acct.boxes === 0;
   byId('btn-open-result').textContent = `Öppna låda (${game.acct.boxes})`;
   byId('btn-change').hidden = friend;
-  byId('btn-rematch').hidden = !friend;
+  byId('btn-rematch').hidden = !friend || !!r.challenge;
   byId('btn-leave-friend').hidden = !friend;
+  byId('btn-leave-friend').textContent = r.challenge ? 'Till världskartan' : 'Lämna';
   showScreen('result');
 }
 
@@ -2018,6 +2027,7 @@ function stopFriendListening() {
 }
 
 function leaveFriendRoom() {
+  dropChallenge();
   stopFriendListening();
   if (friendRoom) { friendRoom.leave().catch(() => {}); friendRoom = null; }
   game.online = null;
@@ -2033,6 +2043,14 @@ function backToFriendLobby(message) {
 }
 
 function friendPeerLeftMidMatch() {
+  if (challenge) {
+    const ch = challenge;
+    leaveFriendRoom();
+    showWorld(ch.role === 'challenger'
+      ? `${ch.oppName} lämnade matchen. ${continentName(ch.continent)} har kvar sin beskyddare.`
+      : `${ch.oppName} lämnade matchen. Du är fortfarande beskyddare av ${continentName(ch.continent)}.`);
+    return;
+  }
   backToFriendLobby('Din vän lämnade matchen.');
 }
 
@@ -2070,11 +2088,13 @@ function normalizeFriendInput(data) {
   };
 }
 
-async function createFriendRoom() {
+// opts.challenge: en utmaning om en världsdel — rumskoden är då utmaningens id, och ingen kod visas.
+async function createFriendRoom(opts = {}) {
   if (!roomCap) { friendMessage('Vänmatcher går inte att spela i den här vyn.'); return; }
   leaveFriendRoom();
+  challenge = opts.challenge || null;
   friendMessage('Skapar rum...');
-  const code = randomRoomCode();
+  const code = opts.challenge ? opts.challenge.id : randomRoomCode();
   let room;
   try {
     room = await roomCap.join(code);
@@ -2085,9 +2105,11 @@ async function createFriendRoom() {
   friendRoom = room;
   byId('friend-join').hidden = true;
   byId('friend-create').hidden = true;
-  byId('friend-code').hidden = false;
+  byId('friend-code').hidden = !!challenge;
   byId('friend-code-text').textContent = code.toUpperCase();
-  friendMessage('Väntar på att din vän går med...');
+  friendMessage(challenge
+    ? `Väntar på att ${challenge.oppName} svarar på din utmaning om ${continentName(challenge.continent)}...`
+    : 'Väntar på att din vän går med...');
   // Lyssnarna måste finnas INNAN presence() sätts — annars kan gästen (eller värden,
   // vid en snabb anslutning) i teorin hinna svara innan den egna sidan ens lyssnar.
   friendUnsubs.push(watchForOpponent(room, 'guest', (guestPeer) => hostStartMatch(room, guestPeer), friendPeerLeftMidMatch));
@@ -2102,11 +2124,12 @@ async function createFriendRoom() {
   await room.presence({ role: 'host', name: myFriendName(), def: myFriendDef() });
 }
 
-async function joinFriendRoom() {
+async function joinFriendRoom(opts = {}) {
   if (!roomCap) { friendMessage('Vänmatcher går inte att spela i den här vyn.'); return; }
-  const code = byId('friend-code-input').value.trim().toLowerCase();
-  if (!/^[a-z0-9]{4}$/.test(code)) { friendMessage('Ange den fyrtecken-koden du fick av din vän.'); return; }
+  const code = opts.challenge ? opts.challenge.id : byId('friend-code-input').value.trim().toLowerCase();
+  if (!opts.challenge && !/^[a-z0-9]{4}$/.test(code)) { friendMessage('Ange den fyrtecken-koden du fick av din vän.'); return; }
   leaveFriendRoom();
+  challenge = opts.challenge || null;
   friendMessage('Ansluter...');
   let room;
   try {
@@ -2141,7 +2164,7 @@ function beginFriendMatch(isHost, payload) {
   game.fighters = [hostF, guestF];
   game.player = isHost ? hostF : guestF;
   game.ai = isHost ? guestF : hostF;
-  game.online = { isHost, oppName: isHost ? payload.guest.name : payload.host.name, ended: false, frame: 0, lastGuestInput: { ...IDLE } };
+  game.online = { isHost, oppName: challenge ? challenge.oppName : isHost ? payload.guest.name : payload.host.name, ended: false, frame: 0, lastGuestInput: { ...IDLE }, challenge };
   game.projectiles = [];
   game.waves = [];
   game.beams = [];
@@ -2198,6 +2221,7 @@ function hostEndMatch(winnerIsHost) {
   game.winner = winnerIsHost ? game.player : game.ai;
   game.overT = 1.6;
   game.result = { won: winnerIsHost, friend: true, oppName: game.online.oppName };
+  finishChallenge(winnerIsHost);
 }
 
 function guestEndMatch(data) {
@@ -2208,6 +2232,7 @@ function guestEndMatch(data) {
   game.winner = iWon ? game.player : game.ai;
   game.overT = 1.6;
   game.result = { won: iWon, friend: true, oppName: game.online.oppName };
+  finishChallenge(iWon);
 }
 
 function sanitizeNum(v, fallback) { return typeof v === 'number' && Number.isFinite(v) ? v : fallback; }
@@ -2327,8 +2352,267 @@ function updateFriendMatch(dt) {
   }
 }
 
-byId('btn-create-room').addEventListener('click', createFriendRoom);
-byId('btn-join-room').addEventListener('click', joinFriendRoom);
+
+// ---------- Världskartan ----------
+// Varje världsdel kan ha en beskyddare: en riktig spelare (se api/world/[action].js). Titeln
+// byter bara ägare i en live-match mellan två spelare, aldrig mot AI: utmanaren skapar ett
+// vänmatchrum med utmaningens id som rumskod, och beskyddaren går med när den antar.
+let worldState = null;    // senaste svaret från /api/world/state
+let worldSelected = null; // världsdelen man klickat på
+let challenge = null;     // { id, continent, role: 'challenger' | 'leader', oppName } medan en utmaning väntar eller spelas
+let incomingShown = null; // utmaningen som rutan "du blir utmanad" visar just nu
+let incomingTimer = null;
+
+// Kartan går att titta på som gäst, men bara med konto kan man bli beskyddare eller utmana.
+const worldApi = () => (net.kind === 'remote' ? net : accountsAvailable ? new Backend.RemoteBackend() : null);
+const continentName = (id) => (Shared.continentById[id] || { name: id }).name;
+const worldLevel = () => (worldState ? worldState.level : game.acct.level);
+const robotName = (id) => (robotById[id] ? robotById[id].name : 'okänd robot');
+
+async function refreshWorld() {
+  const api = worldApi();
+  if (!api) return null;
+  try {
+    worldState = await api.world();
+  } catch (e) {
+    return null;
+  }
+  return worldState;
+}
+
+async function showWorld(message) {
+  if (!game.acct) return;
+  if (friendRoom) leaveFriendRoom();
+  byId('explore-bar').hidden = true;
+  game.explore = null;
+  game.phase = 'world';
+  byId('world-status').textContent = message || (worldApi() ? '' : 'Världskartan behöver sidans egen server.');
+  showScreen('world');
+  renderWorld();
+  await refreshWorld();
+  if (game.phase === 'world') renderWorld();
+}
+
+function el(tag, className, text) {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function renderWorld() {
+  const map = byId('world-map');
+  map.replaceChildren();
+  const level = worldLevel();
+  for (const c of Shared.CONTINENTS) {
+    const info = worldState ? worldState.continents.find((x) => x.id === c.id) : null;
+    const b = el('button', 'continent');
+    b.type = 'button';
+    b.style.left = `${c.x}%`;
+    b.style.top = `${c.y}%`;
+    if (level < c.level) {
+      // Okänd världsdel: inget namn, ingen beskyddare — bara vilken nivå som behövs.
+      b.classList.add('locked');
+      b.append(el('span', 'emoji', '🔒'), el('span', 'cname', '???'), el('span', 'leader', `Nivå ${c.level}`));
+    } else {
+      b.append(el('span', 'emoji', c.emoji), el('span', 'cname', c.name));
+      const leader = el('span', 'leader');
+      if (!info) leader.textContent = '...';
+      else if (!info.leader) leader.textContent = 'Ingen beskyddare';
+      else {
+        leader.append(el('span', info.online ? 'online-dot' : 'offline-dot'), `👑 ${info.leader.name}`);
+        if (info.leader.me) b.classList.add('mine');
+      }
+      b.append(leader);
+    }
+    if (c.id === worldSelected) b.classList.add('active');
+    b.addEventListener('click', () => { worldSelected = c.id; renderWorld(); });
+    map.append(b);
+  }
+  renderWorldDetail();
+}
+
+function worldButton(text, onClick, opts = {}) {
+  const b = el('button', opts.secondary ? 'secondary' : '', text);
+  b.type = 'button';
+  b.disabled = !!opts.disabled;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function renderWorldDetail() {
+  const box = byId('world-detail');
+  box.replaceChildren();
+  const c = Shared.continentById[worldSelected];
+  if (!c) {
+    box.append(el('p', 'hint', 'Klicka på en världsdel.'));
+    return;
+  }
+  if (worldLevel() < c.level) {
+    box.append(el('h3', '', '🔒 ???'), el('p', 'hint', `Du vet ingenting om den här världsdelen än. Nå nivå ${c.level} för att upptäcka den.`));
+    return;
+  }
+  box.append(el('h3', '', `${c.emoji} ${c.name}`));
+  const info = worldState ? worldState.continents.find((x) => x.id === c.id) : null;
+  if (!info) { box.append(el('p', 'hint', 'Laddar...')); return; }
+  const loggedIn = net.kind === 'remote';
+  const buttons = el('div', 'buttons');
+  if (!info.leader) {
+    box.append(el('p', '', `Ingen beskyddar ${c.name} än!`));
+    if (loggedIn) buttons.append(worldButton('Bli beskyddare', () => claimContinent(c.id)));
+    else box.append(el('p', 'hint', 'Logga in för att kunna bli beskyddare.'));
+  } else if (info.leader.me) {
+    box.append(el('p', 'crown', `👑 Du beskyddar ${c.name}!`));
+    box.append(el('p', 'hint', `På kartan syns du med ${robotName(info.leader.robot)}. Håll spelet öppet — när någon utmanar dig får du en fråga, och du slåss med roboten du har vald.`));
+    if (info.leader.robot !== game.selectedId) {
+      buttons.append(worldButton(`Visa ${robotName(game.selectedId)} på kartan`, () => claimContinent(c.id), { secondary: true }));
+    }
+  } else {
+    const who = el('p');
+    who.append(el('span', info.online ? 'online-dot' : 'offline-dot'), `Beskyddare: 👑 ${info.leader.name} med ${robotName(info.leader.robot)}`);
+    box.append(who);
+    if (!loggedIn) {
+      box.append(el('p', 'hint', 'Logga in för att utmana.'));
+    } else if (info.abandoned) {
+      box.append(el('p', 'hint', `${info.leader.name} har inte varit här på flera dagar.`));
+      buttons.append(worldButton('Ta över världsdelen', () => claimContinent(c.id)));
+    } else {
+      buttons.append(worldButton(`Utmana ${info.leader.name}`, () => startChallenge(c.id), { disabled: !info.online || !roomCap }));
+      box.append(el('p', 'hint', info.online
+        ? `Du slåss live mot ${info.leader.name} med din valda robot, ${robotName(game.selectedId)}. Vinner du blir du beskyddare!`
+        : `${info.leader.name} är inte online just nu. Bara spelare kan ta titeln, aldrig AI — så du får vänta tills de är här.`));
+    }
+  }
+  if (buttons.childElementCount) box.append(buttons);
+}
+
+async function claimContinent(id) {
+  try {
+    await net.worldClaim(id);
+  } catch (e) {
+    byId('world-status').textContent = e.message;
+    await refreshWorld();
+    renderWorld();
+    return;
+  }
+  await showWorld(`👑 Du är beskyddare av ${continentName(id)}!`);
+}
+
+async function startChallenge(id) {
+  let r;
+  try {
+    r = await net.worldChallenge(id);
+  } catch (e) {
+    byId('world-status').textContent = e.message;
+    return;
+  }
+  game.phase = 'friend';
+  showScreen('friend');
+  byId('friend-join').hidden = true;
+  byId('friend-create').hidden = true;
+  byId('friend-code').hidden = true;
+  await createFriendRoom({ challenge: { id: r.challenge.id, continent: id, role: 'challenger', oppName: r.challenge.toName } });
+}
+
+// En utmaning man lämnar innan matchen börjat ska inte bli hängande hos beskyddaren.
+function dropChallenge() {
+  if (challenge && challenge.role === 'challenger' && !(game.online && game.online.challenge)) {
+    net.worldCancel(challenge.id).catch(() => {});
+  }
+  challenge = null;
+}
+
+// Matchen är slut. Bara beskyddarens sida rapporterar — servern lämnar bara över titeln när
+// beskyddaren själv rapporterat att den förlorat.
+function finishChallenge(iWon) {
+  const ch = game.online && game.online.challenge;
+  if (!ch) return;
+  game.result.challenge = ch;
+  if (ch.role === 'leader') net.worldResult(ch.id, iWon).catch(() => {});
+  challenge = null;
+  worldSelected = ch.continent;
+}
+
+function showIncoming(inc) {
+  incomingShown = inc;
+  byId('challenge-text').textContent = `${inc.fromName} vill ta ${continentName(inc.continent)} från dig och slåss med ${robotName(inc.robot)}! Du slåss med ${robotName(game.selectedId)}.`;
+  byId('challenge-prompt').hidden = false;
+  let left = 40;
+  byId('challenge-timer').textContent = `${left} sekunder att svara`;
+  clearInterval(incomingTimer);
+  incomingTimer = setInterval(() => {
+    left -= 1;
+    byId('challenge-timer').textContent = `${Math.max(0, left)} sekunder att svara`;
+    if (left <= 0) hideIncoming();
+  }, 1000);
+}
+
+function hideIncoming() {
+  clearInterval(incomingTimer);
+  incomingShown = null;
+  byId('challenge-prompt').hidden = true;
+}
+
+async function answerChallenge(accept) {
+  const inc = incomingShown;
+  hideIncoming();
+  if (!inc) return;
+  try {
+    await net.worldAnswer(inc.id, accept);
+  } catch (e) {
+    if (accept) showWorld(e.message);
+    return;
+  }
+  if (!accept) return;
+  byId('explore-bar').hidden = true;
+  game.explore = null;
+  game.phase = 'friend';
+  showScreen('friend');
+  byId('friend-join').hidden = true;
+  byId('friend-create').hidden = true;
+  byId('friend-code').hidden = true;
+  await joinFriendRoom({ challenge: { id: inc.id, continent: inc.continent, role: 'leader', oppName: inc.fromName } });
+  friendMessage(`Du antog utmaningen från ${inc.fromName}! Matchen börjar...`);
+  const id = inc.id;
+  setTimeout(() => {
+    if (challenge && challenge.id === id && !game.online) {
+      leaveFriendRoom();
+      showWorld(`${inc.fromName} dök aldrig upp. Du är fortfarande beskyddare.`);
+    }
+  }, 20000);
+}
+
+// Frågar servern med jämna mellanrum: håller en själv "online" på kartan, visar utmaningar
+// man får som beskyddare, och svaret på en utmaning man själv skickat.
+let worldPolling = false;
+async function pollWorld() {
+  if (worldPolling || net.kind !== 'remote' || document.hidden) return;
+  const fighting = game.phase === 'intro' || game.phase === 'fight';
+  worldPolling = true;
+  const st = await refreshWorld();
+  worldPolling = false;
+  if (!st) return;
+  if (game.phase === 'world') renderWorld();
+
+  const inc = st.incoming;
+  if (inc && !fighting && !game.online && !challenge && (!incomingShown || incomingShown.id !== inc.id)) showIncoming(inc);
+  if (!inc && incomingShown) hideIncoming();
+
+  const out = st.outgoing;
+  if (challenge && challenge.role === 'challenger' && !game.online && out && out.id === challenge.id) {
+    const who = challenge.oppName;
+    if (out.status === 'accepted') friendMessage(`${who} antog utmaningen! Matchen börjar...`);
+    else if (out.status === 'declined' || out.status === 'expired' || out.status === 'cancelled') {
+      challenge = null; // redan avgjord — inget att ångra hos servern
+      leaveFriendRoom();
+      showWorld(out.status === 'declined' ? `${who} nekade din utmaning.` : `${who} svarade inte. Försök igen senare!`);
+    }
+  }
+}
+setInterval(pollWorld, 4000);
+
+byId('btn-create-room').addEventListener('click', () => createFriendRoom());
+byId('btn-join-room').addEventListener('click', () => joinFriendRoom());
 byId('friend-code-input').addEventListener('keydown', (e) => { if (e.code === 'Enter') joinFriendRoom(); });
 byId('btn-friend-cancel').addEventListener('click', () => { leaveFriendRoom(); showSelect(); });
 byId('btn-rematch').addEventListener('click', () => {
@@ -2339,7 +2623,11 @@ byId('btn-rematch').addEventListener('click', () => {
     friendRoom.emit('rematch', {}).catch(() => {});
   }
 });
-byId('btn-leave-friend').addEventListener('click', () => { leaveFriendRoom(); showSelect(); });
+byId('btn-leave-friend').addEventListener('click', () => {
+  const fromChallenge = game.result && game.result.challenge;
+  leaveFriendRoom();
+  if (fromChallenge) showWorld(); else showSelect();
+});
 
 byId('btn-play').addEventListener('click', showSelect);
 byId('btn-fight').addEventListener('click', () => startMatch());
@@ -2352,6 +2640,10 @@ byId('btn-open').addEventListener('click', openBox);
 byId('btn-box-back').addEventListener('click', showSelect);
 byId('btn-friend').addEventListener('click', showFriend);
 byId('btn-monsters').addEventListener('click', showMonsters);
+byId('btn-world').addEventListener('click', () => showWorld());
+byId('btn-world-back').addEventListener('click', showSelect);
+byId('btn-challenge-accept').addEventListener('click', () => answerChallenge(true));
+byId('btn-challenge-decline').addEventListener('click', () => answerChallenge(false));
 byId('btn-equipment').addEventListener('click', () => {
   renderEquipmentModal();
   byId('equipment-prompt').hidden = false;
@@ -2378,7 +2670,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world') return;
 
   if (game.online) {
     updateFriendMatch(dt);

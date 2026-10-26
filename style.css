@@ -427,7 +427,7 @@ button.boss-btn.tier-medium { background: #ff1744; box-shadow: 0 0 14px rgba(255
 button.boss-btn.tier-hard { background: #7a1fff; box-shadow: 0 0 14px rgba(122, 31, 255, 0.6); }
 
 /* ---- Jokerroboten ---- */
-#wildcard-prompt, #wildcard-attack-prompt, #equipment-prompt {
+#wildcard-prompt, #wildcard-attack-prompt, #equipment-prompt, #challenge-prompt {
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -445,7 +445,7 @@ button.boss-btn.tier-hard { background: #7a1fff; box-shadow: 0 0 14px rgba(122, 
 
 /* En ID-regel med display:flex vinner annars över webbläsarens inbyggda [hidden]{display:none}
    — utan de här raderna visas rutorna permanent, även med hidden-attributet satt. */
-#wildcard-prompt[hidden], #wildcard-attack-prompt[hidden], #equipment-prompt[hidden] { display: none; }
+#wildcard-prompt[hidden], #wildcard-attack-prompt[hidden], #equipment-prompt[hidden], #challenge-prompt[hidden] { display: none; }
 
 /* ---- Monstervärlden ---- */
 #explore-bar {
@@ -607,3 +607,71 @@ button.wildcard-attack-btn .desc { display: block; font-weight: 400; color: var(
   .touch-special { background: rgba(255, 217, 61, 0.2); border-color: var(--energy); font-size: 20px; }
   .touch-special:active { background: rgba(255, 217, 61, 0.45); }
 }
+
+/* ---- Världskartan ---- */
+button.world-btn {
+  background: linear-gradient(135deg, #1f8f5a, #1b6fb8);
+  box-shadow: 0 0 14px rgba(40, 170, 140, 0.45);
+}
+
+#world-map {
+  position: relative;
+  width: min(760px, 100%);
+  aspect-ratio: 16 / 6.2;
+  border-radius: 14px;
+  border: 2px solid #24406b;
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(60, 140, 220, 0.25), transparent 60%),
+    radial-gradient(ellipse at 75% 60%, rgba(40, 110, 200, 0.22), transparent 55%),
+    repeating-linear-gradient(0deg, rgba(120, 170, 255, 0.07) 0 1px, transparent 1px 40px),
+    repeating-linear-gradient(90deg, rgba(120, 170, 255, 0.07) 0 1px, transparent 1px 40px),
+    linear-gradient(180deg, #0c2342, #0a1a33);
+  overflow: hidden;
+}
+
+.continent {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 118px;
+  padding: 3px 6px;
+  border-radius: 14px;
+  border: 2px solid #3d8f5f;
+  background: rgba(30, 80, 52, 0.92);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.continent:hover, .continent.active { border-color: var(--legendary); }
+.continent .emoji { display: block; font-size: 18px; }
+.continent .cname { display: block; font-weight: 700; font-size: 13px; letter-spacing: 0.04em; }
+.continent .leader { display: block; color: #cfe8d8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.continent.mine { border-color: var(--divine); background: rgba(20, 90, 110, 0.95); box-shadow: 0 0 16px rgba(62, 232, 255, 0.5); }
+.continent.locked { cursor: default; border-color: #2a3550; background: rgba(25, 30, 48, 0.9); color: var(--muted); }
+.continent.locked .emoji { opacity: 0.6; }
+.online-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3ddc84; margin-right: 4px; box-shadow: 0 0 6px #3ddc84; }
+.offline-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #5a6480; margin-right: 4px; }
+
+#world-detail {
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+#world-detail:empty { display: none; }
+#world-detail .crown { color: var(--legendary); font-weight: 700; }
+
+.challenge-box { border-color: var(--ai); box-shadow: 0 0 30px rgba(255, 107, 61, 0.5); }
+.challenge-box .boss-title { color: var(--ai); text-shadow: 0 0 10px rgba(255, 107, 61, 0.6); }
+
+/* På smala skärmar får världsdelarna inte plats som en karta — då blir det en lista. */
+@media (max-width: 640px) {
+  #world-map { aspect-ratio: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
+  .continent { position: static; transform: none; width: auto; }
+}
+#screen-world { gap: 8px; }
+#screen-world h3 { margin: 0; }

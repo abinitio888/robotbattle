@@ -903,8 +903,25 @@
     return { extra };
   }
 
+  // ---------- Världsdelar ----------
+  // Varje världsdel kan ha en beskyddare: en riktig spelare, som bara kan bli av med titeln
+  // genom att förlora en live-match mot en annan spelare (aldrig mot AI). Världsdelarna låses
+  // upp med nivå, så ju högre nivå du har desto mer av världen får du veta om.
+  // x/y är var på kartan (i procent) världsdelen ligger.
+  const CONTINENTS = [
+    { id: 'europa', name: 'Europa', emoji: '🏰', level: 1, x: 47, y: 14 },
+    { id: 'afrika', name: 'Afrika', emoji: '🦁', level: 3, x: 47, y: 50 },
+    { id: 'asien', name: 'Asien', emoji: '🐉', level: 5, x: 74, y: 22 },
+    { id: 'nordamerika', name: 'Nordamerika', emoji: '🗽', level: 8, x: 15, y: 18 },
+    { id: 'sydamerika', name: 'Sydamerika', emoji: '🌋', level: 12, x: 23, y: 58 },
+    { id: 'oceanien', name: 'Oceanien', emoji: '🦘', level: 16, x: 80, y: 62 },
+    { id: 'antarktis', name: 'Antarktis', emoji: '🐧', level: 20, x: 50, y: 86 },
+  ];
+  const continentById = Object.fromEntries(CONTINENTS.map((c) => [c.id, c]));
+
   return {
     RARITY, ROBOTS, robotById, rankOf, BOSS_IDS, MONSTER_IDS,
+    CONTINENTS, continentById,
     EQUIPMENT, MEGA_WEAPON_ID, MEGA_WEAPON_PIECES, MEGA_FRAGMENT_CHANCE, addEquipment, equipItem,
     ARENAS, arenaById, pickArena,
     TYPES, typeMultiplier,
