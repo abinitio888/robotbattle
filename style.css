@@ -575,6 +575,17 @@ button.wildcard-attack-btn .desc { display: block; font-weight: 400; color: var(
     -webkit-user-select: none;
   }
   .touch-group { display: flex; gap: 10px; }
+  /* Styrkors: ▲ överst i mitten, ◀ ▼ ▶ under — tre knappar brett, så det får plats på en telefon. */
+  .touch-dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 56px);
+    grid-template-areas: ". up ." "left down right";
+    gap: 6px 10px;
+  }
+  #touch-up { grid-area: up; }
+  #touch-left { grid-area: left; }
+  #touch-down { grid-area: down; }
+  #touch-right { grid-area: right; }
   .touch-btn {
     width: 56px;
     height: 56px;

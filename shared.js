@@ -303,19 +303,19 @@
       id: 'seraph', name: 'Seraph', rarity: 'divine', types: ['fe', 'flygande'],
       color: '#fffbe8', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'jet',
       scale: 1.15, hp: 120, speed: 255, punch: 10,
-      special: { type: 'orbital', name: 'Himmelsdom', dmg: 30, desc: 'Tre heliga ljuspelare slår ner. Flytta dig i tid!' },
+      special: { type: 'halo', name: 'Gloria', dmg: 24, heal: 15, desc: 'En ljusring sprider sig längs golvet åt alla håll och läker Seraph med 15 HP. Hoppa över den!' },
     },
     {
       id: 'titan', name: 'Titan', rarity: 'divine', types: ['stål', 'strid'],
       color: '#3a4256', accent: '#3ee8ff', eye: '#ffffff', head: 'horn', extra: 'shoulders',
       scale: 1.25, hp: 135, speed: 220, punch: 12,
-      special: { type: 'annihilate', name: 'Gudaslag', dmg: 34, desc: 'Ett förödande slag med enorm knockback.' },
+      special: { type: 'quake', name: 'Jordbävning', dmg: 13, desc: 'Tre skalv över hela banan. Står du på marken när det smäller tar du skada — hoppa i rätt ögonblick!' },
     },
     {
       id: 'eclipse', name: 'Eclipse', rarity: 'divine', types: ['mörk', 'psykisk'],
       color: '#120d24', accent: '#3ee8ff', eye: '#ff5fd2', head: 'hood', extra: 'cape',
       scale: 1.1, hp: 115, speed: 265, punch: 10,
-      special: { type: 'teleport', name: 'Förmörkelse', dmg: 36, desc: 'Försvinner och dyker upp bakom motståndaren med ett hårt slag.' },
+      special: { type: 'blackhole', name: 'Svart hål', dmg: 6, blast: 22, desc: 'Ett svart hål suger in motståndaren och skadar hela tiden, och imploderar sedan. Spring därifrån!' },
     },
     // Monstervärlden: en helt egen sorts motståndare, skild från robotarna — går aldrig att få
     // av en låda eller möta i en vanlig match (precis som bossar), men går heller aldrig in i

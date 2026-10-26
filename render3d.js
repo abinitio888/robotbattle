@@ -248,8 +248,15 @@
     const t = p.time || 0;
     const air = !!p.air;
     rig.root.position.set(wx(p.x), wy(p.y), p.z || 0);
-    // Vrid roboten lite mot kameran så att man ser den snett framifrån, inte rakt från sidan.
-    rig.root.rotation.y = yaw !== undefined ? yaw : p.facing > 0 ? -0.5 : Math.PI + 0.5;
+    // Roboten tittar mot motståndaren (även snett i djupled), plus en liten vridning mot
+    // kameran så att man ser den snett framifrån, inte rakt från sidan.
+    if (yaw === undefined) {
+      const ax = p.aimX !== undefined ? p.aimX : p.facing;
+      const az = p.aimZ || 0;
+      const face = Math.atan2(-az, Math.abs(ax) < 1 ? p.facing : ax);
+      yaw = face + (Math.cos(face) >= 0 ? -0.35 : 0.35);
+    }
+    rig.root.rotation.y = yaw;
     rig.inner.scale.setScalar(def.scale);
     rig.inner.rotation.z = p.dead ? 1.35 : p.hurt ? 0.16 : 0;
 
@@ -355,10 +362,10 @@
 
     // En lysande kant längs själva kampbanan, där golvlinjen satt i 2D.
     const edge = new THREE.Mesh(box(W + 40, 3, 4), new THREE.MeshBasicMaterial({ color: arena.line }));
-    edge.position.set(0, 1.5, 120);
+    edge.position.set(0, 1.5, 140);
     g.add(edge);
     const back = new THREE.Mesh(box(W + 40, 3, 4), new THREE.MeshBasicMaterial({ color: arena.line }));
-    back.position.set(0, 1.5, -120);
+    back.position.set(0, 1.5, -140);
     g.add(back);
 
     let seed = 7;
@@ -519,14 +526,21 @@
       mine: makePool(scene, () => new THREE.Mesh(cyl(14, 14, 6, 16), new THREE.MeshStandardMaterial({ color: '#888888' }))),
       mineLight: makePool(scene, () => new THREE.Mesh(sphere(4), basic('#ffd93d'))),
       particle: makePool(scene, () => new THREE.Mesh(box(5, 5, 5), basic('#ffffff', 1))),
+      halo: makePool(scene, () => { const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 8, 64), basic('#fff3b0', 0.9, true)); m.rotation.x = -Math.PI / 2; return m; }),
+      haloWall: makePool(scene, () => new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 30, 64, 1, true), basic('#ffe36b', 0.35, true))),
+      quake: makePool(scene, () => { const m = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48), basic('#caa968', 0.8, true)); m.rotation.x = -Math.PI / 2; return m; }),
+      holeCore: makePool(scene, () => new THREE.Mesh(sphere(1), new THREE.MeshBasicMaterial({ color: '#000000' }))),
+      holeRing: makePool(scene, () => new THREE.Mesh(new THREE.TorusGeometry(1, 0.12, 8, 40), basic('#b46bff', 0.85, true))),
+      holeDisc: makePool(scene, () => { const m = new THREE.Mesh(new THREE.RingGeometry(0.3, 1, 40), basic('#5a1fa8', 0.45, true)); m.rotation.x = -Math.PI / 2; return m; }),
     };
 
     function fighterEffects(f, isPlayer) {
       const cx = wx(f.x);
       const cy = wy(f.y - f.h / 2);
+      const cz = f.z || 0;
       const ell = (pool, sx, sy, color) => {
         const m = pool.get();
-        m.position.set(cx, cy, 0);
+        m.position.set(cx, cy, cz);
         m.scale.set(f.w * sx, f.h * sy, f.w * sx);
         if (color) m.material.color.set(color);
         return m;
@@ -540,12 +554,12 @@
         const m = pools.laser.get();
         const x0 = wx(f.x + f.facing * (f.w / 2));
         m.scale.set(900, 1, 1);
-        m.position.set(x0 + f.facing * 450, wy(f.y - f.h * 0.55), 0);
+        m.position.set(x0 + f.facing * 450, wy(f.y - f.h * 0.55), cz);
         m.material.opacity = 0.25 + 0.6 * (a.t / 0.85);
       }
       if (isPlayer && !f.dead) {
         const m = pools.marker.get();
-        m.position.set(cx, wy(f.y - f.h - 22), 0);
+        m.position.set(cx, wy(f.y - f.h - 22), cz);
         m.rotation.y = f.time * 3;
       }
     }
@@ -568,7 +582,7 @@
     function drawProjectiles(s) {
       for (const p of s.projectiles || []) {
         const o = pools.projOuter.get();
-        o.position.set(wx(p.x), wy(p.y), 0);
+        o.position.set(wx(p.x), wy(p.y), p.z || 0);
         o.scale.setScalar(p.r * 1.25);
         o.material.color.set(p.color);
         const i = pools.projInner.get();
@@ -580,7 +594,7 @@
         const len = Math.abs(b.x1 - b.x0);
         const mid = wx((b.x0 + b.x1) / 2);
         const o = pools.beamOuter.get();
-        o.position.set(mid, wy(b.y), 0);
+        o.position.set(mid, wy(b.y), b.z || 0);
         o.scale.set(7, len, 7);
         o.material.color.set(b.color);
         o.material.opacity = a * 0.8;
@@ -593,33 +607,70 @@
         if (!st.done) {
           const k = clamp(st.t / st.delay, 0, 1);
           const m = pools.strikeRing.get();
-          m.position.set(wx(st.x), 2, 0);
+          m.position.set(wx(st.x), 2, st.z || 0);
           m.scale.setScalar(46 * (0.4 + 0.6 * k));
           m.material.opacity = 0.35 + 0.5 * k;
         } else {
           const m = pools.strikeColumn.get();
-          m.position.set(wx(st.x), 350, 0);
+          m.position.set(wx(st.x), 350, st.z || 0);
           m.material.opacity = clamp(1 - (st.t - st.delay) / 0.25, 0, 1) * 0.85;
         }
       }
       for (const w of s.waves || []) {
         const m = pools.wave.get();
-        m.position.set(wx(w.x), 17, 0);
+        m.position.set(wx(w.x), 17, w.z || 0);
         m.rotation.z = -w.dir * 0.35;
       }
       for (const c of s.clouds || []) {
         const m = pools.cloud.get();
-        m.position.set(wx(c.x), 30, 0);
+        m.position.set(wx(c.x), 30, c.z || 0);
         m.scale.set(c.r, 34, c.r * 0.8);
         m.material.opacity = clamp(c.life / 3, 0.25, 0.7) * 0.75;
       }
       for (const mi of s.mines || []) {
         const m = pools.mine.get();
-        m.position.set(wx(mi.x), 3, 0);
+        m.position.set(wx(mi.x), 3, mi.z || 0);
         m.material.color.set(mi.color);
         const l = pools.mineLight.get();
-        l.position.set(wx(mi.x), 8, 0);
+        l.position.set(wx(mi.x), 8, mi.z || 0);
         l.material.color.set(mi.armT <= 0 && Math.sin(mi.life * 14) > 0 ? '#ff3030' : '#ffd93d');
+      }
+      for (const h of s.halos || []) {
+        const fade = clamp(1 - h.r / h.max, 0, 1);
+        const ring = pools.halo.get();
+        ring.position.set(wx(h.x), 3, h.z || 0);
+        ring.scale.setScalar(h.r);
+        ring.material.opacity = 0.9 * fade + 0.1;
+        const wall = pools.haloWall.get();
+        wall.position.set(wx(h.x), 15, h.z || 0);
+        wall.scale.set(h.r, 1, h.r);
+        wall.material.opacity = 0.35 * fade;
+      }
+      for (const q of s.quakes || []) {
+        // En ring som rusar ut från Titan vid varje skalv, över hela banan.
+        for (let i = 0; i < q.i; i++) {
+          const age = q.t - q.ticks[i];
+          if (age > 0.6) continue;
+          const m = pools.quake.get();
+          m.position.set(wx(q.x), 2 + i * 0.3, q.z || 0);
+          m.scale.setScalar(60 + age * 1600);
+          m.material.opacity = 0.8 * (1 - age / 0.6);
+        }
+      }
+      for (const h of s.holes || []) {
+        const grow = clamp((h.max - h.life) / 0.3, 0, 1);
+        const y = 60;
+        const core = pools.holeCore.get();
+        core.position.set(wx(h.x), y, h.z || 0);
+        core.scale.setScalar(26 * grow);
+        const ring = pools.holeRing.get();
+        ring.position.copy(core.position);
+        ring.scale.setScalar(44 * grow);
+        ring.rotation.set(1.2, h.life * 6, 0);
+        const disc = pools.holeDisc.get();
+        disc.position.set(wx(h.x), 2, h.z || 0);
+        disc.scale.setScalar(120 * grow);
+        disc.rotation.z = h.life * 3;
       }
       for (const p of s.particles || []) {
         const m = pools.particle.get();

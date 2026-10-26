@@ -12,6 +12,11 @@ const STEP = 1 / 60;
 const BODY_W = 46;
 const BODY_H = 120;
 const PUNCH_REACH = 62;
+// Djupled: robotarna kan också gå in mot och ut från skärmen (z), inte bara åt sidorna. Slag
+// och skott träffar bara om man står i ungefär samma "fil" — man kan alltså kliva undan.
+const DEPTH = 110;        // banan sträcker sig från -DEPTH (långt bort) till +DEPTH (nära kameran)
+const BODY_D = 40;        // robotens tjocklek i djupled, för träffar
+const DEPTH_SPEED = 0.75; // hur snabbt man går i djupled jämfört med åt sidorna
 // Robotdata (namn, statistik, specialattacker) och odds delas med servern via shared.js,
 // så att klienten aldrig kan visa något annat än vad servern faktiskt räknar med.
 const { RARITY, ROBOTS, rankOf, ARENAS } = Shared;
@@ -24,16 +29,19 @@ const rand = (lo, hi) => lo + Math.random() * (hi - lo);
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // ---------- Effekter ----------
-function sparks(x, y, color, n) {
+function sparks(x, y, color, n, z = 0) {
   for (let i = 0; i < n; i++) {
     const a = rand(0, Math.PI * 2);
     const s = rand(80, 320);
     const life = rand(0.2, 0.55);
-    game.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 80, life, max: life, color });
+    game.particles.push({ x, y, z, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 80, vz: rand(-1, 1) * s * 0.6, life, max: life, color });
   }
 }
 
 // ---------- Strid ----------
+// Står o i samma fil som z (djupled)? extra = hur bred attacken själv är i djupled.
+const inLane = (o, z, extra = 0) => Math.abs(o.z - z) < o.d / 2 + extra;
+
 function overlaps(o, x0, x1, top, bottom) {
   const left = Math.min(x0, x1);
   const right = Math.max(x0, x1);
@@ -55,7 +63,7 @@ function hurt(target, dmg, dirX, knock, source) {
   target.kx = dirX * knock;
   target.energy = Math.min(MAX_ENERGY, target.energy + 8);
   source.energy = Math.min(MAX_ENERGY, source.energy + 10);
-  sparks(target.x, target.y - target.h * 0.6, target.def.color, dmg >= 15 ? 18 : 10);
+  sparks(target.x, target.y - target.h * 0.6, target.def.color, dmg >= 15 ? 18 : 10, target.z);
   game.shake = Math.max(game.shake, dmg >= 15 ? 0.25 : 0.1);
   if (target.hp <= 0) target.dead = true;
   return true;
@@ -64,19 +72,20 @@ function hurt(target, dmg, dirX, knock, source) {
 function meleeHit(f, o, dmg, reach, knock) {
   const x0 = f.x + f.facing * (f.w / 2 - 10);
   const x1 = f.x + f.facing * (f.w / 2 + reach);
+  if (!inLane(o, f.z, f.d / 2 + 14)) return false;
   if (!overlaps(o, x0, x1, f.y - f.h * 0.85, f.y - f.h * 0.15)) return false;
   return hurt(o, dmg, f.facing, knock, f);
 }
 
 function shoot(f, dmg, speed, r) {
   game.projectiles.push({
-    owner: f, x: f.x + f.facing * (f.w / 2 + 8), y: f.y - f.h * 0.6,
+    owner: f, x: f.x + f.facing * (f.w / 2 + 8), y: f.y - f.h * 0.6, z: f.z,
     vx: f.facing * speed, dmg, r, color: f.def.eye === '#ffffff' ? f.def.color : f.def.eye,
   });
 }
 
 function wave(f, dir, dmg) {
-  game.waves.push({ owner: f, x: f.x, vx: dir * 380, dir, dmg, travelled: 0 });
+  game.waves.push({ owner: f, x: f.x, z: f.z, vx: dir * 380, dir, dmg, travelled: 0 });
 }
 
 const SPECIALS = {
@@ -123,7 +132,8 @@ const SPECIALS = {
       const grav = 1300;
       const t = (-vy + Math.sqrt(vy * vy - 2 * grav * (y0 - FLOOR))) / grav;
       const vx = clamp((o.x - x0) / t, -650, 650);
-      game.projectiles.push({ owner: f, x: x0, y: y0, vx, vy, grav, dmg: sp.dmg, r: 11, blast: 90, color: f.def.eye });
+      const vz = (o.z - f.z) / t;
+      game.projectiles.push({ owner: f, x: x0, y: y0, z: f.z, vx, vy, vz, grav, dmg: sp.dmg, r: 11, blast: 90, color: f.def.eye });
     },
   },
   beam: {
@@ -131,8 +141,8 @@ const SPECIALS = {
     fire: (f, o, sp) => {
       const x0 = f.x + f.facing * (f.w / 2);
       const x1 = f.x + f.facing * 820;
-      game.beams.push({ x0, x1, y: f.y - f.h * 0.55, t: 0.2, max: 0.2, color: f.def.color });
-      if (overlaps(o, x0, x1, f.y - f.h * 0.75, f.y - f.h * 0.35)) hurt(o, sp.dmg, f.facing, 360, f);
+      game.beams.push({ x0, x1, y: f.y - f.h * 0.55, z: f.z, t: 0.2, max: 0.2, color: f.def.color });
+      if (inLane(o, f.z, 22) && overlaps(o, x0, x1, f.y - f.h * 0.75, f.y - f.h * 0.35)) hurt(o, sp.dmg, f.facing, 360, f);
     },
   },
   barrier: {
@@ -141,14 +151,14 @@ const SPECIALS = {
       f.shieldT = 1.1;
       f.invuln = Math.max(f.invuln, 1.1);
       f.hp = Math.min(f.maxHp, f.hp + sp.heal);
-      sparks(f.x, f.y - f.h / 2, f.def.eye, 16);
+      sparks(f.x, f.y - f.h / 2, f.def.eye, 16, f.z);
     },
   },
   orbital: {
     dur: 0.7, fires: [0.25],
     fire: (f, o, sp) => {
       [0, -90, 90].forEach((off, i) => {
-        game.strikes.push({ owner: f, x: clamp(o.x + off, 30, W - 30), t: 0, delay: 0.55 + i * 0.2, dmg: sp.dmg, done: false });
+        game.strikes.push({ owner: f, x: clamp(o.x + off, 30, W - 30), z: o.z, t: 0, delay: 0.55 + i * 0.2, dmg: sp.dmg, done: false });
       });
     },
   },
@@ -156,7 +166,7 @@ const SPECIALS = {
     dur: 0.5, fires: [0.1],
     fire: (f) => {
       f.buffT = 5;
-      sparks(f.x, f.y - f.h / 2, f.def.accent, 20);
+      sparks(f.x, f.y - f.h / 2, f.def.accent, 20, f.z);
     },
   },
   spread: {
@@ -164,7 +174,7 @@ const SPECIALS = {
     fire: (f, o, sp) => {
       for (const vy of [-170, 0, 170]) {
         game.projectiles.push({
-          owner: f, x: f.x + f.facing * (f.w / 2 + 8), y: f.y - f.h * 0.6,
+          owner: f, x: f.x + f.facing * (f.w / 2 + 8), y: f.y - f.h * 0.6, z: f.z,
           vx: f.facing * 620, vy, dmg: sp.dmg, r: 7, color: f.def.color,
         });
       }
@@ -175,7 +185,7 @@ const SPECIALS = {
     fire: (f, o, sp) => {
       if (meleeHit(f, o, sp.dmg, 70 * f.def.scale, 300)) {
         f.hp = Math.min(f.maxHp, f.hp + sp.heal);
-        sparks(f.x, f.y - f.h / 2, '#ff4d6d', 12);
+        sparks(f.x, f.y - f.h / 2, '#ff4d6d', 12, f.z);
       }
     },
   },
@@ -183,7 +193,7 @@ const SPECIALS = {
     dur: 0.45, fires: [0.1],
     fire: (f) => {
       f.reflectT = 2;
-      sparks(f.x, f.y - f.h / 2, f.def.color, 14);
+      sparks(f.x, f.y - f.h / 2, f.def.color, 14, f.z);
     },
   },
   freeze: {
@@ -199,9 +209,9 @@ const SPECIALS = {
     fire: (f, o, sp) => {
       const x0 = f.x + f.facing * (f.w / 2);
       const x1 = f.x + f.facing * 900;
-      game.beams.push({ x0, x1, y: f.y - f.h * 0.55, t: 0.25, max: 0.25, color: '#ff3030' });
+      game.beams.push({ x0, x1, y: f.y - f.h * 0.55, z: f.z, t: 0.25, max: 0.25, color: '#ff3030' });
       game.shake = Math.max(game.shake, 0.2);
-      if (overlaps(o, x0, x1, f.y - f.h * 0.75, f.y - f.h * 0.35)) hurt(o, sp.dmg, f.facing, 480, f);
+      if (inLane(o, f.z, 16) && overlaps(o, x0, x1, f.y - f.h * 0.75, f.y - f.h * 0.35)) hurt(o, sp.dmg, f.facing, 480, f);
     },
   },
   flurry: {
@@ -216,7 +226,7 @@ const SPECIALS = {
     dur: 0.55, fires: [0.2],
     fire: (f, o, sp) => {
       game.projectiles.push({
-        owner: f, x: f.x + f.facing * (f.w / 2 + 8), y: f.y - f.h * 0.6,
+        owner: f, x: f.x + f.facing * (f.w / 2 + 8), y: f.y - f.h * 0.6, z: f.z,
         vx: f.facing * 480, dmg: sp.dmg, r: 10, color: f.def.color, turnAt: 210,
       });
     },
@@ -225,15 +235,15 @@ const SPECIALS = {
     dur: 0.5, fires: [0.15],
     fire: (f, o, sp) => {
       const x = clamp(f.x + f.facing * 50, 24, W - 24);
-      game.mines.push({ owner: f, x, armT: 0.55, life: 6, dmg: sp.dmg, r: 34, color: f.def.color });
-      sparks(x, FLOOR - 6, f.def.accent, 8);
+      game.mines.push({ owner: f, x, z: f.z, armT: 0.55, life: 6, dmg: sp.dmg, r: 34, color: f.def.color });
+      sparks(x, FLOOR - 6, f.def.accent, 8, f.z);
     },
   },
   grapple: {
     dur: 0.6, fires: [0.15],
     fire: (f, o, sp) => {
       game.projectiles.push({
-        owner: f, x: f.x + f.facing * (f.w / 2 + 8), y: f.y - f.h * 0.6,
+        owner: f, x: f.x + f.facing * (f.w / 2 + 8), y: f.y - f.h * 0.6, z: f.z,
         vx: f.facing * 760, dmg: sp.dmg, r: 8, color: f.def.color, pull: true,
       });
     },
@@ -248,7 +258,7 @@ const SPECIALS = {
       const t = (-vy + Math.sqrt(vy * vy - 2 * grav * (y0 - FLOOR))) / grav;
       const vx = clamp((o.x - x0) / t, -520, 520);
       game.projectiles.push({
-        owner: f, x: x0, y: y0, vx, vy, grav, dmg: 0, r: 10, blast: 0, color: '#8fe05a',
+        owner: f, x: x0, y: y0, z: f.z, vx, vy, vz: (o.z - f.z) / t, grav, dmg: 0, r: 10, blast: 0, color: '#8fe05a',
         cloud: { r: 88, life: 4.2, dmg: sp.dmg },
       });
     },
@@ -258,7 +268,7 @@ const SPECIALS = {
     fire: (f, o, sp) => {
       if (f.act.i === 1) {
         f.invuln = Math.max(f.invuln, 0.28);
-        sparks(f.x, f.y - f.h / 2, f.def.eye, 10);
+        sparks(f.x, f.y - f.h / 2, f.def.eye, 10, f.z);
         return;
       }
       if (Math.abs(o.x - f.x) < (f.w + o.w) / 2 + 55 * f.def.scale) meleeHit(f, o, sp.dmg, 55 * f.def.scale, 360);
@@ -267,19 +277,49 @@ const SPECIALS = {
   meteorslam: {
     dur: 0.5, fires: [0.15],
     fire: (f, o, sp) => {
-      game.strikes.push({ owner: f, x: clamp(o.x, 30, W - 30), t: 0, delay: 0.6, dmg: sp.dmg, done: false });
+      game.strikes.push({ owner: f, x: clamp(o.x, 30, W - 30), z: o.z, t: 0, delay: 0.6, dmg: sp.dmg, done: false });
       game.shake = Math.max(game.shake, 0.3);
     },
   },
   teleport: {
     dur: 0.7, fires: [0.25],
     fire: (f, o, sp) => {
-      sparks(f.x, f.y - f.h / 2, f.def.color, 14);
+      sparks(f.x, f.y - f.h / 2, f.def.color, 14, f.z);
       const side = o.x >= f.x ? 1 : -1;
       f.x = clamp(o.x + side * (o.w / 2 + f.w / 2 + 10), f.w / 2, W - f.w / 2);
+      f.z = o.z;
       f.facing = o.x >= f.x ? 1 : -1;
-      sparks(f.x, f.y - f.h / 2, f.def.color, 14);
+      sparks(f.x, f.y - f.h / 2, f.def.color, 14, f.z);
       meleeHit(f, o, sp.dmg, 50 * f.def.scale, 380);
+    },
+  },
+
+  // ---- De gudomligas egna specialattacker ----
+  // Unika: ingen annan robot har någon av de här tre mekanikerna.
+  halo: {
+    // En ljusring som sprider sig längs golvet åt ALLA håll, även i djupled — man måste hoppa
+    // över kanten när den passerar. Läker samtidigt den som kastar den.
+    dur: 0.6, fires: [0.25],
+    fire: (f, o, sp) => {
+      game.halos.push({ owner: f, x: f.x, z: f.z, r: 20, max: 420, speed: 460, dmg: sp.dmg, hit: false });
+      f.hp = Math.min(f.maxHp, f.hp + sp.heal);
+      sparks(f.x, f.y - f.h / 2, '#fff3b0', 20, f.z);
+    },
+  },
+  quake: {
+    // Tre skalv över HELA banan. Den som står på marken när ett skalv slår till tar skada —
+    // hoppa i rätt ögonblick så klarar du dig.
+    dur: 0.7, fires: [0.3],
+    fire: (f, o, sp) => {
+      game.quakes.push({ owner: f, x: f.x, z: f.z, t: 0, ticks: [0.35, 0.85, 1.35], i: 0, dmg: sp.dmg });
+    },
+  },
+  blackhole: {
+    // Ett svart hål öppnar sig där motståndaren står och suger in den i två sekunder, med skada
+    // hela tiden, och imploderar sedan — gå därifrån så fort du kan.
+    dur: 0.6, fires: [0.25],
+    fire: (f, o, sp) => {
+      game.holes.push({ owner: f, x: o.x, z: o.z, life: 2.2, max: 2.2, tickT: 0.45, dmg: sp.dmg, blast: sp.blast });
     },
   },
 
@@ -296,7 +336,7 @@ const SPECIALS = {
         meleeHit(f, o, sp.dmg, 60 * f.def.scale, 320);
         return;
       }
-      sparks(f.x, f.y - f.h / 2, o.def.color, 14);
+      sparks(f.x, f.y - f.h / 2, o.def.color, 14, f.z);
       SPECIALS[theirs.type].fire(f, o, theirs);
     },
   },
@@ -305,11 +345,11 @@ const SPECIALS = {
     fire: (f, o, sp) => {
       if (Math.random() < 0.5) {
         meleeHit(f, o, sp.dmg * 2, 70 * f.def.scale, 440);
-        sparks(f.x, f.y - f.h / 2, '#ffd93d', 22);
+        sparks(f.x, f.y - f.h / 2, '#ffd93d', 22, f.z);
         game.shake = Math.max(game.shake, 0.25);
       } else {
         f.buffT = Math.max(f.buffT, 2.5); // helt bom, men inte helt förgäves
-        sparks(f.x, f.y - f.h / 2, f.def.accent, 10);
+        sparks(f.x, f.y - f.h / 2, f.def.accent, 10, f.z);
       }
     },
   },
@@ -321,8 +361,8 @@ const SPECIALS = {
       const mid = (f.hp + o.hp) / 2;
       f.hp = clamp(mid, 0, f.maxHp);
       o.hp = clamp(mid, 0, o.maxHp);
-      sparks(f.x, f.y - f.h / 2, f.def.color, 14);
-      sparks(o.x, o.y - o.h / 2, o.def.color, 14);
+      sparks(f.x, f.y - f.h / 2, f.def.color, 14, f.z);
+      sparks(o.x, o.y - o.h / 2, o.def.color, 14, o.z);
       if (f.hp <= 0) f.dead = true;
       if (o.hp <= 0) o.dead = true;
     },
@@ -332,7 +372,7 @@ const SPECIALS = {
     fire: (f, o) => {
       o.energy = 0;
       o.jinxT = 4;
-      sparks(o.x, o.y - o.h / 2, '#5a5366', 16);
+      sparks(o.x, o.y - o.h / 2, '#5a5366', 16, o.z);
     },
   },
   allin: {
@@ -341,7 +381,7 @@ const SPECIALS = {
       const cost = Math.min(f.hp - 1, f.maxHp * 0.2); // offrar upp till 20 % av max-HP, dör aldrig av det
       f.hp -= cost;
       meleeHit(f, o, sp.dmg + cost * 2, 80 * f.def.scale, 500);
-      sparks(f.x, f.y - f.h / 2, '#ff3030', 18);
+      sparks(f.x, f.y - f.h / 2, '#ff3030', 18, f.z);
       game.shake = Math.max(game.shake, 0.25);
     },
   },
@@ -352,7 +392,7 @@ const SPECIALS = {
       if (draw === 'buff') f.buffT = Math.max(f.buffT, 4);
       else if (draw === 'shield') { f.shieldT = 1.5; f.invuln = Math.max(f.invuln, 1.5); }
       else f.hp = Math.min(f.maxHp, f.hp + sp.heal);
-      sparks(f.x, f.y - f.h / 2, f.def.eye, 16);
+      sparks(f.x, f.y - f.h / 2, f.def.eye, 16, f.z);
     },
   },
   steal: {
@@ -361,14 +401,14 @@ const SPECIALS = {
       const take = Math.min(o.energy, sp.steal);
       o.energy -= take;
       f.energy = Math.min(MAX_ENERGY, f.energy + take);
-      sparks(o.x, o.y - o.h / 2, f.def.eye, 14);
+      sparks(o.x, o.y - o.h / 2, f.def.eye, 14, o.z);
     },
   },
   taunt: {
     dur: 0.5, fires: [0.2],
     fire: (f, o) => {
       o.vulnT = 3;
-      sparks(o.x, o.y - o.h / 2, '#ff3030', 12);
+      sparks(o.x, o.y - o.h / 2, '#ff3030', 12, o.z);
     },
   },
   prophecy: {
@@ -376,18 +416,19 @@ const SPECIALS = {
     fire: (f, o, sp) => {
       // Återanvänder samma försenade-nedslag-system som orbital/meteorslam: siktet syns i förväg,
       // och flyttar man sig undan hinner man missa den helt.
-      game.strikes.push({ owner: f, x: clamp(o.x, 30, W - 30), t: 0, delay: 1.1, dmg: sp.dmg, done: false });
+      game.strikes.push({ owner: f, x: clamp(o.x, 30, W - 30), z: o.z, t: 0, delay: 1.1, dmg: sp.dmg, done: false });
     },
   },
   swapplace: {
     dur: 0.5, fires: [0.15],
     fire: (f, o) => {
       const fx = f.x;
+      const fz = f.z;
       const ff = f.facing;
-      f.x = o.x; f.facing = o.facing;
-      o.x = fx; o.facing = ff;
-      sparks(f.x, f.y - f.h / 2, f.def.color, 12);
-      sparks(o.x, o.y - o.h / 2, o.def.color, 12);
+      f.x = o.x; f.z = o.z; f.facing = o.facing;
+      o.x = fx; o.z = fz; o.facing = ff;
+      sparks(f.x, f.y - f.h / 2, f.def.color, 12, f.z);
+      sparks(o.x, o.y - o.h / 2, o.def.color, 12, o.z);
     },
   },
 };
@@ -397,8 +438,10 @@ class Fighter {
     this.def = def;
     this.w = BODY_W * def.scale;
     this.h = BODY_H * def.scale;
+    this.d = BODY_D * def.scale;
     this.x = x;
     this.y = FLOOR;
+    this.z = 0;
     this.facing = facing;
     this.vy = 0;
     this.kx = 0;
@@ -465,6 +508,7 @@ class Fighter {
     this.vulnT = Math.max(0, this.vulnT - dt);
 
     let walk = 0;
+    let walkZ = 0;
     if (!this.dead) {
       this.facing = opp.x >= this.x ? 1 : -1;
       if (canFight) this.energy = Math.min(MAX_ENERGY, this.energy + 6 * dt * (this.jinxT > 0 ? 0.5 : 1));
@@ -473,6 +517,7 @@ class Fighter {
           this.updateAct(dt, opp);
         } else {
           walk = input.dir * this.def.speed * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul;
+          walkZ = (input.depth || 0) * this.def.speed * DEPTH_SPEED * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul;
           if (input.jump && this.onGround) {
             this.vy = -JUMP_V;
             this.onGround = false;
@@ -497,11 +542,12 @@ class Fighter {
       }
     }
 
-    this.moving = walk !== 0;
+    this.moving = walk !== 0 || walkZ !== 0;
     if (this.moving) this.walkT += dt;
     this.x += (walk + dash + this.kx) * dt;
     this.kx *= Math.exp(-9 * dt);
     this.x = clamp(this.x, this.w / 2, W - this.w / 2);
+    this.z = clamp(this.z + walkZ * dt, -DEPTH, DEPTH);
 
     this.vy += GRAVITY * game.arena.gravityMul * dt;
     this.y += this.vy * dt;
@@ -519,6 +565,7 @@ function separate(a, b) {
   const dx = b.x - a.x;
   if (Math.abs(dx) >= minDx) return;
   if (Math.abs(a.y - b.y) > Math.min(a.h, b.h) * 0.7) return;
+  if (Math.abs(a.z - b.z) > (a.d + b.d) / 2) return;
   const push = (minDx - Math.abs(dx)) / 2;
   const s = dx >= 0 ? 1 : -1;
   a.x = clamp(a.x - s * push, a.w / 2, W - a.w / 2);
@@ -530,6 +577,7 @@ function updateProjectiles(dt) {
   for (const p of list) {
     if (p.dead) continue;
     p.x += p.vx * dt;
+    p.z = clamp((p.z || 0) + (p.vz || 0) * dt, -DEPTH - 30, DEPTH + 30);
     if (p.turnAt !== undefined && !p.turned) {
       p.travelled = (p.travelled || 0) + Math.abs(p.vx) * dt;
       if (p.travelled >= p.turnAt) { p.vx = -p.vx; p.turned = true; }
@@ -542,17 +590,17 @@ function updateProjectiles(dt) {
     const target = p.owner === game.player ? game.ai : game.player;
     if (p.x < -60 || p.x > W + 60) { p.dead = true; continue; }
     for (const q of list) {
-      if (q !== p && !q.dead && q.owner !== p.owner && Math.hypot(q.x - p.x, q.y - p.y) < p.r + q.r) {
+      if (q !== p && !q.dead && q.owner !== p.owner && Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z) < p.r + q.r) {
         p.dead = true;
         q.dead = true;
-        sparks((p.x + q.x) / 2, p.y, '#ffffff', 10);
+        sparks((p.x + q.x) / 2, p.y, '#ffffff', 10, p.z);
       }
     }
     if (p.dead) continue;
-    const hit = Math.abs(p.x - target.x) < target.w / 2 + p.r
+    const hit = Math.abs(p.x - target.x) < target.w / 2 + p.r && inLane(target, p.z, p.r)
       && p.y > target.y - target.h - p.r && p.y < target.y + p.r;
     if (hit && target.reflectT > 0) {
-      sparks(p.x, p.y, target.def.color, 8);
+      sparks(p.x, p.y, target.def.color, 8, p.z);
       p.owner = target;
       p.vx = -p.vx;
       p.x += Math.sign(p.vx) * (target.w / 2 + p.r + 6);
@@ -573,11 +621,11 @@ function updateProjectiles(dt) {
     }
     if (!p.dead && p.grav && p.y >= FLOOR - 6) {
       p.dead = true;
-      sparks(p.x, FLOOR - 10, p.color, 22);
+      sparks(p.x, FLOOR - 10, p.color, 22, p.z);
       game.shake = Math.max(game.shake, 0.25);
       if (p.cloud) {
-        game.clouds.push({ owner: p.owner, x: p.x, r: p.cloud.r, life: p.cloud.life, tickT: 0.15, dmg: p.cloud.dmg, color: p.color });
-      } else if (Math.abs(p.x - target.x) < p.blast + target.w / 2 && target.y >= FLOOR - 50) {
+        game.clouds.push({ owner: p.owner, x: p.x, z: p.z, r: p.cloud.r, life: p.cloud.life, tickT: 0.15, dmg: p.cloud.dmg, color: p.color });
+      } else if (Math.abs(p.x - target.x) < p.blast + target.w / 2 && inLane(target, p.z, p.blast * 0.6) && target.y >= FLOOR - 50) {
         hurt(target, p.dmg, Math.sign(target.x - p.x) || 1, 420, p.owner);
       }
     }
@@ -591,7 +639,7 @@ function updateWaves(dt) {
     w.travelled += Math.abs(w.vx) * dt;
     const target = w.owner === game.player ? game.ai : game.player;
     if (w.travelled > 560 || w.x < -30 || w.x > W + 30) { w.dead = true; continue; }
-    if (Math.abs(w.x - target.x) < target.w / 2 + 14 && target.y >= FLOOR - 26) {
+    if (Math.abs(w.x - target.x) < target.w / 2 + 14 && inLane(target, w.z, 18) && target.y >= FLOOR - 26) {
       if (hurt(target, w.dmg, w.dir, 420, w.owner)) w.dead = true;
     }
   }
@@ -609,9 +657,9 @@ function updateStrikes(dt) {
     if (!st.done && st.t >= st.delay) {
       st.done = true;
       const target = st.owner === game.player ? game.ai : game.player;
-      sparks(st.x, FLOOR - 20, st.owner.def.color, 16);
+      sparks(st.x, FLOOR - 20, st.owner.def.color, 16, st.z);
       game.shake = Math.max(game.shake, 0.2);
-      if (Math.abs(st.x - target.x) < 46) hurt(target, st.dmg, Math.sign(target.x - st.x) || 1, 300, st.owner);
+      if (Math.abs(st.x - target.x) < 46 && inLane(target, st.z, 34)) hurt(target, st.dmg, Math.sign(target.x - st.x) || 1, 300, st.owner);
     }
   }
   game.strikes = game.strikes.filter((st) => st.t < st.delay + 0.25);
@@ -623,9 +671,9 @@ function updateMines(dt) {
     m.life -= dt;
     if (m.dead) continue;
     const target = m.owner === game.player ? game.ai : game.player;
-    if (m.armT <= 0 && Math.abs(m.x - target.x) < m.r + target.w / 2 && target.y >= FLOOR - 40) {
+    if (m.armT <= 0 && Math.abs(m.x - target.x) < m.r + target.w / 2 && inLane(target, m.z, m.r * 0.6) && target.y >= FLOOR - 40) {
       m.dead = true;
-      sparks(m.x, FLOOR - 10, m.color, 20);
+      sparks(m.x, FLOOR - 10, m.color, 20, m.z);
       game.shake = Math.max(game.shake, 0.25);
       hurt(target, m.dmg, Math.sign(target.x - m.x) || 1, 400, m.owner);
     } else if (m.life <= 0) {
@@ -635,6 +683,60 @@ function updateMines(dt) {
   game.mines = game.mines.filter((m) => !m.dead);
 }
 
+function updateHalos(dt) {
+  for (const h of game.halos) {
+    h.r += h.speed * dt;
+    const target = h.owner === game.player ? game.ai : game.player;
+    const d = Math.hypot(target.x - h.x, target.z - h.z);
+    if (!h.hit && Math.abs(d - h.r) < 26 + target.w / 2 && target.y >= FLOOR - 40) {
+      if (hurt(target, h.dmg, Math.sign(target.x - h.x) || 1, 380, h.owner)) h.hit = true;
+    }
+  }
+  game.halos = game.halos.filter((h) => h.r < h.max);
+}
+
+function updateQuakes(dt) {
+  for (const q of game.quakes) {
+    q.t += dt;
+    if (q.i < q.ticks.length && q.t >= q.ticks[q.i]) {
+      q.i++;
+      game.shake = Math.max(game.shake, 0.35);
+      const target = q.owner === game.player ? game.ai : game.player;
+      sparks(target.x, FLOOR - 4, '#caa968', 10, target.z);
+      if (target.y >= FLOOR - 4) hurt(target, q.dmg, Math.sign(target.x - q.owner.x) || 1, 160, q.owner);
+    }
+  }
+  game.quakes = game.quakes.filter((q) => q.t < q.ticks[q.ticks.length - 1] + 0.3);
+}
+
+function updateHoles(dt) {
+  for (const h of game.holes) {
+    h.life -= dt;
+    h.tickT -= dt;
+    const target = h.owner === game.player ? game.ai : game.player;
+    if (target.dead) continue;
+    const dx = h.x - target.x;
+    const dz = h.z - target.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 4 && d < 320) {
+      const pull = 175 * dt / d;
+      target.x = clamp(target.x + dx * pull, target.w / 2, W - target.w / 2);
+      target.z = clamp(target.z + dz * pull, -DEPTH, DEPTH);
+    }
+    if (h.tickT <= 0 && h.life > 0) {
+      h.tickT = 0.45;
+      if (d < 120) hurt(target, h.dmg, Math.sign(-dx) || 1, 0, h.owner);
+    }
+    if (h.life <= 0 && !h.done) {
+      h.done = true;
+      game.shake = Math.max(game.shake, 0.4);
+      sparks(h.x, FLOOR - 60, '#b46bff', 26, h.z);
+      if (d < 90) hurt(target, h.blast, Math.sign(-dx) || 1, 520, h.owner);
+    }
+  }
+  game.holes = game.holes.filter((h) => !h.done);
+}
+
 function updateClouds(dt) {
   for (const c of game.clouds) {
     c.life -= dt;
@@ -642,7 +744,7 @@ function updateClouds(dt) {
     if (c.tickT <= 0) {
       c.tickT = 0.35;
       const target = c.owner === game.player ? game.ai : game.player;
-      if (Math.abs(c.x - target.x) < c.r + target.w / 2 && target.y >= FLOOR - 60) {
+      if (Math.abs(c.x - target.x) < c.r + target.w / 2 && inLane(target, c.z, c.r * 0.6) && target.y >= FLOOR - 60) {
         hurt(target, c.dmg, Math.sign(target.x - c.x) || 1, 40, c.owner);
       }
     }
@@ -680,16 +782,16 @@ function skillForLevel(level) {
 }
 
 function makeBrain(skill = SKILL_EASY) {
-  return { skill, timer: 0.9, dir: 0, attack: false, jump: false, special: false, retreat: 0 };
+  return { skill, timer: 0.9, dir: 0, depth: 0, attack: false, jump: false, special: false, retreat: 0 };
 }
 
 function incomingThreat(f, o) {
   for (const p of game.projectiles) {
-    if (p.owner !== o) continue;
+    if (p.owner !== o || !inLane(f, p.z, p.r + 10)) continue;
     if (Math.sign(p.vx) === Math.sign(f.x - p.x) && Math.abs(p.x - f.x) < 300) return true;
   }
   for (const w of game.waves) {
-    if (w.owner !== o) continue;
+    if (w.owner !== o || !inLane(f, w.z, 18)) continue;
     if (Math.sign(w.vx) === Math.sign(f.x - w.x) && Math.abs(w.x - f.x) < 240) return true;
   }
   return false;
@@ -731,6 +833,9 @@ function wantsSpecial(f, o, dist) {
     case 'taunt': return dist < 500;
     case 'prophecy': return dist > 100;
     case 'swapplace': return dist > 220;
+    case 'halo': return dist < 380 || f.hp < f.maxHp * 0.6;
+    case 'quake': return o.onGround;
+    case 'blackhole': return true;
     default: return false;
   }
 }
@@ -739,7 +844,7 @@ function aiInput(f, o, brain, dt) {
   const k = brain.skill;
   brain.timer -= dt;
   brain.retreat -= dt;
-  const input = { dir: brain.dir * k.speed, jump: brain.jump, attack: brain.attack, special: brain.special };
+  const input = { dir: brain.dir * k.speed, depth: brain.depth * k.speed, jump: brain.jump, attack: brain.attack, special: brain.special };
   brain.jump = false;
   brain.special = false;
 
@@ -751,8 +856,16 @@ function aiInput(f, o, brain, dt) {
     const reach = (f.w + o.w) / 2 + PUNCH_REACH * f.def.scale - 10;
     brain.attack = false;
     brain.dir = 0;
+    // Djupled: ställ sig i samma fil som motståndaren (annars missar slagen), men ibland kliva
+    // undan i sidled i stället för att hoppa när något är på väg.
+    const dz = o.z - f.z;
+    brain.depth = Math.abs(dz) > Math.min(f.d, o.d) * 0.35 ? Math.sign(dz) : 0;
+    if (brain.retreat > 0 && Math.random() < 0.4) brain.depth = f.z > 0 ? -1 : 1;
 
-    if (f.onGround && incomingThreat(f, o) && Math.random() < k.dodge) brain.jump = true;
+    if (incomingThreat(f, o) && Math.random() < k.dodge) {
+      if (Math.random() < 0.5 && f.onGround) brain.jump = true;
+      else brain.depth = f.z > 0 ? -1 : 1;
+    }
     if (brain.retreat > 0) brain.dir = -s;
     else if (dist > reach) brain.dir = s;
     else if (Math.random() < k.attack) brain.attack = true;
@@ -771,7 +884,9 @@ let specialBuffer = 0;    // kort tidsfönster så en tidig tryckning inte missa
 function playerInput() {
   return {
     dir: (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0),
-    jump: !!(keys.KeyW || keys.ArrowUp),
+    // +z är mot kameran: S/↓ går närmare, W/↑ längre in i bilden.
+    depth: (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0),
+    jump: !!(keys.ShiftLeft || keys.ShiftRight || keys.KeyL),
     attack: !!(keys.Space || keys.KeyJ),
     special: specialBuffer > 0,
   };
@@ -817,7 +932,9 @@ function bindTouchButton(id, onDown, onUp) {
 }
 bindTouchButton('touch-left', () => { keys.ArrowLeft = true; }, () => { keys.ArrowLeft = false; });
 bindTouchButton('touch-right', () => { keys.ArrowRight = true; }, () => { keys.ArrowRight = false; });
-bindTouchButton('touch-jump', () => { keys.ArrowUp = true; }, () => { keys.ArrowUp = false; });
+bindTouchButton('touch-up', () => { keys.ArrowUp = true; }, () => { keys.ArrowUp = false; });
+bindTouchButton('touch-down', () => { keys.ArrowDown = true; }, () => { keys.ArrowDown = false; });
+bindTouchButton('touch-jump', () => { keys.KeyL = true; }, () => { keys.KeyL = false; });
 bindTouchButton('touch-attack', () => { keys.Space = true; }, () => { keys.Space = false; });
 bindTouchButton('touch-special', () => { triggerSpecial(); });
 
@@ -886,6 +1003,9 @@ const game = {
   strikes: [],
   mines: [],
   clouds: [],
+  halos: [],
+  quakes: [],
+  holes: [],
   particles: [],
   shake: 0,
   introT: 0,
@@ -965,6 +1085,9 @@ async function startMatch(modeOverride, monsterId) {
   game.strikes = [];
   game.mines = [];
   game.clouds = [];
+  game.halos = [];
+  game.quakes = [];
+  game.holes = [];
   game.particles = [];
   game.winner = null;
   game.result = null;
@@ -1225,14 +1348,16 @@ function showMonsters() {
   const margin = 90;
   game.explore = {
     player: new Fighter(applyEquipment(myDef(robotById[game.selectedId])), 60, 1),
-    monsters: monsterDefs.map((def, i) => new Fighter(
-      def, margin + (i * (W - 2 * margin)) / Math.max(1, monsterDefs.length - 1), -1,
-    )),
+    monsters: monsterDefs.map((def, i) => {
+      const m = new Fighter(def, margin + (i * (W - 2 * margin)) / Math.max(1, monsterDefs.length - 1), -1);
+      m.z = (i % 3 - 1) * DEPTH * 0.7; // utspridda i djupled, så man får gå fram till dem
+      return m;
+    }),
     near: null,
     attackHeld: false,
   };
   byId('explore-bar').hidden = false;
-  byId('explore-hint').textContent = 'Gå med A/D eller piltangenterna.';
+  byId('explore-hint').textContent = 'Gå med WASD eller piltangenterna.';
   showScreen(null);
 }
 
@@ -1243,16 +1368,18 @@ function updateExplore(dt) {
   const p = ex.player;
   p.time += dt;
   const walk = input.dir * p.def.speed;
-  p.moving = walk !== 0;
+  const walkZ = input.depth * p.def.speed * DEPTH_SPEED;
+  p.moving = walk !== 0 || walkZ !== 0;
   if (p.moving) p.walkT += dt;
   if (input.dir) p.facing = input.dir;
   p.x = clamp(p.x + walk * dt, p.w / 2, W - p.w / 2);
+  p.z = clamp(p.z + walkZ * dt, -DEPTH, DEPTH);
 
   let near = null;
   for (const m of ex.monsters) {
     m.time += dt;
     m.facing = m.x >= p.x ? -1 : 1;
-    if (Math.abs(m.x - p.x) < EXPLORE_RANGE) near = m;
+    if (Math.hypot(m.x - p.x, m.z - p.z) < EXPLORE_RANGE) near = m;
   }
   ex.near = near;
 
@@ -1261,7 +1388,7 @@ function updateExplore(dt) {
 
   byId('explore-hint').textContent = near
     ? `MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)})`
-    : 'Gå med A/D eller piltangenterna.';
+    : 'Gå med WASD eller piltangenterna.';
 }
 
 // Man ska veta exakt vad ett monster ger INNAN man utmanar det — ingen slump i VILKET
@@ -1936,6 +2063,7 @@ function normalizeFriendInput(data) {
   if (!data || typeof data !== 'object') return { ...IDLE };
   return {
     dir: data.dir === 1 ? 1 : data.dir === -1 ? -1 : 0,
+    depth: data.depth === 1 ? 1 : data.depth === -1 ? -1 : 0,
     jump: !!data.jump,
     attack: !!data.attack,
     special: !!data.special,
@@ -2020,6 +2148,9 @@ function beginFriendMatch(isHost, payload) {
   game.strikes = [];
   game.mines = [];
   game.clouds = [];
+  game.halos = [];
+  game.quakes = [];
+  game.holes = [];
   game.particles = [];
   game.winner = null;
   game.result = null;
@@ -2086,7 +2217,7 @@ function sanitizeNum(v, fallback) { return typeof v === 'number' && Number.isFin
 // nästa som kommer fram beskriver ändå hela sanningen på nytt.
 function fighterSnapshot(f) {
   return {
-    x: f.x, y: f.y, facing: f.facing, vy: f.vy, kx: f.kx, onGround: f.onGround,
+    x: f.x, y: f.y, z: f.z, facing: f.facing, vy: f.vy, kx: f.kx, onGround: f.onGround,
     hp: f.hp, energy: f.energy, act: f.act, atkCd: f.atkCd, hurt: f.hurt, invuln: f.invuln,
     flash: f.flash, dashT: f.dashT, buffT: f.buffT, shieldT: f.shieldT, reflectT: f.reflectT,
     frozenT: f.frozenT, jinxT: f.jinxT, vulnT: f.vulnT, dead: f.dead, moving: f.moving,
@@ -2102,6 +2233,7 @@ function applyFighterSnapshot(f, snap) {
   const prevHp = f.hp;
   f.x = sanitizeNum(snap.x, f.x);
   f.y = sanitizeNum(snap.y, f.y);
+  f.z = clamp(sanitizeNum(snap.z, f.z), -DEPTH, DEPTH);
   f.facing = snap.facing === -1 ? -1 : 1;
   f.vy = sanitizeNum(snap.vy, f.vy);
   f.kx = sanitizeNum(snap.kx, f.kx);
@@ -2126,7 +2258,7 @@ function applyFighterSnapshot(f, snap) {
   f.walkT = sanitizeNum(snap.walkT, f.walkT);
   f.enrage = sanitizeNum(snap.enrage, f.enrage);
   if (f.hp < prevHp) { // enda sättet gästen vet att något träffade — inga egna fysikanrop att haka på
-    sparks(f.x, f.y - f.h * 0.6, f.def.color, prevHp - f.hp >= 15 ? 18 : 10);
+    sparks(f.x, f.y - f.h * 0.6, f.def.color, prevHp - f.hp >= 15 ? 18 : 10, f.z);
     game.shake = Math.max(game.shake, prevHp - f.hp >= 15 ? 0.25 : 0.1);
   }
 }
@@ -2179,6 +2311,9 @@ function updateFriendMatch(dt) {
       updateStrikes(dt);
       updateMines(dt);
       updateClouds(dt);
+      updateHalos(dt);
+      updateQuakes(dt);
+      updateHoles(dt);
       if (!om.ended && (f0.hp <= 0 || f1.hp <= 0)) {
         om.ended = true;
         const winnerIsHost = f0.hp > 0;
@@ -2225,7 +2360,7 @@ byId('mode-normal').addEventListener('click', () => { game.mode = 'normal'; show
 byId('mode-stake').addEventListener('click', () => { game.mode = 'stake'; showSelect(); });
 
 // ---------- Uppdatering ----------
-const IDLE = { dir: 0, jump: false, attack: false, special: false };
+const IDLE = { dir: 0, depth: 0, jump: false, attack: false, special: false };
 
 function update(dt) {
   game.shake = Math.max(0, game.shake - dt);
@@ -2233,6 +2368,7 @@ function update(dt) {
   for (const p of game.particles) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
+    p.z += (p.vz || 0) * dt;
     p.vy += 700 * dt;
     p.life -= dt;
   }
@@ -2269,6 +2405,9 @@ function update(dt) {
     updateStrikes(dt);
     updateMines(dt);
     updateClouds(dt);
+    updateHalos(dt);
+    updateQuakes(dt);
+    updateHoles(dt);
 
     if (fighting && (player.hp <= 0 || ai.hp <= 0)) endMatch();
   }
@@ -2586,10 +2725,12 @@ function buildBackground(arena) {
 
 const backgroundCache = {}; // en förbyggd bakgrund per bana-id, bygget är för tungt att göra varje bildruta
 
-function fighterPose(f) {
+function fighterPose(f, opp) {
   const a = f.act;
   return {
-    x: f.x, y: f.y, facing: f.facing, time: f.time, walkT: f.walkT,
+    x: f.x, y: f.y, z: f.z, facing: f.facing,
+    // Vart roboten tittar i 3D: mot motståndaren, även snett i djupled.
+    aimX: opp ? opp.x - f.x : f.facing, aimZ: opp ? opp.z - f.z : 0, time: f.time, walkT: f.walkT,
     moving: f.moving, air: !f.onGround, hurt: f.hurt > 0, flash: f.flash, dead: f.dead,
     actKind: a ? a.kind : null, actT: a ? a.t : 0, actDur: a ? a.dur : 1,
     ready: f.energy >= SPECIAL_COST,
@@ -2777,9 +2918,9 @@ function draw() {
   if (r3d) {
     const fighters = [];
     if (fighting) {
-      const aiPose = fighterPose(ai);
+      const aiPose = fighterPose(ai, player);
       if (game.boss) aiPose.silhouette = true;
-      fighters.push({ f: ai, pose: aiPose }, { f: player, pose: fighterPose(player), isPlayer: true });
+      fighters.push({ f: ai, pose: aiPose }, { f: player, pose: fighterPose(player, ai), isPlayer: true });
     }
     const none = [];
     r3d.render({
@@ -2788,6 +2929,8 @@ function draw() {
       strikes: fighting ? game.strikes : none, waves: fighting ? game.waves : none,
       clouds: fighting ? game.clouds : none, mines: fighting ? game.mines : none,
       particles: fighting ? game.particles : none,
+      halos: fighting ? game.halos : none, quakes: fighting ? game.quakes : none,
+      holes: fighting ? game.holes : none,
     });
     ctx.clearRect(0, 0, W, H);
   } else {

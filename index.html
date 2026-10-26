@@ -117,11 +117,12 @@
         <p>Slåss mot AI-robotar och vinn nya robotar till din samling.</p>
         <table class="controls">
           <tr><td><b>A</b> / <b>D</b> eller <b>←</b> / <b>→</b></td><td>gå</td></tr>
-          <tr><td><b>W</b> eller <b>↑</b></td><td>hoppa</td></tr>
+          <tr><td><b>W</b> / <b>S</b> eller <b>↑</b> / <b>↓</b></td><td>gå in i / ut ur bilden</td></tr>
+          <tr><td><b>Shift</b> eller <b>L</b></td><td>hoppa</td></tr>
           <tr><td><b>Mellanslag</b> eller <b>J</b></td><td>vanlig attack</td></tr>
           <tr><td><b>E</b> eller <b>K</b></td><td>specialattack (kostar 50 energi)</td></tr>
         </table>
-        <p class="hint">Allt går att spela med vänster hand: A, D, W, mellanslag och E.</p>
+        <p class="hint">Allt går att spela med vänster hand: WASD, Shift, mellanslag och E. Kliv undan i djupled så missar attackerna!</p>
         <button id="btn-play" type="button" disabled>Spela (Enter)</button>
       </section>
 
@@ -227,8 +228,10 @@
   <!-- Syns bara på pekskärmar (se @media (pointer: coarse) i style.css) — tangentbordet
        fungerar precis som förut på dator, ingen skillnad där. -->
   <div id="touch-controls">
-    <div class="touch-group">
+    <div class="touch-group touch-dpad">
       <button id="touch-left" type="button" class="touch-btn" aria-label="Vänster">◀</button>
+      <button id="touch-up" type="button" class="touch-btn" aria-label="In i bilden">▲</button>
+      <button id="touch-down" type="button" class="touch-btn" aria-label="Ut ur bilden">▼</button>
       <button id="touch-right" type="button" class="touch-btn" aria-label="Höger">▶</button>
     </div>
     <div class="touch-group">
