@@ -113,6 +113,240 @@
     return head;
   }
 
+
+  // ---------- Gudomliga robotar: vingar, gloria, svävande stenar och förmörkelse ----------
+  const glowMat = (color, opacity = 0.8) => new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const shiny = (color, emissive, ei = 0.6) => new THREE.MeshStandardMaterial({
+    color, emissive, emissiveIntensity: ei, metalness: 0.6, roughness: 0.3, transparent: true,
+  });
+
+  // En mjuk rund glöd (för sprites): stops = [[0, 'rgba(...)'], [1, 'rgba(...)']].
+  function radialTex(stops) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 128;
+    const c = cv.getContext('2d');
+    const g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
+    for (const [at, col] of stops) g.addColorStop(at, col);
+    c.fillStyle = g;
+    c.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(cv);
+  }
+  const glowSprite = (tex, color = '#ffffff') => new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
+  let CORONA_TEX = null;
+  let SOFT_TEX = null;
+  const coronaTex = () => CORONA_TEX || (CORONA_TEX = radialTex([
+    [0, 'rgba(255,255,255,0)'], [0.32, 'rgba(255,255,255,0)'], [0.36, 'rgba(255,240,255,1)'],
+    [0.45, 'rgba(190,110,255,0.8)'], [0.7, 'rgba(110,40,200,0.25)'], [1, 'rgba(60,0,120,0)'],
+  ]));
+  const softTex = () => SOFT_TEX || (SOFT_TEX = radialTex([
+    [0, 'rgba(255,255,255,1)'], [0.25, 'rgba(255,255,255,0.6)'], [1, 'rgba(255,255,255,0)'],
+  ]));
+
+  // En textur som är stark nertill och tonar bort uppåt (för ljusväggar och pelare).
+  let FADE_TEX = null;
+  function fadeUp(color) {
+    if (!FADE_TEX) {
+      const cv = document.createElement('canvas');
+      cv.width = 4; cv.height = 64;
+      const c = cv.getContext('2d');
+      const g = c.createLinearGradient(0, 64, 0, 0);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.3, 'rgba(255,255,255,0.5)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = g;
+      c.fillRect(0, 0, 4, 64);
+      FADE_TEX = new THREE.CanvasTexture(cv);
+    }
+    return new THREE.MeshBasicMaterial({ color, map: FADE_TEX, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  }
+  // Ansamlingsskivan runt det svarta hålet: virvlande lila spiralarmar.
+  let ACC_TEX = null;
+  function accretionTex() {
+    if (ACC_TEX) return ACC_TEX;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 256;
+    const c = cv.getContext('2d');
+    const g = c.createRadialGradient(128, 128, 20, 128, 128, 128);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.2, 'rgba(255,230,255,1)');
+    g.addColorStop(0.35, 'rgba(200,110,255,0.85)');
+    g.addColorStop(0.7, 'rgba(110,30,200,0.35)');
+    g.addColorStop(1, 'rgba(40,0,90,0)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, 256, 256);
+    c.globalCompositeOperation = 'destination-out';
+    c.lineWidth = 7;
+    for (let arm = 0; arm < 4; arm++) {
+      c.beginPath();
+      for (let k = 0; k <= 60; k++) {
+        const r = 30 + k * 1.6;
+        const a = arm * Math.PI / 2 + k * 0.07;
+        const x = 128 + Math.cos(a) * r;
+        const y = 128 + Math.sin(a) * r;
+        if (k === 0) c.moveTo(x, y); else c.lineTo(x, y);
+      }
+      c.strokeStyle = 'rgba(0,0,0,0.55)';
+      c.stroke();
+    }
+    ACC_TEX = new THREE.CanvasTexture(cv);
+    return ACC_TEX;
+  }
+
+  function buildDivine(def, upper, inner, fists) {
+    const mats = [];
+    const reg = (mat) => { mats.push({ mat, color: mat.color.clone(), base: mat.opacity }); return mat; };
+    const spin = [];  // grupper som snurrar runt roboten
+    const flap = [];  // vingar
+    const pulse = []; // saker som lyser upp under specialattacken
+    const g = new THREE.Group();
+    upper.add(g);
+
+    // Ett gudomligt sken under fötterna.
+    const aura = new THREE.Mesh(new THREE.RingGeometry(24, 42, 48), reg(glowMat(def.accent, 0.5)));
+    aura.rotation.x = -Math.PI / 2;
+    aura.position.y = 1.5;
+    inner.add(aura);
+    const auraIn = new THREE.Mesh(new THREE.CircleGeometry(24, 40), reg(glowMat(def.accent, 0.18)));
+    auraIn.rotation.x = -Math.PI / 2;
+    auraIn.position.y = 1.2;
+    inner.add(auraIn);
+    pulse.push(aura);
+
+    switch (def.special.type) {
+      case 'halo': { // Seraph: gloria och änglavingar
+        const gold = reg(glowMat('#ffe680', 0.95));
+        const halo = new THREE.Mesh(new THREE.TorusGeometry(15, 2, 10, 40), gold);
+        halo.rotation.x = Math.PI / 2;
+        halo.position.y = 150;
+        g.add(halo);
+        const haloSoft = new THREE.Mesh(new THREE.TorusGeometry(15, 6, 10, 40), reg(glowMat('#ffd04a', 0.25)));
+        haloSoft.rotation.x = Math.PI / 2;
+        haloSoft.position.y = 150;
+        g.add(haloSoft);
+        pulse.push(halo, haloSoft);
+
+        const feather = reg(shiny('#ffffff', '#ffe28a', 0.45));
+        const tipMat = reg(glowMat('#fff3b0', 0.85));
+        for (const side of [-1, 1]) {
+          const pivot = new THREE.Group();
+          pivot.position.set(-20, 96, side * 8);
+          pivot.rotation.z = 0.4;
+          for (let k = 0; k < 6; k++) {
+            const len = 78 - k * 9;
+            const arm = new THREE.Group();
+            arm.rotation.x = side * (0.3 + k * 0.26);
+            const fm = new THREE.Mesh(box(3, len, 12 - k), feather);
+            fm.position.y = len / 2;
+            const tip = new THREE.Mesh(sphere(2.6), tipMat);
+            tip.position.y = len;
+            arm.add(fm, tip);
+            pivot.add(arm);
+          }
+          g.add(pivot);
+          flap.push({ pivot, side });
+        }
+        const motes = new THREE.Group();
+        motes.position.y = 70;
+        for (let k = 0; k < 7; k++) {
+          const a = (k / 7) * Math.PI * 2;
+          const m = new THREE.Mesh(sphere(2.2), gold);
+          m.position.set(Math.cos(a) * 44, Math.sin(a * 3) * 22, Math.sin(a) * 44);
+          motes.add(m);
+        }
+        g.add(motes);
+        spin.push({ g: motes, speed: 1.4 });
+        break;
+      }
+      case 'quake': { // Atlas: lysande sprickor och stenar som svävar runt den
+        const crack = reg(glowMat('#3ee8ff', 0.95));
+        const zig = [[-14, 92, 0.5], [-4, 80, -0.6], [6, 66, 0.4], [-2, 52, -0.5], [10, 42, 0.3]];
+        for (const [x, y, r] of zig) {
+          const c = new THREE.Mesh(box(2.5, 15, 1), crack);
+          c.position.set(x, y, 17.6);
+          c.rotation.z = r;
+          g.add(c);
+          const c2 = new THREE.Mesh(box(1, 15, 2.5), crack);
+          c2.position.set(22.6, y, x * 0.8);
+          c2.rotation.x = r;
+          g.add(c2);
+        }
+        for (const fist of fists) {
+          const fg = new THREE.Mesh(sphere(11), reg(glowMat('#3ee8ff', 0.35)));
+          fist.add(fg);
+          pulse.push(fg);
+        }
+        const rocks = new THREE.Group();
+        rocks.position.y = 58;
+        const rockMat = reg(shiny('#6a7084', '#3ee8ff', 0.3));
+        const runeMat = reg(glowMat('#3ee8ff', 0.9));
+        for (let k = 0; k < 7; k++) {
+          const a = (k / 7) * Math.PI * 2;
+          const r = new THREE.Mesh(new THREE.DodecahedronGeometry(5 + (k % 3) * 2.5), rockMat);
+          r.position.set(Math.cos(a) * 50, Math.sin(a * 2) * 10, Math.sin(a) * 50);
+          r.rotation.set(k, k * 2, 0);
+          const rune = new THREE.Mesh(sphere(1.8), runeMat);
+          rune.position.copy(r.position);
+          rocks.add(r, rune);
+        }
+        g.add(rocks);
+        spin.push({ g: rocks, speed: 0.9 });
+        break;
+      }
+      default: { // Eclipse: en förmörkad sol bakom huvudet och svarta kristaller
+        const corona = glowSprite(coronaTex());
+        corona.scale.set(96, 96, 1);
+        corona.position.set(-22, 118, 0);
+        g.add(corona);
+        reg(corona.material);
+        const sun = new THREE.Mesh(sphere(15), reg(new THREE.MeshBasicMaterial({ color: '#05020a', transparent: true })));
+        sun.position.copy(corona.position);
+        g.add(sun);
+        pulse.push(corona);
+
+        const shardMat = reg(shiny('#1a1028', '#9b4dff', 0.65));
+        const shards = new THREE.Group();
+        shards.position.y = 84;
+        shards.rotation.z = 0.35;
+        for (let k = 0; k < 5; k++) {
+          const a = (k / 5) * Math.PI * 2;
+          const sh = new THREE.Mesh(new THREE.OctahedronGeometry(6), shardMat);
+          sh.scale.y = 2;
+          sh.position.set(Math.cos(a) * 46, 0, Math.sin(a) * 46);
+          shards.add(sh);
+        }
+        g.add(shards);
+        spin.push({ g: shards, speed: -1.2 });
+        const mist = glowSprite(softTex(), '#7a2fd0');
+        mist.scale.set(120, 150, 1);
+        mist.position.set(-4, 70, 0);
+        mist.material.opacity = 0.35;
+        g.add(mist);
+        reg(mist.material);
+      }
+    }
+
+    for (const m of pulse) m.userData.s = m.scale.clone();
+    return {
+      // power: 0..1 medan specialattacken laddas.
+      update(t, power, sil, alpha) {
+        g.visible = !sil;
+        aura.visible = auraIn.visible = !sil;
+        for (const { mat, color, base } of mats) {
+          mat.color.copy(color);
+          mat.opacity = base * alpha;
+        }
+        for (const s of spin) s.g.rotation.y = t * s.speed * (1 + power * 3);
+        for (const w of flap) w.pivot.rotation.x = w.side * (Math.sin(t * (4 + power * 10)) * 0.18 + power * 0.35);
+        const p = 1 + power * 0.8 + Math.sin(t * 5) * 0.06;
+        for (const m of pulse) m.scale.copy(m.userData.s).multiplyScalar(p);
+      },
+    };
+  }
+
   // Bygger en robot. Returnerar en "rigg" med alla delar som poseRobot() rör på.
   function buildRobot(def) {
     const M = makeMaterials(def);
@@ -222,10 +456,11 @@
 
     const glow = new THREE.Mesh(sphere(1), M.glow);
     upper.add(glow);
+    const divine = def.rarity === 'divine' ? buildDivine(def, upper, inner, [front.fist, back.fist]) : null;
 
-    root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    root.traverse((o) => { if (o.isMesh) o.castShadow = o.material.blending !== THREE.AdditiveBlending; });
     glow.castShadow = false;
-    return { def, root, inner, upper, legs, back, front, core, cape, flame, glow, M };
+    return { def, root, inner, upper, legs, back, front, core, cape, flame, glow, divine, M };
   }
 
   const SIL_BODY = new THREE.Color('#232c4a');
@@ -293,6 +528,7 @@
     if (rig.cape) rig.cape.rotation.z = 0.35 + Math.sin(t * 6) * 0.06;
     if (rig.flame) rig.flame.scale.y = 1 + Math.sin(t * 30) * 0.3;
 
+    if (rig.divine) rig.divine.update(t, glow, sil, alpha);
     rig.glow.visible = glow > 0;
     if (glow > 0) {
       rig.glow.position.set(2 + 50, 88, 24);
@@ -520,6 +756,7 @@
       return rig;
     }
 
+    const booms = new Map();
     const bubble = (color, op) => () => new THREE.Mesh(sphere(1), basic(color, op));
     const pools = {
       buff: makePool(scene, () => new THREE.Mesh(sphere(1), new THREE.MeshBasicMaterial({ color: '#ff4632', wireframe: true, transparent: true, opacity: 0.6 }))),
@@ -540,11 +777,26 @@
       mineLight: makePool(scene, () => new THREE.Mesh(sphere(4), basic('#ffd93d'))),
       particle: makePool(scene, () => new THREE.Mesh(box(5, 5, 5), basic('#ffffff', 1))),
       halo: makePool(scene, () => { const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 8, 64), basic('#fff3b0', 0.9, true)); m.rotation.x = -Math.PI / 2; return m; }),
-      haloWall: makePool(scene, () => new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 30, 64, 1, true), basic('#ffe36b', 0.35, true))),
+      haloWall: makePool(scene, () => new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 64, 1, true), fadeUp('#ffe36b'))),
       quake: makePool(scene, () => { const m = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48), basic('#caa968', 0.8, true)); m.rotation.x = -Math.PI / 2; return m; }),
       holeCore: makePool(scene, () => new THREE.Mesh(sphere(1), new THREE.MeshBasicMaterial({ color: '#000000' }))),
       holeRing: makePool(scene, () => new THREE.Mesh(new THREE.TorusGeometry(1, 0.12, 8, 40), basic('#b46bff', 0.85, true))),
       holeDisc: makePool(scene, () => { const m = new THREE.Mesh(new THREE.RingGeometry(0.3, 1, 40), basic('#5a1fa8', 0.45, true)); m.rotation.x = -Math.PI / 2; return m; }),
+      haloPillar: makePool(scene, () => new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 24, 1, true), fadeUp('#ffe680'))),
+      haloSpark: makePool(scene, () => new THREE.Mesh(new THREE.OctahedronGeometry(3.5), basic('#fff6c8', 1, true))),
+      feather: makePool(scene, () => new THREE.Mesh(box(2, 14, 6), basic('#ffffff', 0.9))),
+      quakeSpike: makePool(scene, () => {
+        const m = new THREE.Mesh(cone(1, 1, 5), new THREE.MeshStandardMaterial({ color: '#5a5260', emissive: '#3ee8ff', emissiveIntensity: 0.15, flatShading: true }));
+        m.castShadow = true;
+        return m;
+      }),
+      quakeCrack: makePool(scene, () => new THREE.Mesh(box(1, 2, 6), basic('#3ee8ff', 0.9, true))),
+      quakeDust: makePool(scene, () => { const s = glowSprite(softTex(), '#b9a98a'); s.material.blending = THREE.NormalBlending; return s; }),
+      holeDisk: makePool(scene, () => new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ map: accretionTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }))),
+      holeCorona: makePool(scene, () => glowSprite(coronaTex())),
+      holeBit: makePool(scene, () => new THREE.Mesh(sphere(1), basic('#d9a8ff', 1, true))),
+      boom: makePool(scene, () => new THREE.Mesh(sphere(1), basic('#c47bff', 0.8, true))),
+      boomRing: makePool(scene, () => { const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 8, 48), basic('#ffffff', 1, true)); m.rotation.x = -Math.PI / 2; return m; }),
     };
 
     function fighterEffects(f, isPlayer) {
@@ -650,40 +902,142 @@
       }
       for (const h of s.halos || []) {
         const fade = clamp(1 - h.r / h.max, 0, 1);
+        const age = (h.r - 20) / h.speed;
         const ring = pools.halo.get();
         ring.position.set(wx(h.x), 3, h.z || 0);
         ring.scale.setScalar(h.r);
         ring.material.opacity = 0.9 * fade + 0.1;
         const wall = pools.haloWall.get();
-        wall.position.set(wx(h.x), 15, h.z || 0);
-        wall.scale.set(h.r, 1, h.r);
-        wall.material.opacity = 0.35 * fade;
+        wall.position.set(wx(h.x), 40, h.z || 0);
+        wall.scale.set(h.r, 80, h.r);
+        wall.material.opacity = 0.9 * fade;
+        // En ljuspelare från himlen över Seraph när gloria tänds.
+        if (age < 0.6) {
+          const pil = pools.haloPillar.get();
+          const k = age / 0.6;
+          pil.position.set(wx(h.owner.x), 450, h.owner.z || 0);
+          pil.scale.set(70 * (1 - k * 0.6), 900, 70 * (1 - k * 0.6));
+          pil.material.opacity = 1 - k;
+        }
+        // Gnistor som stiger längs ringen.
+        for (let i = 0; i < 36; i++) {
+          const a = (i / 36) * Math.PI * 2 + i * 0.4;
+          const m = pools.haloSpark.get();
+          const up = (age * 140 + i * 17) % 70;
+          m.position.set(wx(h.x) + Math.cos(a) * h.r, 6 + up, (h.z || 0) + Math.sin(a) * h.r);
+          m.scale.setScalar(fade * (1 - up / 90));
+          m.rotation.y = age * 6 + i;
+        }
+        // Fjädrar som singlar ner runt Seraph.
+        for (let i = 0; i < 10; i++) {
+          const m = pools.feather.get();
+          const a = i * 2.4;
+          const fall = age * 60;
+          m.position.set(wx(h.owner.x) + Math.cos(a) * (30 + i * 6) + Math.sin(age * 4 + i) * 10,
+            170 + (i % 4) * 20 - fall, (h.owner.z || 0) + Math.sin(a) * (30 + i * 6));
+          m.rotation.set(Math.sin(age * 5 + i) * 0.8, a, 0.6 + Math.cos(age * 4 + i) * 0.5);
+          m.material.opacity = 0.9 * fade;
+        }
       }
       for (const q of s.quakes || []) {
-        // En ring som rusar ut från Atlas vid varje skalv, över hela banan.
+        // Varje skalv: en ring rusar ut, stenspjut skjuter upp och sprickor lyser i marken.
+        const cx = wx(q.x);
+        const cz = q.z || 0;
+        const total = q.ticks[q.ticks.length - 1] + 0.3;
+        const crackGrow = clamp(q.t / 0.35, 0, 1) * clamp((total - q.t) / 0.3, 0, 1);
+        for (let i = 0; i < 9; i++) {
+          const a = (i / 9) * Math.PI * 2 + 0.3;
+          const len = 60 + (i % 3) * 50;
+          const m = pools.quakeCrack.get();
+          m.scale.set(len * crackGrow, 1, 1);
+          m.position.set(cx + Math.cos(a) * len * crackGrow / 2, 1.5, cz - Math.sin(a) * len * crackGrow / 2);
+          m.rotation.y = a;
+          m.material.opacity = 0.5 + 0.4 * Math.sin(q.t * 20 + i);
+        }
         for (let i = 0; i < q.i; i++) {
           const age = q.t - q.ticks[i];
           if (age > 0.6) continue;
           const m = pools.quake.get();
-          m.position.set(wx(q.x), 2 + i * 0.3, q.z || 0);
+          m.position.set(cx, 2 + i * 0.3, cz);
           m.scale.setScalar(60 + age * 1600);
           m.material.opacity = 0.8 * (1 - age / 0.6);
+          for (let ringK = 0; ringK < 5; ringK++) {
+            const local = age - ringK * 0.05;
+            if (local < 0 || local > 0.45) continue;
+            const h = Math.sin(Math.PI * local / 0.45) * (70 - ringK * 6);
+            const r = 80 + ringK * 75;
+            const n = 8 + ringK * 3;
+            for (let j = 0; j < n; j++) {
+              const a = (j / n) * Math.PI * 2 + i * 0.7 + ringK;
+              const sp = pools.quakeSpike.get();
+              const w = 10 + ((j * 7 + ringK) % 3) * 4;
+              sp.scale.set(w, h, w);
+              sp.position.set(cx + Math.cos(a) * r, h / 2 - 2, cz + Math.sin(a) * r * 0.8);
+              sp.rotation.set(Math.sin(j) * 0.25, 0, Math.cos(j) * 0.25);
+            }
+          }
+          for (let j = 0; j < 8; j++) {
+            const d = pools.quakeDust.get();
+            const a = (j / 8) * Math.PI * 2 + i;
+            const r = 60 + age * 500;
+            d.position.set(cx + Math.cos(a) * r, 20 + age * 40, cz + Math.sin(a) * r * 0.6);
+            d.scale.setScalar(60 + age * 120);
+            d.material.opacity = 0.5 * (1 - age / 0.6);
+          }
         }
       }
       for (const h of s.holes || []) {
         const grow = clamp((h.max - h.life) / 0.3, 0, 1);
+        const shrink = h.life < 0.25 ? h.life / 0.25 : 1;
+        const sc = grow * (0.4 + 0.6 * shrink);
         const y = 60;
+        const x = wx(h.x);
+        const z = h.z || 0;
         const core = pools.holeCore.get();
-        core.position.set(wx(h.x), y, h.z || 0);
-        core.scale.setScalar(26 * grow);
+        core.position.set(x, y, z);
+        core.scale.setScalar(24 * sc);
+        const corona = pools.holeCorona.get();
+        corona.position.set(x, y, z);
+        corona.scale.setScalar(160 * sc);
+        const disk = pools.holeDisk.get();
+        disk.position.set(x, y, z);
+        disk.scale.setScalar(110 * sc);
+        disk.rotation.set(-1.25, 0, h.life * 5);
         const ring = pools.holeRing.get();
         ring.position.copy(core.position);
-        ring.scale.setScalar(44 * grow);
+        ring.scale.setScalar(40 * sc);
         ring.rotation.set(1.2, h.life * 6, 0);
         const disc = pools.holeDisc.get();
-        disc.position.set(wx(h.x), 2, h.z || 0);
-        disc.scale.setScalar(120 * grow);
+        disc.position.set(x, 2, z);
+        disc.scale.setScalar(130 * grow);
         disc.rotation.z = h.life * 3;
+        // Bitar som virvlar in mot hålet.
+        for (let i = 0; i < 28; i++) {
+          const ph = ((h.max - h.life) * 0.9 + i / 28) % 1;
+          const r = 170 * (1 - ph) + 12;
+          const a = i * 2.1 + ph * 9;
+          const b = pools.holeBit.get();
+          b.position.set(x + Math.cos(a) * r, y + Math.sin(i * 1.7) * 40 * (1 - ph), z + Math.sin(a) * r);
+          b.scale.setScalar(1.5 + ph * 2.5);
+        }
+        booms.set(h, { x, z, t: 0 });
+      }
+      // När hålet imploderat finns det inte längre i spelet: rita smällen ett tag till.
+      for (const [h, b] of booms) {
+        if ((s.holes || []).includes(h)) continue;
+        b.t += 1 / 60;
+        if (b.t > 0.6) { booms.delete(h); continue; }
+        const k = b.t / 0.6;
+        const m = pools.boom.get();
+        m.position.set(b.x, 60, b.z);
+        m.scale.setScalar(20 + k * 170);
+        m.material.opacity = 0.8 * (1 - k);
+        for (let i = 0; i < 2; i++) {
+          const r = pools.boomRing.get();
+          r.position.set(b.x, 4 + i * 56, b.z);
+          r.scale.setScalar(30 + k * (320 - i * 120));
+          r.material.opacity = 1 - k;
+        }
       }
       for (const p of s.particles || []) {
         const m = pools.particle.get();
@@ -759,7 +1113,7 @@
       poseRobot(rig, { x: W / 2, y: FLOOR, facing: 1, time: 0, silhouette }, -0.6);
       rig.root.position.set(0, 0, 0);
       // Stora robotar ska ändå få plats på kortet.
-      rig.root.scale.setScalar(Math.min(1, 1.05 / def.scale));
+      rig.root.scale.setScalar(Math.min(1, (def.rarity === 'divine' ? 0.82 : 1.05) / def.scale));
       c.r.render(c.sc, c.cam);
       ctx2d.drawImage(c.r.domElement, 0, 0, ctx2d.canvas.width, ctx2d.canvas.height);
     }
