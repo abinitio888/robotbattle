@@ -77,7 +77,9 @@
         break;
       case 'cyclops':
         head.add(mesh(box(32, 26, 28), M.body, 0, 109, 0));
-        head.add(mesh(cyl(9, 9, 4), M.dark, 16, 109, 0)).rotation.z = Math.PI / 2;
+        const ring = mesh(cyl(9, 9, 4), M.dark, 16, 109, 0);
+        ring.rotation.z = Math.PI / 2;
+        head.add(ring);
         head.add(mesh(sphere(6), M.eye, 18, 109, 0));
         break;
       case 'horn': {
@@ -207,7 +209,9 @@
 
     const head = buildHead(def, M, upper);
     if (def.extra === 'antenna') {
-      head.add(mesh(cyl(1.5, 1.5, 18, 6), M.dark, -6, 131, 0)).rotation.z = 0.25;
+      const rod = mesh(cyl(1.5, 1.5, 18, 6), M.dark, -6, 131, 0);
+      rod.rotation.z = 0.25;
+      head.add(rod);
       head.add(mesh(sphere(4), M.eye, -8, 141, 0));
     } else if (def.extra === 'fins') {
       const f = mesh(cone(9, 26, 4), M.dark, -20, 118, 0);
@@ -647,7 +651,7 @@
         wall.material.opacity = 0.35 * fade;
       }
       for (const q of s.quakes || []) {
-        // En ring som rusar ut från Titan vid varje skalv, över hela banan.
+        // En ring som rusar ut från Atlas vid varje skalv, över hela banan.
         for (let i = 0; i < q.i; i++) {
           const age = q.t - q.ticks[i];
           if (age > 0.6) continue;

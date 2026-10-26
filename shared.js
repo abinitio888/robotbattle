@@ -306,7 +306,7 @@
       special: { type: 'halo', name: 'Gloria', dmg: 24, heal: 15, desc: 'En ljusring sprider sig längs golvet åt alla håll och läker Seraph med 15 HP. Hoppa över den!' },
     },
     {
-      id: 'titan', name: 'Titan', rarity: 'divine', types: ['stål', 'strid'],
+      id: 'atlas', name: 'Atlas', rarity: 'divine', types: ['stål', 'strid'],
       color: '#3a4256', accent: '#3ee8ff', eye: '#ffffff', head: 'horn', extra: 'shoulders',
       scale: 1.25, hp: 135, speed: 220, punch: 12,
       special: { type: 'quake', name: 'Jordbävning', dmg: 13, desc: 'Tre skalv över hela banan. Står du på marken när det smäller tar du skada — hoppa i rätt ögonblick!' },
