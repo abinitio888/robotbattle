@@ -14,9 +14,9 @@ const BODY_H = 120;
 const PUNCH_REACH = 62;
 // Djupled: robotarna kan också gå in mot och ut från skärmen (z), inte bara åt sidorna. Slag
 // och skott träffar bara om man står i ungefär samma "fil" — man kan alltså kliva undan.
-const DEPTH = 110;        // banan sträcker sig från -DEPTH (långt bort) till +DEPTH (nära kameran)
+const DEPTH = 230;        // banan sträcker sig från -DEPTH (långt bort) till +DEPTH (nära kameran)
 const BODY_D = 40;        // robotens tjocklek i djupled, för träffar
-const DEPTH_SPEED = 0.75; // hur snabbt man går i djupled jämfört med åt sidorna
+const DEPTH_SPEED = 0.9;  // hur snabbt man går i djupled jämfört med åt sidorna
 // Robotdata (namn, statistik, specialattacker) och odds delas med servern via shared.js,
 // så att klienten aldrig kan visa något annat än vad servern faktiskt räknar med.
 const { RARITY, ROBOTS, rankOf, ARENAS } = Shared;

@@ -366,10 +366,10 @@
 
     // En lysande kant längs själva kampbanan, där golvlinjen satt i 2D.
     const edge = new THREE.Mesh(box(W + 40, 3, 4), new THREE.MeshBasicMaterial({ color: arena.line }));
-    edge.position.set(0, 1.5, 140);
+    edge.position.set(0, 1.5, 260);
     g.add(edge);
     const back = new THREE.Mesh(box(W + 40, 3, 4), new THREE.MeshBasicMaterial({ color: arena.line }));
-    back.position.set(0, 1.5, -140);
+    back.position.set(0, 1.5, -260);
     g.add(back);
 
     let seed = 7;
@@ -449,27 +449,36 @@
     const camera = new THREE.PerspectiveCamera(FOV, W / H, 10, 6000);
     // Kameran följer kämparna: den siktar mitt emellan dem och går närmare ju närmare de står
     // varandra, men aldrig så nära att någon av dem hamnar utanför bild.
-    const cam = { x: 0, dist: 1080 };
+    const cam = { x: 0, z: 0, dist: 1080 };
     const halfWidthPerDist = Math.tan((FOV / 2) * Math.PI / 180) * (W / H);
+    // Kameran tittar snett uppifrån och följer robotarna både åt sidorna och i djupled.
     function aimCamera(fighters, dt) {
       let lo = Infinity;
       let hi = -Infinity;
-      for (const { f } of fighters) { lo = Math.min(lo, wx(f.x)); hi = Math.max(hi, wx(f.x)); }
+      let zLo = Infinity;
+      let zHi = -Infinity;
+      for (const { f } of fighters) {
+        lo = Math.min(lo, wx(f.x)); hi = Math.max(hi, wx(f.x));
+        zLo = Math.min(zLo, f.z || 0); zHi = Math.max(zHi, f.z || 0);
+      }
       let x = 0;
+      let z = 0;
       let dist = 1080;
       if (lo <= hi) {
         x = (lo + hi) / 2;
-        dist = clamp(((hi - lo) / 2 + 160) / halfWidthPerDist, 620, 1080);
+        z = (zLo + zHi) / 2;
+        dist = clamp(((hi - lo) / 2 + 160) / halfWidthPerDist + (zHi - zLo) * 0.6, 760, 1150);
         // Kanterna på banan ska aldrig hamna innanför bild: håll kameran inom det x:et tillåter.
         const room = Math.max(0, W / 2 + 40 - dist * halfWidthPerDist);
         x = clamp(x, -room, room);
       }
       const k = 1 - Math.exp(-dt * 4);
       cam.x += (x - cam.x) * k;
+      cam.z += (z - cam.z) * k;
       cam.dist += (dist - cam.dist) * k;
-      const lookY = lerp(95, 110, (cam.dist - 620) / 460);
-      camera.position.set(cam.x, lookY + cam.dist * 0.13, cam.dist);
-      camera.lookAt(cam.x, lookY, 0);
+      const lookY = 70;
+      camera.position.set(cam.x, lookY + cam.dist * 0.5, cam.z + cam.dist * 0.88);
+      camera.lookAt(cam.x, lookY, cam.z);
     }
     let lastT = performance.now();
     const lights = createLights(scene);
