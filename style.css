@@ -718,3 +718,25 @@ button.shop-btn { background: linear-gradient(135deg, #2f9e44, #b8860b); box-sha
 .shop-item .stats { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .shop-item.owned { border-color: #3ddc84; }
 .shop-item button { white-space: nowrap; }
+
+/* ---- Teleport ---- */
+@keyframes portal-glow {
+  0%, 100% { box-shadow: 0 0 14px rgba(62, 232, 255, 0.5), 0 0 0 0 rgba(180, 107, 255, 0.4); }
+  50% { box-shadow: 0 0 26px rgba(180, 107, 255, 0.8), 0 0 0 6px rgba(180, 107, 255, 0); }
+}
+button.teleport-btn {
+  font-size: 20px;
+  padding: 14px 34px;
+  background: linear-gradient(135deg, #3ee8ff, #7a1fff);
+  color: #fff;
+  animation: portal-glow 2.4s ease-in-out infinite;
+}
+.portals { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; width: min(860px, 100%); }
+.portal {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 12px; border-radius: 12px;
+  background: radial-gradient(ellipse at top, rgba(122, 31, 255, 0.18), transparent 70%), #161d33;
+  border: 1px solid #33406a;
+}
+.portal-title { font-size: 17px; font-weight: 700; letter-spacing: 0.05em; }
+.portal-boss #boss-banner { margin: 0; }

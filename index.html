@@ -158,45 +158,69 @@
         <p id="collection" class="hint"></p>
         <p id="level-info" class="hint"></p>
         <div class="bar xp"><div id="xp-fill" class="fill xp"></div></div>
+        <div class="buttons">
+          <button id="btn-teleport" type="button" class="teleport-btn">⚡ Teleport (Enter)</button>
+        </div>
+        <p class="hint">Välj robot nedan — teleporten tar dig sedan till alla sorters matcher.</p>
         <div id="cards"></div>
         <p id="detail" class="hint"></p>
         <button id="btn-rename-wildcard" type="button" class="linklike" hidden>Döp om jokern</button>
         <button id="btn-choose-wildcard-attack" type="button" class="linklike" hidden>Beskriv jokerns attack</button>
-        <div id="boss-banner">
-          <p class="boss-title">⚠ MYSTISKA ROBOTAR ⚠</p>
-          <p class="hint">Du vet aldrig vem du möter — ingen vet vem de är förrän du besegrar dem, en gång var. De blir hårdare ju längre striden pågår — och går att utmana igen när du vill, oavsett nivå.</p>
-          <div id="boss-buttons" class="buttons"></div>
-        </div>
-        <div class="buttons">
-          <button id="btn-world" type="button" class="world-btn">🌍 Världskartan</button>
-          <button id="btn-trade" type="button" class="trade-btn">🔁 Byteshandel</button>
-          <button id="btn-shop" type="button" class="shop-btn">🛒 Butiken</button>
-        </div>
-        <div class="buttons">
-          <button id="btn-monsters" type="button" class="secondary">Monstervärlden</button>
-          <button id="btn-equipment" type="button" class="secondary">Utrustning</button>
-        </div>
-        <div class="buttons">
-          <button id="mode-normal" type="button" class="mode">Vanlig match</button>
-          <button id="mode-stake" type="button" class="mode">Insatsmatch</button>
-        </div>
-        <p id="mode-info" class="hint"></p>
         <p id="select-error" class="error"></p>
         <div class="buttons">
-          <button id="btn-fight" type="button">Kämpa! (Enter)</button>
           <button id="btn-boxes" type="button" class="secondary">Öppna låda</button>
           <button id="btn-daily" type="button" class="daily">Hämta daglig låda</button>
+          <button id="btn-equipment" type="button" class="secondary">Utrustning</button>
+          <button id="btn-shop" type="button" class="shop-btn">🛒 Butiken</button>
+          <button id="btn-trade" type="button" class="trade-btn">🔁 Byteshandel</button>
         </div>
         <p id="daily-info" class="hint"></p>
-        <p id="online-info" class="hint online-info"></p>
-        <div class="buttons">
-          <button id="btn-friend" type="button" class="secondary">Vänmatch (online)</button>
-        </div>
-        <p id="friend-hint" class="hint"></p>
         <div class="buttons">
           <button id="btn-import-guest" type="button" class="daily" hidden>Importera gästsamling</button>
         </div>
         <p id="import-info" class="hint"></p>
+      </section>
+
+      <section id="screen-teleport" hidden>
+        <h2>⚡ Teleport</h2>
+        <p id="teleport-who" class="hint"></p>
+        <div class="portals">
+          <div class="portal">
+            <p class="portal-title">⚔ Arenan</p>
+            <p class="hint">Vanlig match mot AI — eller riktiga spelare när många är inne.</p>
+            <div class="buttons">
+              <button id="mode-normal" type="button" class="mode">Vanlig match</button>
+              <button id="mode-stake" type="button" class="mode">Insatsmatch</button>
+            </div>
+            <p id="mode-info" class="hint"></p>
+            <p id="online-info" class="hint online-info"></p>
+            <button id="btn-fight" type="button">Kämpa! (Enter)</button>
+          </div>
+          <div class="portal portal-boss">
+            <div id="boss-banner">
+              <p class="boss-title">⚠ MYSTISKA ROBOTAR ⚠</p>
+              <p class="hint">Du vet aldrig vem du möter — ingen vet vem de är förrän du besegrar dem, en gång var. De blir hårdare ju längre striden pågår — och går att utmana igen när du vill, oavsett nivå.</p>
+              <div id="boss-buttons" class="buttons"></div>
+            </div>
+          </div>
+          <div class="portal">
+            <p class="portal-title">👾 Monstervärlden</p>
+            <p class="hint">Gå runt bland monster och utmana dem för föremål. Längst in väntar kungarna och drottningen.</p>
+            <button id="btn-monsters" type="button" class="secondary">Res dit</button>
+          </div>
+          <div class="portal">
+            <p class="portal-title">🌍 Världskartan</p>
+            <p class="hint">Bli beskyddare av en världsdel, eller utmana den som är det.</p>
+            <button id="btn-world" type="button" class="world-btn">Res dit</button>
+          </div>
+          <div class="portal">
+            <p class="portal-title">🤝 Vänmatch</p>
+            <p class="hint">Spela mot en kompis med en rumskod.</p>
+            <button id="btn-friend" type="button" class="secondary">Vänmatch (online)</button>
+            <p id="friend-hint" class="hint"></p>
+          </div>
+        </div>
+        <button id="btn-teleport-back" type="button" class="linklike">Tillbaka till robotarna</button>
       </section>
 
       <section id="screen-friend" hidden>

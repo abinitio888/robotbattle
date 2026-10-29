@@ -1162,6 +1162,7 @@ const screens = {
   box: document.getElementById('screen-box'),
   friend: document.getElementById('screen-friend'),
   world: document.getElementById('screen-world'),
+  teleport: document.getElementById('screen-teleport'),
   shop: document.getElementById('screen-shop'),
   trade: document.getElementById('screen-trade'),
 };
@@ -1388,7 +1389,8 @@ function endMatch() {
 
 function onEnter() {
   if (game.phase === 'menu') showSelect();
-  else if (game.phase === 'select') startMatch();
+  else if (game.phase === 'select') showTeleport();
+  else if (game.phase === 'teleport') startMatch();
   else if (game.phase === 'over' && !screens.result.hidden && !game.online) startMatch();
   else if (game.phase === 'box') {
     if (game.acct.boxes > 0) openBox();
@@ -1771,6 +1773,23 @@ byId('btn-trade-back').addEventListener('click', () => showSelect());
 byId('btn-trade-auto').addEventListener('click', autoFillTrade);
 byId('btn-trade-do').addEventListener('click', doTrade);
 
+// ---------- Teleport ----------
+// Alla sorters matcher (arenan, mystiska robotar, Monstervärlden, Världskartan, vänmatch)
+// ligger bakom en egen skärm i stället för allt på robotvalet. showSelect() fyller i
+// knapparnas texter och lägen; här byts bara vilken skärm som syns.
+function showTeleport() {
+  if (!game.acct) return;
+  showSelect();
+  game.phase = 'teleport';
+  byId('teleport-who').textContent = `Vart vill du åka? Du slåss med ${displayName(myDef(robotById[game.selectedId]), true)}.`;
+  showScreen('teleport');
+}
+// Tillbaka dit man kom ifrån: Teleport om man var där, annars robotvalet.
+const backToTeleport = () => (game.acct ? showTeleport() : showSelect());
+
+byId('btn-teleport').addEventListener('click', showTeleport);
+byId('btn-teleport-back').addEventListener('click', () => showSelect());
+
 // ---------- Monstervärlden ----------
 // En helt egen VÄRLD, skild från robotarna: man går runt på en egen bana med sin VALDA robot
 // (se game.selectedId) bland monster utplacerade i bilden, och utmanar det man går fram till
@@ -1975,7 +1994,7 @@ byId('btn-unequip').addEventListener('click', () => reequip(null));
 byId('btn-explore-back').addEventListener('click', () => {
   byId('explore-bar').hidden = true;
   game.explore = null;
-  showSelect();
+  showTeleport();
 });
 
 async function importGuestCollection() {
@@ -3225,7 +3244,7 @@ setInterval(pollWorld, 5000);
 byId('btn-create-room').addEventListener('click', () => createFriendRoom());
 byId('btn-join-room').addEventListener('click', () => joinFriendRoom());
 byId('friend-code-input').addEventListener('keydown', (e) => { if (e.code === 'Enter') joinFriendRoom(); });
-byId('btn-friend-cancel').addEventListener('click', () => { leaveFriendRoom(); showSelect(); });
+byId('btn-friend-cancel').addEventListener('click', () => { leaveFriendRoom(); backToTeleport(); });
 byId('btn-rematch').addEventListener('click', () => {
   if (!friendRoom || !game.online) return;
   if (game.online.isHost) hostRestartMatch(friendRoom);
@@ -3237,7 +3256,7 @@ byId('btn-rematch').addEventListener('click', () => {
 byId('btn-leave-friend').addEventListener('click', () => {
   const fromChallenge = game.result && game.result.challenge;
   leaveFriendRoom();
-  if (fromChallenge) showWorld(); else showSelect();
+  if (fromChallenge) showWorld(); else backToTeleport();
 });
 
 byId('btn-play').addEventListener('click', showSelect);
@@ -3252,15 +3271,15 @@ byId('btn-box-back').addEventListener('click', showSelect);
 byId('btn-friend').addEventListener('click', showFriend);
 byId('btn-monsters').addEventListener('click', showMonsters);
 byId('btn-world').addEventListener('click', () => showWorld());
-byId('btn-world-back').addEventListener('click', showSelect);
+byId('btn-world-back').addEventListener('click', backToTeleport);
 byId('btn-challenge-accept').addEventListener('click', () => answerChallenge(true));
 byId('btn-challenge-decline').addEventListener('click', () => answerChallenge(false));
 byId('btn-equipment').addEventListener('click', () => {
   renderEquipmentModal();
   byId('equipment-prompt').hidden = false;
 });
-byId('mode-normal').addEventListener('click', () => { game.mode = 'normal'; showSelect(); });
-byId('mode-stake').addEventListener('click', () => { game.mode = 'stake'; showSelect(); });
+byId('mode-normal').addEventListener('click', () => { game.mode = 'normal'; showTeleport(); });
+byId('mode-stake').addEventListener('click', () => { game.mode = 'stake'; showTeleport(); });
 
 // ---------- Uppdatering ----------
 const IDLE = { dir: 0, depth: 0, jump: false, attack: false, special: false, super: false };
@@ -3283,7 +3302,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport') return;
 
   if (game.online) {
     updateFriendMatch(dt);
