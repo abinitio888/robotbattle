@@ -949,6 +949,12 @@ const BOSS_TIERS = {
   hard: { skill: { think: [0.1, 0.2], attack: 0.85, dodge: 0.72, special: 0.6, speed: 1.1, jitter: 0.02 }, enrageMax: 4, enrageSeconds: 45 },
 };
 const bossTier = (def) => BOSS_TIERS[def.difficulty] || BOSS_TIERS.medium;
+// Monstervärldens kungar och drottning: den skarpaste AI:n av alla, och en ilska som snabbt
+// växer till 3x skada — drottningen är värst.
+const ROYAL_TIERS = {
+  king: { skill: { think: [0.08, 0.16], attack: 0.9, dodge: 0.8, special: 0.7, speed: 1.15, jitter: 0.02 }, enrageMax: 3, enrageSeconds: 50 },
+  queen: { skill: { think: [0.06, 0.12], attack: 0.95, dodge: 0.88, special: 0.8, speed: 1.2, jitter: 0.01 }, enrageMax: 3.5, enrageSeconds: 40 },
+};
 
 // AI:n blir svårare ju högre nivå du är — lätt i början, nästan SKILL_HARD från nivå 10.
 function skillForLevel(level) {
@@ -1279,12 +1285,12 @@ async function startMatch(modeOverride, monsterId, forceAi) {
 
   const pDef = applyEquipment(myDef(robotById[started.match.robot]));
   const aDef = robotById[started.match.opp]; // en eventuell AI-joker är alltid namnlös, får förvalet
-  game.bossTier = game.boss ? bossTier(aDef) : null;
+  game.bossTier = game.boss ? bossTier(aDef) : aDef.royal ? ROYAL_TIERS[aDef.royal] : null;
   game.online = null;
   game.fighters = null;
   game.player = new Fighter(pDef, W * 0.25, 1);
   game.ai = new Fighter(aDef, W * 0.75, -1);
-  game.brain = makeBrain(game.boss ? game.bossTier.skill : skillForLevel(game.acct.level));
+  game.brain = makeBrain(game.bossTier ? game.bossTier.skill : skillForLevel(game.acct.level));
   game.projectiles = [];
   game.waves = [];
   game.beams = [];
@@ -1316,7 +1322,7 @@ async function startMatch(modeOverride, monsterId, forceAi) {
 
 // Ju längre en bossmatch pågår, desto hårdare slår bossen — upp till 3x skada efter en minut.
 function updateBossEnrage(dt) {
-  if (!game.boss) return;
+  if (!game.bossTier) return;
   game.bossTime += dt;
   const { enrageMax, enrageSeconds } = game.bossTier;
   game.ai.enrage = clamp(1 + (enrageMax - 1) * (game.bossTime / enrageSeconds), 1, enrageMax);
@@ -1558,15 +1564,26 @@ function showMonsters() {
   game.arena = arenaById.direworld;
   showArenaLabel(game.arena);
 
-  const monsterDefs = ROBOTS.filter((r) => r.monster);
+  const commonMonsters = ROBOTS.filter((r) => r.monster && !r.royal);
+  const kings = ROBOTS.filter((r) => r.royal === 'king');
+  const queen = ROBOTS.filter((r) => r.royal === 'queen');
+  const royalMonsters = [kings[0], ...queen, ...kings.slice(1)].filter(Boolean);
   const margin = 90;
   game.explore = {
     player: new Fighter(applyEquipment(myDef(robotById[game.selectedId])), 60, 1),
-    monsters: monsterDefs.map((def, i) => {
-      const m = new Fighter(def, margin + (i * (W - 2 * margin)) / Math.max(1, monsterDefs.length - 1), -1);
-      m.z = (i % 3 - 1) * DEPTH * 0.7; // utspridda i djupled, så man får gå fram till dem
-      return m;
-    }),
+    monsters: [
+      ...commonMonsters.map((def, i) => {
+        const m = new Fighter(def, margin + (i * (W - 2 * margin)) / Math.max(1, commonMonsters.length - 1), -1);
+        m.z = [-0.2, 0.35, 0.85][i % 3] * DEPTH; // utspridda i djupled, så man får gå fram till dem
+        return m;
+      }),
+      // Kungarna och drottningen står på rad längst in i världen, drottningen i mitten.
+      ...royalMonsters.map((def, i) => {
+        const m = new Fighter(def, W * (0.16 + i * 0.227), -1);
+        m.z = -DEPTH * 0.92;
+        return m;
+      }),
+    ],
     near: null,
     attackHeld: false,
   };
@@ -1601,7 +1618,9 @@ function updateExplore(dt) {
   ex.attackHeld = input.attack;
 
   byId('explore-hint').textContent = near
-    ? `MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)})`
+    ? near.def.royal
+      ? `👑 ${near.def.royal === 'queen' ? 'DROTTNING' : 'KUNG'} — långt svårare än alla andra! MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)} + en supervapendel)`
+      : `MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)})`
     : 'Gå med WASD eller piltangenterna.';
 }
 
@@ -1620,12 +1639,13 @@ function drawExplore() {
     fighters.push({ f: ex.player, pose: fighterPose(ex.player), isPlayer: true });
     r3d.render({ arena: game.arena, shake: 0, fighters });
     ctx.clearRect(0, 0, W, H);
-    if (ex.near) {
-      const at = r3d.project(ex.near.x, ex.near.y - ex.near.h - 14);
-      ctx.font = 'bold 16px ui-monospace, Menlo, monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffd93d';
-      ctx.fillText(ex.near.def.name, at.x, at.y);
+    ctx.textAlign = 'center';
+    for (const m of ex.monsters) {
+      if (!m.def.royal && ex.near !== m) continue;
+      const at = r3d.project(m.x, m.y - m.h - 14, m.z);
+      ctx.font = `bold ${m.def.royal ? 15 : 16}px ui-monospace, Menlo, monospace`;
+      ctx.fillStyle = m.def.royal ? (ex.near === m ? '#fff3b0' : '#ffd93d') : '#ffd93d';
+      ctx.fillText(m.def.royal ? `👑 ${m.def.name}` : m.def.name, at.x, at.y);
     }
     return;
   }
@@ -1817,7 +1837,10 @@ function showResult() {
   } else if (game.monster) {
     if (r.itemWon) {
       const item = Shared.EQUIPMENT.find((e) => e.id === r.itemWon);
-      text = 'Du besegrade monstret och fick ett utrustningsföremål!';
+      const opp = robotById[game.matchToken && game.matchToken.opp];
+      text = opp && opp.royal
+        ? `Du besegrade ${opp.name}! Ett kungligt föremål är ditt!`
+        : 'Du besegrade monstret och fick ett utrustningsföremål!';
       if (item) rewardEquipment('DU FICK ETT FÖREMÅL!', item);
       const w = r.superPiece && Shared.EQUIPMENT.find((e) => e.id === r.superPiece);
       if (w && r.superAssembled) {
@@ -1827,7 +1850,10 @@ function showResult() {
         text += ` Du hittade dessutom en del av supervapnet ${w.name} (${r.superPieces}/${w.pieces}).`;
       }
     } else {
-      text = 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
+      const opp = robotById[game.matchToken && game.matchToken.opp];
+      text = opp && opp.royal
+        ? `${opp.name} var för stark. ${opp.royal === 'queen' ? 'Drottningen' : 'Kungen'} väntar kvar — bli starkare och försök igen.`
+        : 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
     }
   } else if (r.won) {
     text = r.gained ? 'Du vann motståndarens robot och fick en låda!' : 'Du fick en låda!';

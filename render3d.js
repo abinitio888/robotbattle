@@ -263,7 +263,57 @@
     inner.add(auraIn);
     pulse.push(aura);
 
-    switch (def.special.type) {
+    switch (def.royal ? 'royal' : def.special.type) {
+      case 'royal': { // Kungar och drottning: guldsken, svävande juveler och en mantel av glöd
+        const sheen = glowSprite(softTex(), def.royal === 'queen' ? '#ff5fd2' : '#ffb347');
+        sheen.scale.set(150, 190, 1);
+        sheen.position.set(0, 80, 0);
+        sheen.material.opacity = 0.45;
+        g.add(sheen);
+        reg(sheen.material);
+        pulse.push(sheen);
+        const gold = reg(shiny('#ffd93d', '#ffb000', 0.6));
+        const gem = reg(glowMat(def.eye, 0.95));
+        const jewels = new THREE.Group();
+        jewels.position.y = 150;
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2;
+          const j = new THREE.Mesh(new THREE.OctahedronGeometry(4.5), k % 2 ? gold : gem);
+          j.position.set(Math.cos(a) * 30, Math.sin(a * 2) * 6, Math.sin(a) * 30);
+          jewels.add(j);
+        }
+        g.add(jewels);
+        spin.push({ g: jewels, speed: 1.1 });
+        // Taggar av guld som en krage runt axlarna.
+        for (let k = 0; k < 7; k++) {
+          const a = (k / 6 - 0.5) * Math.PI;
+          const spike = new THREE.Mesh(cone(3.5, 18, 6), gold);
+          spike.position.set(-4 + Math.cos(a) * 4, 100, Math.sin(a) * 22);
+          spike.rotation.x = Math.sin(a) * 0.6;
+          g.add(spike);
+        }
+        if (def.royal === 'queen') {
+          // Drottningen: ett par skimrande skuggvingar.
+          const wing = reg(glowMat('#b46bff', 0.45));
+          for (const side of [-1, 1]) {
+            const pivot = new THREE.Group();
+            pivot.position.set(-20, 96, side * 8);
+            pivot.rotation.z = 0.35;
+            for (let k = 0; k < 4; k++) {
+              const arm = new THREE.Group();
+              arm.rotation.x = side * (0.35 + k * 0.32);
+              const len = 80 - k * 12;
+              const fm = new THREE.Mesh(box(2, len, 14), wing);
+              fm.position.y = len / 2;
+              arm.add(fm);
+              pivot.add(arm);
+            }
+            g.add(pivot);
+            flap.push({ pivot, side });
+          }
+        }
+        break;
+      }
       case 'halo': { // Seraph: gloria och änglavingar
         const gold = reg(glowMat('#ffe680', 0.95));
         const halo = new THREE.Mesh(new THREE.TorusGeometry(15, 2, 10, 40), gold);
@@ -615,7 +665,8 @@
 
     const glow = new THREE.Mesh(sphere(1), M.glow);
     upper.add(glow);
-    const divine = def.rarity === 'divine' ? buildDivine(def, upper, inner, [front.fist, back.fist]) : null;
+    // Gudomliga robotar och Monstervärldens kungar/drottning får extra prakt (se buildDivine).
+    const divine = def.rarity === 'divine' || def.royal ? buildDivine(def, upper, inner, [front.fist, back.fist]) : null;
 
     root.traverse((o) => { if (o.isMesh) o.castShadow = o.material.blending !== THREE.AdditiveBlending; });
     glow.castShadow = false;
@@ -1450,8 +1501,8 @@
 
     // Var på skärmen (i spelets 960x540-koordinater) en spelpunkt hamnar, för text ovanpå 3D:n.
     const tmp = new THREE.Vector3();
-    function project(x, y) {
-      tmp.set(wx(x), wy(y), 0).project(camera);
+    function project(x, y, z = 0) {
+      tmp.set(wx(x), wy(y), z).project(camera);
       return { x: (tmp.x + 1) * W / 2, y: (1 - tmp.y) * H / 2 };
     }
 
