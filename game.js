@@ -636,6 +636,14 @@ class Fighter {
   }
 }
 
+// Vem en attack från `owner` ska träffa. I en vanlig match är det bara den andra. I en
+// kungastrid (game.allies) slåss spelaren och fyra AI-robotar tillsammans mot kungen, som i
+// sin tur anfaller den i laget den just nu siktar på (game.ai.target, se chooseBossTarget).
+function enemyOf(owner) {
+  if (owner === game.ai) return game.ai.target || game.player;
+  return game.ai;
+}
+
 function separate(a, b) {
   if (a.dead || b.dead) return;
   const minDx = ((a.w + b.w) / 2) * 0.85;
@@ -664,7 +672,7 @@ function updateProjectiles(dt) {
       p.y += p.vy * dt;
     }
     if (!p.grav && (p.y < -40 || p.y > FLOOR)) { p.dead = true; continue; }
-    const target = p.owner === game.player ? game.ai : game.player;
+    const target = enemyOf(p.owner);
     if (p.x < -60 || p.x > W + 60) { p.dead = true; continue; }
     for (const q of list) {
       if (q !== p && !q.dead && q.owner !== p.owner && Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z) < p.r + q.r) {
@@ -714,7 +722,7 @@ function updateWaves(dt) {
   for (const w of game.waves) {
     w.x += w.vx * dt;
     w.travelled += Math.abs(w.vx) * dt;
-    const target = w.owner === game.player ? game.ai : game.player;
+    const target = enemyOf(w.owner);
     if (w.travelled > 560 || w.x < -30 || w.x > W + 30) { w.dead = true; continue; }
     if (Math.abs(w.x - target.x) < target.w / 2 + 14 && inLane(target, w.z, 18) && target.y >= FLOOR - 26) {
       if (hurt(target, w.dmg, w.dir, 420, w.owner)) w.dead = true;
@@ -733,7 +741,7 @@ function updateStrikes(dt) {
     st.t += dt;
     if (!st.done && st.t >= st.delay) {
       st.done = true;
-      const target = st.owner === game.player ? game.ai : game.player;
+      const target = enemyOf(st.owner);
       sparks(st.x, FLOOR - 20, st.owner.def.color, 16, st.z);
       game.shake = Math.max(game.shake, 0.2);
       if (Math.abs(st.x - target.x) < 46 && inLane(target, st.z, 34)) hurt(target, st.dmg, Math.sign(target.x - st.x) || 1, 300, st.owner);
@@ -747,7 +755,7 @@ function updateMines(dt) {
     m.armT = Math.max(0, m.armT - dt);
     m.life -= dt;
     if (m.dead) continue;
-    const target = m.owner === game.player ? game.ai : game.player;
+    const target = enemyOf(m.owner);
     if (m.armT <= 0 && Math.abs(m.x - target.x) < m.r + target.w / 2 && inLane(target, m.z, m.r * 0.6) && target.y >= FLOOR - 40) {
       m.dead = true;
       sparks(m.x, FLOOR - 10, m.color, 20, m.z);
@@ -763,7 +771,7 @@ function updateMines(dt) {
 function updateHalos(dt) {
   for (const h of game.halos) {
     h.r += h.speed * dt;
-    const target = h.owner === game.player ? game.ai : game.player;
+    const target = enemyOf(h.owner);
     const d = Math.hypot(target.x - h.x, target.z - h.z);
     if (!h.hit && Math.abs(d - h.r) < 26 + target.w / 2 && target.y >= FLOOR - 40) {
       if (hurt(target, h.dmg, Math.sign(target.x - h.x) || 1, 380, h.owner)) h.hit = true;
@@ -778,7 +786,7 @@ function updateQuakes(dt) {
     if (q.i < q.ticks.length && q.t >= q.ticks[q.i]) {
       q.i++;
       game.shake = Math.max(game.shake, 0.35);
-      const target = q.owner === game.player ? game.ai : game.player;
+      const target = enemyOf(q.owner);
       sparks(target.x, FLOOR - 4, '#caa968', 10, target.z);
       if (target.y >= FLOOR - 4) hurt(target, q.dmg, Math.sign(target.x - q.owner.x) || 1, 160, q.owner);
     }
@@ -790,7 +798,7 @@ function updateHoles(dt) {
   for (const h of game.holes) {
     h.life -= dt;
     h.tickT -= dt;
-    const target = h.owner === game.player ? game.ai : game.player;
+    const target = enemyOf(h.owner);
     if (target.dead) continue;
     const dx = h.x - target.x;
     const dz = h.z - target.z;
@@ -818,7 +826,7 @@ function updateClocks(dt) {
   for (const c of game.clocks) {
     c.life -= dt;
     c.tickT -= dt;
-    const target = c.owner === game.player ? game.ai : game.player;
+    const target = enemyOf(c.owner);
     const inside = Math.hypot(target.x - c.x, target.z - c.z) < c.r;
     if (inside) target.slowT = 0.15; // håller i sig så länge man står kvar i urverket
     if (c.tickT <= 0) {
@@ -833,7 +841,7 @@ function updateMeteors(dt) {
   for (const m of game.meteors) {
     if (m.boom >= 0) { m.boom += dt; continue; } // smällen ritas en kort stund efter nedslaget
     m.t += dt;
-    const target = m.owner === game.player ? game.ai : game.player;
+    const target = enemyOf(m.owner);
     if (!m.locked && m.t >= 0) {
       // Varje meteor siktar på där motståndaren står precis när den börjar falla.
       m.locked = true;
@@ -855,7 +863,7 @@ function updateMeteors(dt) {
 function updateTides(dt) {
   for (const w of game.tides) {
     w.x += w.dir * w.speed * dt;
-    const target = w.owner === game.player ? game.ai : game.player;
+    const target = enemyOf(w.owner);
     const inGap = Math.abs(target.z - w.gapZ) < w.gapW / 2 - 10;
     if (!w.hit && !target.dead && !inGap && Math.abs(target.x - w.x) < 26 + target.w / 2) {
       if (hurt(target, w.dmg, w.dir, 700, w.owner)) w.hit = true;
@@ -893,7 +901,7 @@ function useSuper(f, opp) {
 function updateSupers(dt) {
   for (const b of game.megabeams) {
     b.t += dt;
-    const target = b.owner === game.player ? game.ai : game.player;
+    const target = enemyOf(b.owner);
     if (!b.hit && b.t >= 0.4) {
       // Strålen laddas en kort stund och skjuter sedan tvärs över hela banan i ens egen fil.
       b.hit = true;
@@ -905,7 +913,7 @@ function updateSupers(dt) {
   for (const b of game.bolts) {
     b.t += dt;
     if (!b.done && b.t >= 0) {
-      const target = b.owner === game.player ? game.ai : game.player;
+      const target = enemyOf(b.owner);
       b.done = true;
       b.x = target.x;
       b.z = target.z;
@@ -926,7 +934,7 @@ function updateClouds(dt) {
     c.tickT -= dt;
     if (c.tickT <= 0) {
       c.tickT = 0.35;
-      const target = c.owner === game.player ? game.ai : game.player;
+      const target = enemyOf(c.owner);
       if (Math.abs(c.x - target.x) < c.r + target.w / 2 && inLane(target, c.z, c.r * 0.6) && target.y >= FLOOR - 60) {
         hurt(target, c.dmg, Math.sign(target.x - c.x) || 1, 40, c.owner);
       }
@@ -950,10 +958,10 @@ const BOSS_TIERS = {
 };
 const bossTier = (def) => BOSS_TIERS[def.difficulty] || BOSS_TIERS.medium;
 // Monstervärldens kungar och drottning: den skarpaste AI:n av alla, och en ilska som snabbt
-// växer till 3x skada — drottningen är värst.
+// växer till 2x skada (drottningen 2,5x).
 const ROYAL_TIERS = {
-  king: { skill: { think: [0.08, 0.16], attack: 0.9, dodge: 0.8, special: 0.7, speed: 1.15, jitter: 0.02 }, enrageMax: 3, enrageSeconds: 50 },
-  queen: { skill: { think: [0.06, 0.12], attack: 0.95, dodge: 0.88, special: 0.8, speed: 1.2, jitter: 0.01 }, enrageMax: 3.5, enrageSeconds: 40 },
+  king: { skill: { think: [0.08, 0.16], attack: 0.9, dodge: 0.8, special: 0.7, speed: 1.15, jitter: 0.02 }, enrageMax: 2, enrageSeconds: 90 },
+  queen: { skill: { think: [0.06, 0.12], attack: 0.95, dodge: 0.88, special: 0.8, speed: 1.2, jitter: 0.01 }, enrageMax: 2.5, enrageSeconds: 80 },
 };
 
 // AI:n blir svårare ju högre nivå du är — lätt i början, nästan SKILL_HARD från nivå 10.
@@ -1205,6 +1213,7 @@ const game = {
   halos: [],
   quakes: [],
   holes: [],
+  allies: [],     // [{ f, brain }] — dina fyra AI-robotar i en kungastrid, annars tomt
   megabeams: [],
   bolts: [],
   superBanner: null,
@@ -1291,6 +1300,7 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.player = new Fighter(pDef, W * 0.25, 1);
   game.ai = new Fighter(aDef, W * 0.75, -1);
   game.brain = makeBrain(game.bossTier ? game.bossTier.skill : skillForLevel(game.acct.level));
+  game.allies = aDef.royal ? makeAllies() : [];
   game.projectiles = [];
   game.waves = [];
   game.beams = [];
@@ -1320,6 +1330,33 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   showScreen(null);
 }
 
+// ---------- Kungastrid: du och fyra robotar mot en kung eller drottningen ----------
+const RAID_ALLIES = 4;
+function makeAllies() {
+  const pool = ROBOTS.filter((r) => !r.monster && !r.boss && r.rarity !== 'divine' && r.id !== 'wildcard');
+  const allies = [];
+  for (let i = 0; i < RAID_ALLIES; i++) {
+    const def = pool[Math.floor(Math.random() * pool.length)];
+    // Lagkamraterna tål lite mer än vanligt, annars hinner kungen slå ut dem direkt.
+    const f = new Fighter({ ...def, hp: Math.round(def.hp * 1.5) }, W * (0.08 + i * 0.07), 1);
+    f.z = [-0.75, -0.3, 0.3, 0.75][i] * DEPTH;
+    allies.push({ f, brain: makeBrain(SKILL_HARD) });
+  }
+  return allies;
+}
+
+// Kungen byter mål med jämna mellanrum: oftast den närmaste i laget, ibland någon annan.
+function chooseBossTarget(dt) {
+  const boss = game.ai;
+  boss.retargetT = (boss.retargetT || 0) - dt;
+  const alive = [game.player, ...game.allies.map((a) => a.f)].filter((f) => !f.dead);
+  if (!alive.length) return;
+  if (boss.target && !boss.target.dead && boss.retargetT > 0) return;
+  boss.retargetT = rand(2.5, 4.5);
+  alive.sort((a, b) => Math.hypot(a.x - boss.x, a.z - boss.z) - Math.hypot(b.x - boss.x, b.z - boss.z));
+  boss.target = Math.random() < 0.7 ? alive[0] : alive[Math.floor(Math.random() * alive.length)];
+}
+
 // Ju längre en bossmatch pågår, desto hårdare slår bossen — upp till 3x skada efter en minut.
 function updateBossEnrage(dt) {
   if (!game.bossTier) return;
@@ -1331,7 +1368,8 @@ function updateBossEnrage(dt) {
 // Matchen mot AI:n är slut. Resultatet (låda, ev. vunnen/förlorad robot) avgörs av servern
 // (eller den lokala motsvarigheten som gäst) — klienten kan inte fuska till en bättre utgång.
 function endMatch() {
-  const won = game.player.hp > 0;
+  // I en kungastrid vinner laget när kungen faller, även om du själv redan ligger ner.
+  const won = game.allies.length ? game.ai.hp <= 0 : game.player.hp > 0;
   game.phase = 'over';
   game.winner = won ? game.player : game.ai;
   game.overT = 1.6;
@@ -1619,7 +1657,7 @@ function updateExplore(dt) {
 
   byId('explore-hint').textContent = near
     ? near.def.royal
-      ? `👑 ${near.def.royal === 'queen' ? 'DROTTNING' : 'KUNG'} — långt svårare än alla andra! MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)} + en supervapendel)`
+      ? `👑 ${near.def.royal === 'queen' ? 'DROTTNING' : 'KUNG'} — du och 4 robotar mot ${near.def.name}! MELLANSLAG/J: Utmana (ger: ${dropName(near.def)} + en supervapendel)`
       : `MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)})`
     : 'Gå med WASD eller piltangenterna.';
 }
@@ -2468,6 +2506,7 @@ function beginFriendMatch(isHost, payload) {
   game.winner = null;
   game.result = null;
   game.mode = 'friend';
+  game.allies = [];
   game.stake = false;
   game.boss = false;
   game.monster = false;
@@ -3076,9 +3115,18 @@ function update(dt) {
 
     const fighting = game.phase === 'fight';
     if (fighting) updateBossEnrage(dt);
+    const allies = game.allies;
+    if (allies.length && fighting) chooseBossTarget(dt);
+    const bossTarget = (allies.length && ai.target) || player;
     player.step(dt, fighting ? playerInput() : IDLE, ai, fighting);
-    ai.step(dt, fighting ? aiInput(ai, player, game.brain, dt) : IDLE, player, fighting);
+    ai.step(dt, fighting ? aiInput(ai, bossTarget, game.brain, dt) : IDLE, bossTarget, fighting);
+    for (const a of allies) a.f.step(dt, fighting ? aiInput(a.f, ai, a.brain, dt) : IDLE, ai, fighting);
     separate(player, ai);
+    if (allies.length) {
+      const team = [player, ...allies.map((x) => x.f)];
+      for (const f of team) separate(f, ai);
+      for (let i = 0; i < team.length; i++) for (let j = i + 1; j < team.length; j++) separate(team[i], team[j]);
+    }
     if (player.act && player.act.kind === 'special') specialBuffer = 0;
 
     updateProjectiles(dt);
@@ -3095,7 +3143,8 @@ function update(dt) {
     updateTides(dt);
     updateSupers(dt);
 
-    if (fighting && (player.hp <= 0 || ai.hp <= 0)) endMatch();
+    const lost = allies.length ? player.hp <= 0 && allies.every((a) => a.f.hp <= 0) : player.hp <= 0;
+    if (fighting && (lost || ai.hp <= 0)) endMatch();
   }
 
   if (game.phase === 'over') {
@@ -3105,6 +3154,22 @@ function update(dt) {
 }
 
 // ---------- Rendering ----------
+// Små HP-mätare över dina robotkamrater i en kungastrid. project: spelkoordinat -> skärm.
+function drawAllyBars(project) {
+  for (const a of game.allies) {
+    const f = a.f;
+    const at = project(f.x, f.y - f.h - 16, f.z);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(at.x - 26, at.y - 4, 52, 7);
+    ctx.fillStyle = f.dead ? '#555' : '#3ddc84';
+    ctx.fillRect(at.x - 25, at.y - 3, 50 * Math.max(0, f.hp / f.maxHp), 5);
+    ctx.font = 'bold 11px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#cfe8d8';
+    ctx.fillText(`🤖 ${f.def.name}`, at.x, at.y - 8);
+  }
+}
+
 function roundRect(c, x, y, w, h, r) {
   c.beginPath();
   c.moveTo(x + r, y);
@@ -3607,6 +3672,7 @@ function draw() {
       const aiPose = fighterPose(ai, player);
       if (game.boss) aiPose.silhouette = true;
       fighters.push({ f: ai, pose: aiPose }, { f: player, pose: fighterPose(player, ai), isPlayer: true });
+      for (const a of game.allies) fighters.push({ f: a.f, pose: fighterPose(a.f, ai) });
     }
     const none = [];
     r3d.render({
@@ -3622,6 +3688,7 @@ function draw() {
       tides: fighting ? game.tides : none,
     });
     ctx.clearRect(0, 0, W, H);
+    if (fighting) drawAllyBars((x, y, z) => r3d.project(x, y, z));
   } else {
     ctx.save();
     if (game.shake > 0) ctx.translate(rand(-1, 1) * game.shake * 24, rand(-1, 1) * game.shake * 24);
@@ -3629,7 +3696,9 @@ function draw() {
 
     if (fighting) {
       drawFighter(ai, false, game.boss);
+      for (const a of game.allies) drawFighter(a.f, false);
       drawFighter(player, true);
+      drawAllyBars((x, y) => ({ x, y }));
       drawProjectiles();
       for (const p of game.particles) {
         ctx.globalAlpha = clamp(p.life / p.max, 0, 1);

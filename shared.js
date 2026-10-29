@@ -415,6 +415,7 @@
       special: { type: 'meteorslam', name: 'Taggregn', dmg: 24, desc: 'Slår ner en jättesmäll där motståndaren står.' },
     },
     // ---- Monstervärldens kungar och drottning ----
+    // Man möter dem alltid fem mot en: du och fyra AI-robotar (se makeAllies i game.js).
     // Långt, långt svårare än de vanliga monstren: enormt mycket HP, hårda slag, dubbelt så
     // starka specialattacker, den skarpaste AI:n och en ilska som växer ju längre striden pågår
     // (se ROYAL_TIER i game.js). De ger var sitt eget kungligt föremål och alltid en
@@ -422,26 +423,26 @@
     {
       id: 'drakkungen', name: 'Drakkungen', rarity: 'monster', monster: true, royal: 'king', types: ['eld', 'flygande'], drop: 'drakkronan',
       color: '#b3261e', accent: '#ffd93d', eye: '#ffb347', head: 'crown', extra: 'cape',
-      scale: 1.8, hp: 650, speed: 230, punch: 20,
-      special: { type: 'annihilate', name: 'Kungseld', dmg: 50, desc: 'Ett förödande eldslag med enorm knockback.' },
+      scale: 1.8, hp: 1150, speed: 230, punch: 14,
+      special: { type: 'annihilate', name: 'Kungseld', dmg: 34, desc: 'Ett förödande eldslag med enorm knockback.' },
     },
     {
       id: 'frostkungen', name: 'Frostkungen', rarity: 'monster', monster: true, royal: 'king', types: ['is', 'vatten'], drop: 'frostmanteln',
       color: '#bfe8ff', accent: '#ffd93d', eye: '#3ee8ff', head: 'crown', extra: 'spikes',
-      scale: 1.75, hp: 600, speed: 240, punch: 18,
-      special: { type: 'freeze', name: 'Evig is', dmg: 26, desc: 'Fryser motståndaren och slår hårt.' },
+      scale: 1.75, hp: 1200, speed: 240, punch: 13,
+      special: { type: 'freeze', name: 'Evig is', dmg: 18, desc: 'Fryser motståndaren och slår hårt.' },
     },
     {
       id: 'stenkungen', name: 'Stenkungen', rarity: 'monster', monster: true, royal: 'king', types: ['sten', 'mark'], drop: 'stenhandskarna',
       color: '#7a6a58', accent: '#ffd93d', eye: '#ff7a1a', head: 'crown', extra: 'shoulders',
-      scale: 1.9, hp: 750, speed: 190, punch: 22,
-      special: { type: 'smash', name: 'Bergsnäve', dmg: 46, desc: 'Ett gigantiskt slag med lång räckvidd.' },
+      scale: 1.9, hp: 1200, speed: 190, punch: 12,
+      special: { type: 'smash', name: 'Bergsnäve', dmg: 26, desc: 'Ett gigantiskt slag med lång räckvidd.' },
     },
     {
       id: 'skuggdrottningen', name: 'Skuggdrottningen', rarity: 'monster', monster: true, royal: 'queen', types: ['mörk', 'psykisk'], drop: 'drottningdiademet',
       color: '#2a0f3a', accent: '#ffd93d', eye: '#ff5fd2', head: 'crown', extra: 'cape',
-      scale: 1.85, hp: 850, speed: 260, punch: 22,
-      special: { type: 'orbital', name: 'Drottningens dom', dmg: 40, desc: 'Tre skuggpelare slår ner. Flytta dig i tid!' },
+      scale: 1.85, hp: 1400, speed: 260, punch: 13,
+      special: { type: 'orbital', name: 'Drottningens dom', dmg: 24, desc: 'Tre skuggpelare slår ner. Flytta dig i tid!' },
     },
   ];
 
