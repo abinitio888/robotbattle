@@ -408,6 +408,27 @@
       passive: { type: 'tidal', name: 'Havets kraft', desc: 'Läker 1,5 HP varje sekund under hela matchen.' },
       special: { type: 'tide', name: 'Tidvatten', dmg: 17, desc: 'Två vattenväggar sköljer över hela banan med bara en lucka var. Gå in i luckan i djupled — hoppa över går inte!' },
     },
+    {
+      id: 'fenrir', name: 'Fenrir', rarity: 'divine', types: ['mörk', 'is'],
+      color: '#2b3550', accent: '#3ee8ff', eye: '#9fe8ff', head: 'horn', extra: 'spikes',
+      scale: 1.2, hp: 135, speed: 270, punch: 11,
+      special: { type: 'wolves', name: 'Vargflock', dmg: 12, desc: 'Tre spökvargar jagar motståndaren genom hela banan och smäller när de når fram. Spring och hoppa!' },
+      passive: { type: 'bloodrage', name: 'Vargblod', desc: 'Under halva HP slår Fenrir 50 % hårdare och springer 20 % fortare.' },
+    },
+    {
+      id: 'gaia', name: 'Gaia', rarity: 'divine', types: ['gräs', 'mark'],
+      color: '#4f8a3a', accent: '#3ee8ff', eye: '#ffe066', head: 'dome', extra: 'none',
+      scale: 1.15, hp: 140, speed: 235, punch: 10,
+      special: { type: 'roots', name: 'Rotfäste', dmg: 16, desc: 'Rötter rusar fram längs motståndarens fil och håller fast den. Kliv ur filen i djupled!' },
+      passive: { type: 'rooted', name: 'Rotad', desc: 'Står Gaia still en sekund slår hon rot och tar 40 % mindre skada.' },
+    },
+    {
+      id: 'valkyria', name: 'Valkyria', rarity: 'divine', types: ['strid', 'flygande'],
+      color: '#d9dde6', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'cape',
+      scale: 1.15, hp: 128, speed: 275, punch: 11,
+      special: { type: 'tether', name: 'Gudakedja', dmg: 7, desc: 'En gyllene kedja binder motståndaren i tre sekunder. Är den för långt bort dras den in och tar skada — gå nära!' },
+      passive: { type: 'execute', name: 'Själsfångst', desc: 'Mot en motståndare under 30 % HP gör Valkyria 50 % mer skada.' },
+    },
     // Monstervärlden: en helt egen sorts motståndare, skild från robotarna — går aldrig att få
     // av en låda eller möta i en vanlig match (precis som bossar), men går heller aldrig in i
     // samlingen om man vinner. Vinner man får man ALLTID ett bestämt utrustningsföremål (drop

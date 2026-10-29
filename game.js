@@ -61,7 +61,10 @@ function hurt(target, dmg, dirX, knock, source) {
   }
   if (target.passive === 'steadfast') { dmg *= 0.85; knock = 0; } // Orubblig
   if (target.def.noKnock) knock = 0; // Magnetstövlarna
+  if (target.passive === 'rooted' && target.stillT >= 1) { dmg *= 0.6; knock = 0; } // Rotad
+  if (source.passive === 'execute' && target.hp < target.maxHp * 0.3) dmg *= 1.5; // Själsfångst
   const punching = source.act && source.act.kind === 'punch';
+  if (punching && source.passive === 'bloodrage' && source.hp < source.maxHp * 0.5) dmg *= 1.5; // Vargblod
   if (punching && source.def.crit && Math.random() < source.def.crit) {
     // Turchippet: en kritisk träff.
     dmg *= 3;
@@ -367,6 +370,32 @@ const SPECIALS = {
       game.holes.push({ owner: f, x: o.x, z: o.z, life: 2.2, max: 2.2, tickT: 0.45, dmg: sp.dmg, blast: sp.blast });
     },
   },
+  wolves: {
+    // Tre spökvargar springer mot motståndaren — de följer efter både åt sidorna och i
+    // djupled, och smäller när de når fram. Spring undan eller hoppa över dem.
+    dur: 0.6, fires: [0.25],
+    fire: (f, o, sp) => {
+      for (let i = 0; i < 3; i++) {
+        game.wolves.push({ owner: f, x: f.x, z: f.z + (i - 1) * 40, t: -i * 0.35, life: 3.2, dmg: sp.dmg, done: false, boom: -1, dir: f.facing });
+      }
+    },
+  },
+  roots: {
+    // Rötter rusar fram längs motståndarens fil (dess djupled när attacken kastas) och håller
+    // fast den den träffar. Kliv ur filen i djupled så missar de.
+    dur: 0.6, fires: [0.25],
+    fire: (f, o, sp) => {
+      game.roots.push({ owner: f, x0: f.x, dir: o.x >= f.x ? 1 : -1, z: o.z, t: 0, dmg: sp.dmg, hit: false });
+    },
+  },
+  tether: {
+    // En gyllene kedja binder motståndaren vid Valkyria i tre sekunder. Är den för långt bort
+    // dras den in och tar skada — men den som står nära klarar sig.
+    dur: 0.5, fires: [0.2],
+    fire: (f, o, sp) => {
+      game.tethers.push({ owner: f, target: o, life: 3, max: 3, tickT: 0.5, dmg: sp.dmg });
+    },
+  },
   timestop: {
     // Ett jättelikt urverk öppnar sig under motståndaren. Inne i det går tiden långsamt (allt
     // går i en tredjedels fart) och varje tick gör ont — ta dig ut ur cirkeln!
@@ -568,6 +597,8 @@ class Fighter {
     this.rewound = false;    // Återspolning: bara en gång per match
     this.hpLog = [];         // Återspolning: HP de senaste sekunderna
     this.hpLogT = 0;
+    this.stillT = 0;         // Rotad: hur länge Gaia stått still
+    this.rootT = 0;          // fasthållen av Gaias Rotfäste
     this.jinxT = 0; // bara jokerns "Förbannelse": halverar energiåterhämtningen medan den räknar ner
     this.vulnT = 0; // bara jokerns "Hån": tar 40 % mer skada medan den räknar ner
     this.dead = false;
@@ -620,6 +651,8 @@ class Fighter {
     this.dragonT = Math.max(0, this.dragonT - dt);
     this.mirrorT = Math.max(0, this.mirrorT - dt);
     this.reviveT = Math.max(0, this.reviveT - dt);
+    this.rootT = Math.max(0, this.rootT - dt);
+    const rooted = this.rootT > 0;
     const floating = this.floatT > 0;
     if (floating) {
       this.floatT -= dt;
@@ -646,9 +679,11 @@ class Fighter {
         if (this.act) {
           this.updateAct(dt * slow, opp);
         } else {
-          walk = input.dir * this.def.speed * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow;
-          walkZ = (input.depth || 0) * this.def.speed * DEPTH_SPEED * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow;
-          if (input.jump && this.onGround) {
+          // Vargblod: Fenrir springer fortare under halva HP.
+          const rage = this.passive === 'bloodrage' && this.hp < this.maxHp * 0.5 ? 1.2 : 1;
+          walk = rooted ? 0 : input.dir * this.def.speed * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow * rage;
+          walkZ = rooted ? 0 : (input.depth || 0) * this.def.speed * DEPTH_SPEED * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow * rage;
+          if (input.jump && this.onGround && !rooted) {
             this.vy = -JUMP_V * (this.def.jumpMul || 1); // Fjäderskorna hoppar högre
             this.onGround = false;
           } else if (input.jump && !this.jumpHeld && !this.onGround && this.passive === 'doublejump' && !this.doubleUsed) {
@@ -679,6 +714,7 @@ class Fighter {
     }
 
     this.moving = walk !== 0 || walkZ !== 0;
+    this.stillT = this.moving || !this.onGround ? 0 : this.stillT + dt; // Rotad
     if (this.moving) this.walkT += dt;
     this.x += (walk + dash + this.kx) * dt;
     this.kx *= Math.exp(-9 * dt);
@@ -896,6 +932,69 @@ function updateHoles(dt) {
   game.holes = game.holes.filter((h) => !h.done);
 }
 
+function updateWolves(dt) {
+  for (const w of game.wolves) {
+    if (w.boom >= 0) { w.boom += dt; continue; }
+    w.t += dt;
+    if (w.t < 0) continue;
+    w.life -= dt;
+    const target = enemyOf(w.owner);
+    const dx = target.x - w.x;
+    const dz = target.z - w.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 1) {
+      w.x += (dx / d) * 330 * dt;
+      w.z += (dz / d) * 330 * dt;
+      w.dir = dx >= 0 ? 1 : -1;
+    }
+    if (d < 34 && target.y > FLOOR - 50 && !target.dead) {
+      w.boom = 0;
+      sparks(w.x, FLOOR - 20, '#9fe8ff', 14, w.z);
+      hurt(target, w.dmg, w.dir, 300, w.owner);
+    } else if (w.life <= 0) {
+      w.boom = 0; // försvinner i ett moln
+    }
+  }
+  game.wolves = game.wolves.filter((w) => w.boom < 0.35);
+}
+
+function updateRoots(dt) {
+  for (const r of game.roots) {
+    r.t += dt;
+    const front = r.x0 + r.dir * 900 * r.t;
+    const target = enemyOf(r.owner);
+    const passed = r.dir > 0 ? front >= target.x : front <= target.x;
+    if (!r.hit && passed && Math.abs(target.z - r.z) < 40 && target.y > FLOOR - 30 && !target.dead) {
+      r.hit = true;
+      if (hurt(target, r.dmg, r.dir, 0, r.owner)) target.rootT = 1.5;
+    }
+  }
+  game.roots = game.roots.filter((r) => r.t < 1.6);
+}
+
+function updateTethers(dt) {
+  for (const c of game.tethers) {
+    c.life -= dt;
+    c.tickT -= dt;
+    const o = c.target;
+    const f = c.owner;
+    if (o.dead || f.dead) { c.life = 0; continue; }
+    if (c.tickT <= 0) {
+      c.tickT = 0.5;
+      const d = Math.hypot(o.x - f.x, o.z - f.z);
+      if (d > 200) {
+        // För långt bort: kedjan rycker in en bit och gör ont.
+        const k = 120 / d;
+        o.x = clamp(o.x + (f.x - o.x) * k, o.w / 2, W - o.w / 2);
+        o.z = clamp(o.z + (f.z - o.z) * k, -DEPTH, DEPTH);
+        o.invuln = 0;
+        hurt(o, c.dmg, Math.sign(f.x - o.x) || 1, 0, f);
+      }
+    }
+  }
+  game.tethers = game.tethers.filter((c) => c.life > 0);
+}
+
 function updateClocks(dt) {
   for (const c of game.clocks) {
     c.life -= dt;
@@ -1108,6 +1207,9 @@ function wantsSpecial(f, o, dist) {
     case 'quake': return o.onGround;
     case 'blackhole': return true;
     case 'timestop': return dist < 300;
+    case 'wolves': return dist > 120;
+    case 'roots': return true;
+    case 'tether': return dist > 250;
     case 'meteor': return true;
     case 'tide': return true;
     default: return false;
@@ -1290,6 +1392,9 @@ const game = {
   halos: [],
   quakes: [],
   holes: [],
+  wolves: [],
+  roots: [],
+  tethers: [],
   allies: [],     // [{ f, brain }] — dina fyra AI-robotar i en kungastrid, annars tomt
   megabeams: [],
   bolts: [],
@@ -1387,6 +1492,9 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.halos = [];
   game.quakes = [];
   game.holes = [];
+  game.wolves = [];
+  game.roots = [];
+  game.tethers = [];
   game.megabeams = [];
   game.bolts = [];
   game.superBanner = null;
@@ -2775,6 +2883,9 @@ function beginFriendMatch(isHost, payload) {
   game.halos = [];
   game.quakes = [];
   game.holes = [];
+  game.wolves = [];
+  game.roots = [];
+  game.tethers = [];
   game.megabeams = [];
   game.bolts = [];
   game.superBanner = null;
@@ -2855,7 +2966,7 @@ function fighterSnapshot(f) {
     x: f.x, y: f.y, z: f.z, facing: f.facing, vy: f.vy, kx: f.kx, onGround: f.onGround,
     hp: f.hp, energy: f.energy, act: f.act, atkCd: f.atkCd, hurt: f.hurt, invuln: f.invuln,
     flash: f.flash, dashT: f.dashT, buffT: f.buffT, shieldT: f.shieldT, reflectT: f.reflectT,
-    frozenT: f.frozenT, jinxT: f.jinxT, vulnT: f.vulnT, dead: f.dead, moving: f.moving,
+    frozenT: f.frozenT, jinxT: f.jinxT, rootT: f.rootT, vulnT: f.vulnT, dead: f.dead, moving: f.moving,
     time: f.time, walkT: f.walkT, enrage: f.enrage,
     dragonT: f.dragonT, mirrorT: f.mirrorT, floatT: f.floatT, reviveT: f.reviveT, superReady: f.superReady,
   };
@@ -2887,6 +2998,7 @@ function applyFighterSnapshot(f, snap) {
   f.reflectT = sanitizeNum(snap.reflectT, f.reflectT);
   f.frozenT = sanitizeNum(snap.frozenT, f.frozenT);
   f.jinxT = sanitizeNum(snap.jinxT, f.jinxT);
+  f.rootT = sanitizeNum(snap.rootT, f.rootT);
   f.vulnT = sanitizeNum(snap.vulnT, f.vulnT);
   f.dead = !!snap.dead;
   f.moving = !!snap.moving;
@@ -2955,6 +3067,9 @@ function updateFriendMatch(dt) {
       updateHalos(dt);
       updateQuakes(dt);
       updateHoles(dt);
+      updateWolves(dt);
+      updateRoots(dt);
+      updateTethers(dt);
       updateClocks(dt);
       updateMeteors(dt);
       updateTides(dt);
@@ -3417,6 +3532,9 @@ function update(dt) {
     updateHalos(dt);
     updateQuakes(dt);
     updateHoles(dt);
+    updateWolves(dt);
+    updateRoots(dt);
+    updateTethers(dt);
     updateClocks(dt);
     updateMeteors(dt);
     updateTides(dt);
@@ -3964,6 +4082,7 @@ function draw() {
       halos: fighting ? game.halos : none, quakes: fighting ? game.quakes : none,
       holes: fighting ? game.holes : none,
       clocks: fighting ? game.clocks : none, meteors: fighting ? game.meteors : none,
+      wolves: fighting ? game.wolves : none, roots: fighting ? game.roots : none, tethers: fighting ? game.tethers : none,
       tides: fighting ? game.tides : none,
     });
     ctx.clearRect(0, 0, W, H);
@@ -4021,7 +4140,12 @@ function draw() {
     hud.enPlayer.classList.toggle('ready', player.energy >= specialCost(player));
     const sp = player.def.superPower;
     const pas = player.def.passive;
-    const pasText = pas ? `✦ ${pas.name}${player.passive === 'shadow' && player.shadowCd > 0 ? ` (${Math.ceil(player.shadowCd)} s)` : ''}${player.passive === 'rewind' && player.rewound ? ' — använd' : ''}` : '';
+    const pasState = player.passive === 'shadow' && player.shadowCd > 0 ? ` (${Math.ceil(player.shadowCd)} s)`
+      : player.passive === 'rewind' && player.rewound ? ' — använd'
+        : player.passive === 'rooted' && player.stillT >= 1 ? ' (rotad!)'
+          : player.passive === 'bloodrage' && player.hp < player.maxHp * 0.5 ? ' (aktiv!)'
+            : '';
+    const pasText = pas ? `✦ ${pas.name}${pasState}` : '';
     const supText = sp ? (player.superReady ? `Q: ${sp.name}` : `${sp.name} — använd`) : '';
     hud.superPlayer.textContent = [pasText, supText].filter(Boolean).join(' · ');
     hud.superPlayer.classList.toggle('used', !!sp && !player.superReady);
