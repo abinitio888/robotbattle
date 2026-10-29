@@ -1158,6 +1158,7 @@ const screens = {
   box: document.getElementById('screen-box'),
   friend: document.getElementById('screen-friend'),
   world: document.getElementById('screen-world'),
+  trade: document.getElementById('screen-trade'),
 };
 const hud = {
   namePlayer: document.getElementById('name-player'),
@@ -1587,6 +1588,144 @@ function showSelect() {
   renderAccountBar();
   showScreen('select');
 }
+
+// ---------- Byteshandel ----------
+// Handlaren är en AI som byter bort robotar mot andra robotar som tillsammans är värda minst
+// lika mycket (se trade() i shared.js) — t.ex. tio Nova (episka) mot en Omega (legendarisk).
+const tradeState = { want: null, give: {} };
+const tradeTotal = () => Object.entries(tradeState.give).reduce((sum, [id, n]) => sum + n * Shared.tradeValue(id), 0);
+// Hur många av en robot man kan ge bort (alltid minst en Bolt kvar).
+const tradeable = (id) => Math.max(0, invCount(id) - (id === 'bolt' ? 1 : 0));
+
+function showTrade() {
+  if (!game.acct) return;
+  game.phase = 'trade';
+  tradeState.give = {};
+  byId('trade-error').textContent = '';
+  byId('trade-reveal').replaceChildren();
+  renderTradeWant();
+  renderTradeGive();
+  showScreen('trade');
+}
+
+function renderTradeWant() {
+  const box = byId('trade-want');
+  box.replaceChildren();
+  for (const def of ROBOTS.filter((r) => Shared.canTradeFor(r.id))) {
+    const card = createCard(myDef(def), { compact: true, selected: tradeState.want === def.id, n: invCount(def.id) || null });
+    const price = document.createElement('div');
+    price.className = 'price';
+    price.textContent = `${Shared.tradeValue(def.id)} p`;
+    card.append(price);
+    card.addEventListener('click', () => { tradeState.want = def.id; byId('trade-reveal').replaceChildren(); renderTradeWant(); renderTradeGive(); });
+    box.append(card);
+  }
+}
+
+function renderTradeGive() {
+  const box = byId('trade-give');
+  box.replaceChildren();
+  const owned = ROBOTS.filter((r) => tradeable(r.id) > 0 && Shared.tradeValue(r.id) > 0)
+    .sort((a, b) => Shared.tradeValue(a.id) - Shared.tradeValue(b.id));
+  if (!owned.length) box.append(el('p', 'hint', 'Du har inga robotar att byta bort än — öppna lådor eller vinn matcher först.'));
+  for (const def of owned) {
+    const n = tradeState.give[def.id] || 0;
+    const row = el('div', `give-row${n ? ' giving' : ''}`);
+    const name = el('span', 'gname', displayName(myDef(def), true));
+    name.append(el('span', 'gmeta', `${RARITY[def.rarity].label} · ${Shared.tradeValue(def.id)} p · du har ${invCount(def.id)}`));
+    const minus = worldButton('−', () => setGive(def.id, n - 1), { secondary: true, disabled: n === 0 });
+    const plus = worldButton('+', () => setGive(def.id, n + 1), { secondary: true, disabled: n >= tradeable(def.id) });
+    row.append(name, minus, el('span', 'gcount', String(n)), plus);
+    box.append(row);
+  }
+  renderTradeTotal();
+}
+
+function setGive(id, n) {
+  tradeState.give[id] = clamp(n, 0, tradeable(id));
+  if (!tradeState.give[id]) delete tradeState.give[id];
+  byId('trade-error').textContent = '';
+  renderTradeGive();
+}
+
+function renderTradeTotal() {
+  const total = tradeTotal();
+  const want = robotById[tradeState.want];
+  const price = want ? Shared.tradeValue(want.id) : 0;
+  const ok = !!want && total >= price;
+  const t = byId('trade-total');
+  t.classList.toggle('ok', ok);
+  t.textContent = want ? `Du ger ${total} p · ${want.name} kostar ${price} p` : `Du ger ${total} p`;
+  byId('btn-trade-do').disabled = !ok;
+  byId('btn-trade-auto').disabled = !want;
+  // Handlaren säger vad den tycker om affären.
+  byId('trade-says').textContent = !want
+    ? '🤖 Handlaren: "Välkommen! Vilken robot vill du ha? Jag byter mot vad som helst som är värt lika mycket."'
+    : total === 0
+      ? `🤖 Handlaren: "${want.name}? Ett fint val. Den kostar ${price} poäng i robotar."`
+      : total < price
+        ? `🤖 Handlaren: "Hmm, det räcker inte riktigt. Jag vill ha ${price - total} poäng till."`
+        : total === price
+          ? '🤖 Handlaren: "Affär! Tryck på Byt!"'
+          : `🤖 Handlaren: "Generöst! Men jag ger ingen växel — du ger ${total - price} poäng för mycket."`;
+}
+
+// Fyller i ett förslag som går så jämnt ut som möjligt: de mest värdefulla som får plats
+// först (och då helst sådana man har flera av), sedan mindre för att fylla upp resten.
+function autoFillTrade() {
+  const want = tradeState.want;
+  if (!want) return;
+  const price = Shared.tradeValue(want);
+  const units = [];
+  for (const def of ROBOTS) {
+    const v = Shared.tradeValue(def.id);
+    if (!v || def.id === want) continue;
+    for (let i = 0; i < tradeable(def.id); i++) units.push({ id: def.id, v, spare: i < invCount(def.id) - 1 });
+  }
+  units.sort((a, b) => (b.v - a.v) || (b.spare - a.spare));
+  const give = {};
+  let left = price;
+  for (const u of units) {
+    if (left <= 0) break;
+    if (u.v > left) continue;
+    give[u.id] = (give[u.id] || 0) + 1;
+    left -= u.v;
+  }
+  if (left > 0) {
+    // Räcker inte utan att runda uppåt: lägg till den billigaste som täcker resten.
+    const used = (id) => give[id] || 0;
+    const extra = units.filter((u) => used(u.id) < tradeable(u.id)).sort((a, b) => a.v - b.v).find((u) => u.v >= left)
+      || units.filter((u) => used(u.id) < tradeable(u.id)).sort((a, b) => b.v - a.v)[0];
+    if (extra) give[extra.id] = used(extra.id) + 1;
+  }
+  tradeState.give = give;
+  byId('trade-error').textContent = tradeTotal() < price ? 'Du har inte robotar värda tillräckligt för den här än.' : '';
+  renderTradeGive();
+}
+
+async function doTrade() {
+  const want = tradeState.want;
+  if (!want) return;
+  try {
+    const r = await net.trade(tradeState.give, want);
+    applyAcct(r.acct);
+  } catch (e) {
+    byId('trade-error').textContent = e.message;
+    return;
+  }
+  tradeState.give = {};
+  renderTradeWant();
+  renderTradeGive();
+  byId('trade-says').textContent = `🤖 Handlaren: "Tack för affären! ${robotById[want].name} är din."`;
+  const reveal = byId('trade-reveal');
+  reveal.replaceChildren(el('div', 'reward-title', 'BYTE KLART!'), createCard(myDef(robotById[want]), { reveal: true, isNew: invCount(want) === 1, n: invCount(want) }));
+  if (want === 'wildcard') maybePromptWildcardName('wildcard');
+}
+
+byId('btn-trade').addEventListener('click', showTrade);
+byId('btn-trade-back').addEventListener('click', () => showSelect());
+byId('btn-trade-auto').addEventListener('click', autoFillTrade);
+byId('btn-trade-do').addEventListener('click', doTrade);
 
 // ---------- Monstervärlden ----------
 // En helt egen VÄRLD, skild från robotarna: man går runt på en egen bana med sin VALDA robot
@@ -3099,7 +3238,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade') return;
 
   if (game.online) {
     updateFriendMatch(dt);

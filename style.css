@@ -689,3 +689,21 @@ button.world-btn {
 #equipment-mega-progress { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .online-info { color: #7ee2a8; }
 .online-info.pvp { color: var(--legendary); font-weight: 700; }
+
+/* ---- Byteshandel ---- */
+button.trade-btn { background: linear-gradient(135deg, #b8860b, #c0392b); box-shadow: 0 0 14px rgba(220, 150, 40, 0.45); }
+.trade-says { font-size: 15px; color: var(--legendary); max-width: 560px; }
+.trade-step { margin: 4px 0 0; font-size: 15px; letter-spacing: 0.06em; }
+.trade-want { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 900px; }
+.trade-want .card { cursor: pointer; width: 92px; }
+.trade-want .card canvas { width: 92px; height: 120px; }
+.trade-want .price { font-size: 12px; font-weight: 700; color: var(--legendary); }
+.trade-give { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; width: min(820px, 100%); }
+.give-row { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; background: #1c2440; border: 1px solid #2a3556; font-size: 12px; text-align: left; }
+.give-row.giving { border-color: var(--legendary); background: #3a2f14; }
+.give-row .gname { flex: 1; font-weight: 700; }
+.give-row .gmeta { color: var(--muted); font-weight: 400; display: block; }
+.give-row button { padding: 2px 9px; font-size: 14px; min-width: 28px; }
+.give-row .gcount { min-width: 18px; text-align: center; font-weight: 700; color: var(--legendary); }
+.trade-total { font-size: 16px; font-weight: 700; }
+.trade-total.ok { color: #3ddc84; }

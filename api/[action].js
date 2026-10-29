@@ -85,6 +85,12 @@ module.exports = dispatch({
     handler: acctAction((acct, body) => S.equipItem(acct, typeof body.itemId === 'string' ? body.itemId : null)),
   },
 
+  // Byteshandel med Handlaren — se trade() i shared.js.
+  trade: {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.trade(acct, body.give, typeof body.want === 'string' ? body.want : null)),
+  },
+
   'box-open': {
     method: 'POST',
     async handler(req) {

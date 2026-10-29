@@ -105,6 +105,13 @@
       return { acct: this.view() };
     }
 
+    async trade(give, want) {
+      const result = S.trade(this.acct, give, want);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
     async finishMatch(match, won) {
       if (!this.match) throw new Error('Ingen match pågår.');
       const result = S.finishMatch(this.acct, this.match, won, Math.random);
@@ -235,6 +242,7 @@
     chooseWildcardSpecial(type) { return this.api('/api/wildcard/special', { type }); }
     importGuest(inv, boxes) { return this.api('/api/import-guest', { inv, boxes }); }
     equipItem(itemId) { return this.api('/api/equip', { itemId }); }
+    trade(give, want) { return this.api('/api/trade', { give, want }); }
     setCustomWildcardAttack(type, name, desc, dmg, heal, types) { return this.api('/api/wildcard/attack', { type, name, desc, dmg, heal, types }); }
     setWildcardColor(hex) { return this.api('/api/wildcard/color', { hex }); }
     setWildcardHead(head) { return this.api('/api/wildcard/head', { head }); }
@@ -316,6 +324,13 @@
 
     async equipItem(itemId) {
       const result = S.equipItem(this.acct, itemId);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async trade(give, want) {
+      const result = S.trade(this.acct, give, want);
       if (result.error) throw new Error(result.error);
       await this.save();
       return { acct: this.view() };

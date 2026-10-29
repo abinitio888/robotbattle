@@ -169,6 +169,7 @@
         </div>
         <div class="buttons">
           <button id="btn-world" type="button" class="world-btn">🌍 Världskartan</button>
+          <button id="btn-trade" type="button" class="trade-btn">🔁 Byteshandel</button>
         </div>
         <div class="buttons">
           <button id="btn-monsters" type="button" class="secondary">Monstervärlden</button>
@@ -222,6 +223,24 @@
         <div id="world-detail"></div>
         <p id="world-status" class="hint"></p>
         <button id="btn-world-back" type="button" class="linklike">Tillbaka</button>
+      </section>
+
+      <section id="screen-trade" hidden>
+        <h2>Byteshandel</h2>
+        <p id="trade-says" class="trade-says"></p>
+        <p class="hint">Varje robot är värd poäng efter hur sällsynt den är: vanlig 1 · sällsynt 3 · episk 10 · legendarisk 100 · gudomlig 500 (en boss du vunnit är värd 150). Tio episka räcker alltså till en legendarisk.</p>
+        <h3 class="trade-step">1. Vilken robot vill du ha?</h3>
+        <div id="trade-want" class="trade-want"></div>
+        <h3 class="trade-step">2. Vad ger du?</h3>
+        <div id="trade-give" class="trade-give"></div>
+        <p id="trade-total" class="trade-total"></p>
+        <p id="trade-error" class="error"></p>
+        <div class="buttons">
+          <button id="btn-trade-auto" type="button" class="secondary">Fyll i åt mig</button>
+          <button id="btn-trade-do" type="button">Byt!</button>
+        </div>
+        <div id="trade-reveal"></div>
+        <button id="btn-trade-back" type="button" class="linklike">Tillbaka</button>
       </section>
 
       <section id="screen-result" hidden>

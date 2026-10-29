@@ -760,6 +760,39 @@
     if (!acct.inv[id]) delete acct.inv[id];
   };
 
+  // ---------- Byteshandel med Handlaren (en AI) ----------
+  // Varje robot har ett bytesvärde efter hur sällsynt den är — tio episka är värda en
+  // legendarisk. Handlaren byter bort vilken vanlig/sällsynt/episk/legendarisk/gudomlig robot som
+  // helst mot robotar man ger som tillsammans är värda minst lika mycket. Bossar går att ge
+  // bort men aldrig att få; jokern och monstren går inte att byta alls.
+  const TRADE_VALUE = { common: 1, rare: 3, epic: 10, legendary: 100, divine: 500, boss: 150 };
+  const tradeValue = (id) => (robotById[id] ? TRADE_VALUE[robotById[id].rarity] || 0 : 0);
+  const canTradeFor = (id) => !!robotById[id] && !robotById[id].boss && tradeValue(id) > 0;
+
+  // give: { robotId: antal }. Returnerar { got } eller { error }.
+  function trade(acct, give, want) {
+    if (!canTradeFor(want)) return { error: 'Den roboten byter Handlaren inte bort.' };
+    if (!give || typeof give !== 'object' || Array.isArray(give)) return { error: 'Välj vad du vill ge.' };
+    let value = 0;
+    const clean = {};
+    for (const [id, raw] of Object.entries(give)) {
+      const n = Math.floor(Number(raw));
+      if (!(n > 0)) continue;
+      if (tradeValue(id) <= 0) return { error: 'Den roboten vill Handlaren inte ha.' };
+      const keep = id === 'bolt' ? 1 : 0; // man har alltid minst en Bolt kvar
+      if (count(acct, id) - keep < n) return { error: `Du har inte så många ${robotById[id].name} att ge.` };
+      clean[id] = n;
+      value += n * tradeValue(id);
+    }
+    if (value === 0) return { error: 'Välj vad du vill ge.' };
+    const price = tradeValue(want);
+    if (value < price) return { error: `Handlaren vill ha robotar värda ${price} poäng — du erbjuder ${value}.` };
+    for (const [id, n] of Object.entries(clean)) for (let i = 0; i < n; i++) removeRobot(acct, id);
+    addRobot(acct, want);
+    if (!acct.inv[acct.selected]) acct.selected = want;
+    return { got: want };
+  }
+
   // rng är en funktion som ger ett tal i [0, 1).
   function rollBox(rng) {
     if (rng() < WILDCARD_CHANCE) return robotById.wildcard;
@@ -1028,5 +1061,6 @@
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
     xpNeeded, addXp,
+    TRADE_VALUE, tradeValue, canTradeFor, trade,
   };
 });
