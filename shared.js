@@ -299,6 +299,73 @@
       special: { type: 'meteorslam', name: 'Meteorsmäll', dmg: 30, desc: 'Slår ner en jättesmäll där motståndaren står.' },
     },
     // Gudomliga: den sällsyntaste nivån man kan få av en låda (1 %), över legendariska.
+    // ---- Fler robotar: tre vanliga, tre sällsynta, tre episka och två legendariska ----
+    {
+      id: 'pip', name: 'Pip', rarity: 'common', types: ['normal'],
+      color: '#ffcf5a', accent: '#8a5a12', eye: '#3a2a00', head: 'round', extra: 'antenna',
+      scale: 0.9, hp: 90, speed: 260, punch: 7,
+      special: { type: 'projectile', name: 'Pipskott', dmg: 16, desc: 'Ett litet men snabbt skott rakt fram.' },
+    },
+    {
+      id: 'grus', name: 'Grus', rarity: 'common', types: ['sten'],
+      color: '#9c8f80', accent: '#4a4038', eye: '#ffd93d', head: 'box', extra: 'shoulders',
+      scale: 1.1, hp: 115, speed: 190, punch: 8,
+      special: { type: 'shockwave', name: 'Grusvåg', dmg: 16, desc: 'Stötvågor av grus längs marken. Hoppa över dem!' },
+    },
+    {
+      id: 'glod', name: 'Glöd', rarity: 'common', types: ['eld'],
+      color: '#d9481c', accent: '#5a1a08', eye: '#ffe066', head: 'cyclops', extra: 'jet',
+      scale: 1, hp: 95, speed: 240, punch: 7,
+      special: { type: 'burst', name: 'Gnistregn', dmg: 6, desc: 'Tre snabba gnistor i rad.' },
+    },
+    {
+      id: 'tornado', name: 'Tornado', rarity: 'rare', types: ['flygande', 'strid'],
+      color: '#c8e6f0', accent: '#4a6a80', eye: '#1a3a5a', head: 'horn', extra: 'fins',
+      scale: 1, hp: 100, speed: 275, punch: 8,
+      special: { type: 'dash', name: 'Virvelstöt', dmg: 24, desc: 'Snurrar fram som en virvelvind och slår till.' },
+    },
+    {
+      id: 'koral', name: 'Koral', rarity: 'rare', types: ['vatten', 'fe'],
+      color: '#ff7f9f', accent: '#1f6f8a', eye: '#ffffff', head: 'dome', extra: 'spikes',
+      scale: 1, hp: 110, speed: 215, punch: 8,
+      special: { type: 'drain', name: 'Korallbett', dmg: 14, heal: 10, desc: 'Slag som lagar dig med 10 HP.' },
+    },
+    {
+      id: 'gnista', name: 'Gnista', rarity: 'rare', types: ['elektrisk', 'kryp'],
+      color: '#c6e03a', accent: '#3a4a10', eye: '#1a1a1a', head: 'box', extra: 'cannon',
+      scale: 0.95, hp: 95, speed: 245, punch: 8,
+      special: { type: 'mine', name: 'Elmina', dmg: 22, desc: 'Lägger en elektrisk mina som smäller när motståndaren kommer nära.' },
+    },
+    {
+      id: 'fantom', name: 'Fantom', rarity: 'epic', types: ['spöke', 'psykisk'],
+      color: '#e8e4ff', accent: '#5a4a9a', eye: '#7a5cff', head: 'hood', extra: 'cape',
+      scale: 1, hp: 100, speed: 255, punch: 9,
+      special: { type: 'beam', name: 'Själsstråle', dmg: 24, desc: 'En spöklik stråle långt fram. Hoppa högt!' },
+    },
+    {
+      id: 'magma', name: 'Magma', rarity: 'epic', types: ['eld', 'sten'],
+      color: '#3a2a26', accent: '#ff5a1a', eye: '#ffb347', head: 'horn', extra: 'shoulders',
+      scale: 1.15, hp: 115, speed: 210, punch: 10,
+      special: { type: 'meteorslam', name: 'Magmasmäll', dmg: 26, desc: 'Slår ner en smäll av glödande lava där motståndaren står.' },
+    },
+    {
+      id: 'viper', name: 'Viper', rarity: 'epic', types: ['gift', 'kryp'],
+      color: '#2fae5a', accent: '#0f3a1a', eye: '#ffe066', head: 'cyclops', extra: 'fins',
+      scale: 0.95, hp: 95, speed: 270, punch: 9,
+      special: { type: 'flurry', name: 'Ormbett', dmg: 7, desc: 'Fyra blixtsnabba bett i följd, det sista hårdast.' },
+    },
+    {
+      id: 'aurora', name: 'Aurora', rarity: 'legendary', types: ['is', 'fe'],
+      color: '#9ff0e0', accent: '#5a3aa8', eye: '#ffffff', head: 'crown', extra: 'shield',
+      scale: 1.1, hp: 108, speed: 245, punch: 9,
+      special: { type: 'orbital', name: 'Norrsken', dmg: 26, desc: 'Tre pelare av norrsken slår ner. Flytta dig i tid!' },
+    },
+    {
+      id: 'ragnar', name: 'Ragnar', rarity: 'legendary', types: ['strid', 'stål'],
+      color: '#8a6a4a', accent: '#c0c8d0', eye: '#ff3b1f', head: 'horn', extra: 'cape',
+      scale: 1.15, hp: 118, speed: 235, punch: 10,
+      special: { type: 'annihilate', name: 'Vikingaslag', dmg: 30, desc: 'Ett förödande yxslag med enorm knockback.' },
+    },
     {
       id: 'seraph', name: 'Seraph', rarity: 'divine', types: ['fe', 'flygande'],
       color: '#fffbe8', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'jet',
