@@ -57,6 +57,10 @@ function hurt(target, dmg, dirX, knock, source) {
   if (source.dragonT > 0 && source.act && source.act.kind === 'punch') dmg *= 2; // Drakhjärtats Drakvrede
   if (target.dragonT > 0) knock = 0; // ...och då kan ingenting knuffa en
   target.hp = Math.max(0, target.hp - dmg);
+  // Vampyrtanden: vanliga slag läker den som slår.
+  if (source.def.lifesteal && source.act && source.act.kind === 'punch') {
+    source.hp = Math.min(source.maxHp, source.hp + dmg * source.def.lifesteal);
+  }
   // Spegelsköldens Spegelvärn: samma skada studsar tillbaka på den som slog.
   if (target.mirrorT > 0 && source !== target && !source.dead) {
     source.hp = Math.max(0, source.hp - dmg);
@@ -489,7 +493,7 @@ class Fighter {
     this.onGround = true;
     this.hp = def.hp;
     this.maxHp = def.hp;
-    this.energy = 30;
+    this.energy = def.startEnergy || 30; // Energikärnan: full energi från start
     this.act = null;
     this.atkCd = 0;
     this.hurt = 0;
@@ -1158,6 +1162,7 @@ const screens = {
   box: document.getElementById('screen-box'),
   friend: document.getElementById('screen-friend'),
   world: document.getElementById('screen-world'),
+  shop: document.getElementById('screen-shop'),
   trade: document.getElementById('screen-trade'),
 };
 const hud = {
@@ -1429,6 +1434,8 @@ function applyEquipment(def) {
   const out = { ...def };
   for (const [stat, amount] of Object.entries(item.stat)) out[stat] = (out[stat] || 0) + amount;
   if (item.power) out.superPower = item.power;
+  if (item.effect) Object.assign(out, item.effect); // butiksvarornas egna effekter, t.ex. startEnergy
+
   return out;
 }
 
@@ -1543,7 +1550,7 @@ function showSelect() {
   byId('detail').textContent = detailText(myDef(robotById[game.selectedId]));
   byId('btn-rename-wildcard').hidden = invCount('wildcard') < 1;
   byId('btn-choose-wildcard-attack').hidden = invCount('wildcard') < 1;
-  byId('collection').textContent = `Robotar: ${totalRobots()} st · Lådor: ${game.acct.boxes}`;
+  byId('collection').textContent = `Robotar: ${totalRobots()} st · Lådor: ${game.acct.boxes} · 🪙 ${game.acct.coins || 0} mynt`;
   byId('level-info').textContent = `Nivå ${game.acct.level} · ${game.acct.xp}/${game.acct.xpNeeded} XP till nästa nivå`;
   byId('xp-fill').style.width = `${(100 * game.acct.xp) / game.acct.xpNeeded}%`;
   // En enda bossknapp: servern slumpar vilken boss du möter, och namnet döljs tills du vunnit
@@ -1588,6 +1595,43 @@ function showSelect() {
   renderAccountBar();
   showScreen('select');
 }
+
+// ---------- Butiken ----------
+// Varor som BARA går att köpa för mynt (se SHOP_ITEMS i shared.js), aldrig vinna i en strid.
+// Mynt tjänar man i matcher och på den dagliga lådan.
+function showShop(message) {
+  if (!game.acct) return;
+  game.phase = 'shop';
+  byId('shop-coins').textContent = `🪙 Du har ${game.acct.coins || 0} mynt`;
+  byId('shop-error').textContent = message || '';
+  const list = byId('shop-list');
+  list.replaceChildren();
+  for (const item of Shared.SHOP_ITEMS) {
+    const owned = (game.acct.equipmentInv[item.id] || 0) > 0;
+    const row = el('div', `shop-item${owned ? ' owned' : ''}`);
+    const info = el('div', 'shop-info');
+    info.append(el('div', 'name', item.name), el('div', 'stats', item.desc));
+    const afford = (game.acct.coins || 0) >= item.shop;
+    const btn = worldButton(owned ? 'Köpt ✓' : `Köp · ${item.shop} 🪙`, () => buyShopItem(item), { disabled: owned || !afford });
+    row.append(info, btn);
+    list.append(row);
+  }
+  showScreen('shop');
+}
+
+async function buyShopItem(item) {
+  try {
+    const r = await net.buyItem(item.id);
+    applyAcct(r.acct);
+  } catch (e) {
+    showShop(e.message);
+    return;
+  }
+  showShop(`Du köpte ${item.name}! Bär den under Utrustning.`);
+}
+
+byId('btn-shop').addEventListener('click', () => showShop());
+byId('btn-shop-back').addEventListener('click', () => showSelect());
 
 // ---------- Byteshandel ----------
 // Handlaren är en AI som byter bort robotar mot andra robotar som tillsammans är värda minst
@@ -2041,6 +2085,7 @@ function showResult() {
   } else {
     text = 'Vinn en match för att få en låda.';
   }
+  if (r.coins) text += ` +${r.coins} 🪙 mynt.`;
   for (const up of r.levelUps || []) {
     rewardItem(`NIVÅ ${up.level}!`, robotById[up.prize], { isNew: true, n: invCount(up.prize) });
   }
@@ -3238,7 +3283,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop') return;
 
   if (game.online) {
     updateFriendMatch(dt);

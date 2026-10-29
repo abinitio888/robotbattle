@@ -707,3 +707,14 @@ button.trade-btn { background: linear-gradient(135deg, #b8860b, #c0392b); box-sh
 .give-row .gcount { min-width: 18px; text-align: center; font-weight: 700; color: var(--legendary); }
 .trade-total { font-size: 16px; font-weight: 700; }
 .trade-total.ok { color: #3ddc84; }
+
+/* ---- Butiken ---- */
+button.shop-btn { background: linear-gradient(135deg, #2f9e44, #b8860b); box-shadow: 0 0 14px rgba(120, 190, 60, 0.45); }
+.shop-coins { font-size: 18px; font-weight: 700; color: var(--legendary); }
+.shop-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; width: min(820px, 100%); }
+.shop-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: #1c2440; border: 1px solid #2a3556; text-align: left; }
+.shop-item .shop-info { flex: 1; }
+.shop-item .name { font-weight: 700; }
+.shop-item .stats { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.shop-item.owned { border-color: #3ddc84; }
+.shop-item button { white-space: nowrap; }

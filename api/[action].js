@@ -85,6 +85,12 @@ module.exports = dispatch({
     handler: acctAction((acct, body) => S.equipItem(acct, typeof body.itemId === 'string' ? body.itemId : null)),
   },
 
+  // Butiken — se buyItem() i shared.js. Mynten finns bara på servern.
+  buy: {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.buyItem(acct, typeof body.itemId === 'string' ? body.itemId : null)),
+  },
+
   // Byteshandel med Handlaren — se trade() i shared.js.
   trade: {
     method: 'POST',

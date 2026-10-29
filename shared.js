@@ -367,19 +367,19 @@
       special: { type: 'freeze', name: 'Frostbett', dmg: 12, desc: 'Fryser motståndaren i 1,1 sekunder.' },
     },
     {
-      id: 'sumpdrake', name: 'Sumpdrake', rarity: 'monster', monster: true, types: ['gift', 'vatten'], drop: 'servoarms',
+      id: 'sumpdrake', name: 'Sumpdrake', rarity: 'monster', monster: true, types: ['gift', 'vatten'], drop: 'drakfjallet',
       color: '#4a7a5a', accent: '#1a3a28', eye: '#c8ff6b', head: 'horn', extra: 'fins',
       scale: 1.15, hp: 130, speed: 190, punch: 9,
       special: { type: 'poison', name: 'Giftmoln', dmg: 12, desc: 'Släpper ett moln som skadar över tid.' },
     },
     {
-      id: 'nattuggla', name: 'Nattuggla', rarity: 'monster', monster: true, types: ['mörk', 'flygande'], drop: 'turbofeet',
+      id: 'nattuggla', name: 'Nattuggla', rarity: 'monster', monster: true, types: ['mörk', 'flygande'], drop: 'uggleogat',
       color: '#3a3450', accent: '#15121f', eye: '#ffd93d', head: 'round', extra: 'jet',
       scale: 0.9, hp: 95, speed: 270, punch: 7,
       special: { type: 'snipe', name: 'Nattprick', dmg: 40, desc: 'Siktar med laser, sedan träffar den hårt.' },
     },
     {
-      id: 'lavagolem', name: 'Lavagolem', rarity: 'monster', monster: true, types: ['eld', 'sten'], drop: 'steelshield',
+      id: 'lavagolem', name: 'Lavagolem', rarity: 'monster', monster: true, types: ['eld', 'sten'], drop: 'lavahjartat',
       color: '#c23a1f', accent: '#4a1206', eye: '#ffd93d', head: 'dome', extra: 'shoulders',
       scale: 1.25, hp: 145, speed: 120, punch: 11,
       special: { type: 'annihilate', name: 'Lavakross', dmg: 28, desc: 'Ett förödande slag med enorm knockback.' },
@@ -397,19 +397,19 @@
       special: { type: 'counter', name: 'Kristallskal', dmg: 18, desc: 'Blir osårbar kort och slår tillbaka om motståndaren är nära.' },
     },
     {
-      id: 'mygghärva', name: 'Mygghärva', rarity: 'monster', monster: true, types: ['kryp', 'gift'], drop: 'lightrig',
+      id: 'mygghärva', name: 'Mygghärva', rarity: 'monster', monster: true, types: ['kryp', 'gift'], drop: 'myggvingarna',
       color: '#8acc3a', accent: '#2a4a0a', eye: '#ff3030', head: 'cyclops', extra: 'fins',
       scale: 0.85, hp: 85, speed: 280, punch: 6,
       special: { type: 'spread', name: 'Svärmanfall', dmg: 7, desc: 'Tre skott i solfjäder.' },
     },
     {
-      id: 'djupvakt', name: 'Djupvakt', rarity: 'monster', monster: true, types: ['vatten', 'spöke'], drop: 'platearmor',
+      id: 'djupvakt', name: 'Djupvakt', rarity: 'monster', monster: true, types: ['vatten', 'spöke'], drop: 'djuphjalmen',
       color: '#2a5a7a', accent: '#0f2a3a', eye: '#7fffd4', head: 'hood', extra: 'fins',
       scale: 1.15, hp: 125, speed: 170, punch: 9,
       special: { type: 'grapple', name: 'Djupkrok', dmg: 16, desc: 'En krok som drar in motståndaren och slår till.' },
     },
     {
-      id: 'taggormen', name: 'Taggormen', rarity: 'monster', monster: true, types: ['gift', 'mark'], drop: 'fangblade',
+      id: 'taggormen', name: 'Taggormen', rarity: 'monster', monster: true, types: ['gift', 'mark'], drop: 'taggpansaret',
       color: '#7a3a8a', accent: '#2a0f3a', eye: '#c8ff6b', head: 'horn', extra: 'spikes',
       scale: 1.05, hp: 115, speed: 210, punch: 10,
       special: { type: 'meteorslam', name: 'Taggregn', dmg: 24, desc: 'Slår ner en jättesmäll där motståndaren står.' },
@@ -459,6 +459,22 @@
     { id: 'fangblade', name: 'Vasständer', stat: { punch: 2 }, desc: '+2 i slagstyrka så länge de bärs.' },
     { id: 'turbofeet', name: 'Turbofötter', stat: { speed: 35 }, desc: '+35 i fart så länge de bärs.' },
     { id: 'lightrig', name: 'Fjäderdon', stat: { speed: 18 }, desc: '+18 i fart så länge de bärs.' },
+    // Ett eget föremål för varje vanligt monster.
+    { id: 'drakfjallet', name: 'Drakfjället', stat: { hp: 18, punch: 1 }, desc: '+18 HP och +1 i slagstyrka. Från Sumpdraken.' },
+    { id: 'uggleogat', name: 'Uggleögat', stat: { punch: 2, speed: 20 }, desc: '+2 i slagstyrka och +20 i fart. Från Nattugglan.' },
+    { id: 'lavahjartat', name: 'Lavahjärtat', stat: { hp: 10, punch: 3 }, desc: '+10 HP och +3 i slagstyrka. Från Lavagolemen.' },
+    { id: 'taggpansaret', name: 'Taggpansaret', stat: { hp: 20, punch: 2 }, desc: '+20 HP och +2 i slagstyrka. Från Taggormen.' },
+    { id: 'myggvingarna', name: 'Myggvingarna', stat: { speed: 28 }, desc: '+28 i fart. Från Mygghärvan.' },
+    { id: 'djuphjalmen', name: 'Djuphjälmen', stat: { hp: 30 }, desc: '+30 HP. Från Djupvakten.' },
+    // Butiksvaror: går BARA att köpa för mynt i Butiken, aldrig att vinna i en strid.
+    // Några av dem har en egen effekt (effect) som inget stridsföremål har.
+    { id: 'raketskorna', name: 'Raketskorna', shop: 300, stat: { speed: 50 }, desc: '+50 i fart.' },
+    { id: 'titanplattan', name: 'Titanplattan', shop: 400, stat: { hp: 45 }, desc: '+45 HP.' },
+    { id: 'plasmanavarna', name: 'Plasmanävarna', shop: 450, stat: { punch: 8 }, desc: '+8 i slagstyrka.' },
+    { id: 'energikarnan', name: 'Energikärnan', shop: 500, stat: {}, effect: { startEnergy: 100 }, desc: 'Du börjar varje match med full energi — specialattacken direkt!' },
+    { id: 'vampyrtanden', name: 'Vampyrtanden', shop: 550, stat: {}, effect: { lifesteal: 0.4 }, desc: 'Dina vanliga slag läker dig med 40 % av skadan de gör.' },
+    { id: 'balansringen', name: 'Balansringen', shop: 650, stat: { hp: 20, punch: 4, speed: 20 }, desc: '+20 HP, +4 i slagstyrka och +20 i fart.' },
+    { id: 'guldrustningen', name: 'Guldrustningen', shop: 1200, stat: { hp: 40, punch: 6, speed: 25 }, desc: '+40 HP, +6 i slagstyrka och +25 i fart. Butikens finaste vara.' },
     // Kungligt: bara från Monstervärldens kungar och drottning.
     { id: 'drakkronan', name: 'Drakkronan', royal: true, stat: { hp: 25, punch: 6 }, desc: '+25 HP och +6 i slagstyrka. Från Drakkungen.' },
     { id: 'frostmanteln', name: 'Frostmanteln', royal: true, stat: { hp: 45 }, desc: '+45 HP. Från Frostkungen.' },
@@ -502,6 +518,24 @@
   const EQUIPMENT_IDS = new Set(EQUIPMENT.map((e) => e.id));
   const SUPER_WEAPONS = EQUIPMENT.filter((e) => e.power);
   const SUPER_PIECE_CHANCE = 0.25; // 25 % chans per monstervinst att hitta en del, oavsett vilket monster
+  const SHOP_ITEMS = EQUIPMENT.filter((e) => e.shop);
+
+  // ---------- Mynt ----------
+  // Tjänas i matcher (se finishMatch) och på den dagliga lådan, och används bara i Butiken.
+  const COINS = { win: 10, loss: 2, stakeWin: 20, bossWin: 30, monsterWin: 15, royalWin: 100, daily: 20 };
+  const MAX_COINS = 10000000;
+  const addCoins = (acct, n) => { acct.coins = Math.min(MAX_COINS, (acct.coins || 0) + n); return n; };
+
+  // Köper en butiksvara. Mynten finns bara på servern (eller i gästens egen webbläsare).
+  function buyItem(acct, id) {
+    const item = SHOP_ITEMS.find((e) => e.id === id);
+    if (!item) return { error: 'Den varan finns inte i Butiken.' };
+    if ((acct.equipmentInv[id] || 0) > 0) return { error: 'Du har redan den.' };
+    if ((acct.coins || 0) < item.shop) return { error: `Du behöver ${item.shop - (acct.coins || 0)} mynt till.` };
+    acct.coins -= item.shop;
+    addEquipment(acct, id);
+    return { bought: id };
+  }
 
   const robotById = Object.fromEntries(ROBOTS.map((r) => [r.id, r]));
   const BOSS_IDS = ROBOTS.filter((r) => r.boss).map((r) => r.id);
@@ -631,7 +665,7 @@
       inv: { bolt: 1 }, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0,
       wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
       wildcardHead: null, wildcardExtra: null,
-      equipmentInv: {}, equippedItem: null, superPieces: {},
+      equipmentInv: {}, equippedItem: null, superPieces: {}, coins: 0,
     };
   }
 
@@ -656,7 +690,7 @@
       inv: {}, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0,
       wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
       wildcardHead: null, wildcardExtra: null,
-      equipmentInv: {}, equippedItem: null, superPieces: {},
+      equipmentInv: {}, equippedItem: null, superPieces: {}, coins: 0,
     };
     if (raw && typeof raw === 'object') {
       const inv = raw.inv && typeof raw.inv === 'object' ? raw.inv : {};
@@ -688,6 +722,7 @@
       if (typeof raw.equippedItem === 'string' && EQUIPMENT_IDS.has(raw.equippedItem) && acct.equipmentInv[raw.equippedItem] > 0) {
         acct.equippedItem = raw.equippedItem;
       }
+      acct.coins = Math.max(0, Math.min(MAX_COINS, Math.floor(Number(raw.coins)) || 0));
       const pieces = raw.superPieces && typeof raw.superPieces === 'object' && !Array.isArray(raw.superPieces) ? raw.superPieces : {};
       // Gamla konton hade bara Megavapnets delar, i megaFragments.
       const old = { megavapen: raw.megaFragments, ...pieces };
@@ -851,9 +886,10 @@
     if (match.monster) {
       const result = {
         won, stake: false, gained: null, lost: null, box: false, levelUps: [], bossWon: null,
-        itemWon: null, superPiece: null, superPieces: 0, superAssembled: null,
+        itemWon: null, superPiece: null, superPieces: 0, superAssembled: null, coins: 0,
       };
       if (won) {
+        result.coins = addCoins(acct, robotById[match.opp] && robotById[match.opp].royal ? COINS.royalWin : COINS.monsterWin);
         const drop = robotById[match.opp] && robotById[match.opp].drop;
         if (drop) {
           addEquipment(acct, drop);
@@ -882,7 +918,8 @@
       }
       return result;
     }
-    const result = { won, stake: match.stake, gained: null, lost: null, box: won, levelUps: [], bossWon: null, itemWon: null };
+    const result = { won, stake: match.stake, gained: null, lost: null, box: won, levelUps: [], bossWon: null, itemWon: null, coins: 0 };
+    result.coins = addCoins(acct, !won ? COINS.loss : match.boss ? COINS.bossWin : match.stake ? COINS.stakeWin : COINS.win);
     if (won) {
       acct.boxes += 1;
       result.levelUps = addXp(acct, 1, rng);
@@ -928,6 +965,7 @@
   function claimDaily(acct, today) {
     if (!(today > acct.daily)) return false;
     acct.boxes += 1;
+    addCoins(acct, COINS.daily);
     acct.daily = today;
     return true;
   }
@@ -953,6 +991,7 @@
       equipmentInv: { ...(acct.equipmentInv || {}) },
       equippedItem: acct.equippedItem || null,
       superPieces: { ...(acct.superPieces || {}) },
+      coins: acct.coins || 0,
     };
   }
 
@@ -1062,5 +1101,6 @@
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
     xpNeeded, addXp,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
+    SHOP_ITEMS, COINS, buyItem,
   };
 });
