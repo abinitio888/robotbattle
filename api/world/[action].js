@@ -8,6 +8,8 @@
 //   challenge:<id>       { id, continent, from, fromName, robot, to, toName, created, status }
 //   incoming:<användare> id för utmaningen som väntar på svar från den beskyddaren
 //   outgoing:<användare> id för den egna senaste utmaningen
+//   online               sorterad mängd: klient-id -> senaste ping (ms), för att räkna hur många som spelar
+//   mm:waiting           { cid, room } — den som väntar på en riktig motståndare just nu
 const crypto = require('crypto');
 const { dispatch, requireSession, sessionOf, redis, HttpError, S, tooMany } = require('../_lib.js');
 
@@ -16,6 +18,14 @@ const ANSWER_SECONDS = 45;          // så länge en utmaning väntar på svar
 const CHALLENGE_TTL = 20 * 60;      // hur länge en utmaning finns kvar alls
 const ONLINE_MS = 20 * 1000;        // "online" = sidan har frågat efter kartan nyligen
 const ABANDONED_MS = 3 * 24 * 3600 * 1000; // en beskyddare som varit borta så här länge kan ersättas
+
+const PING_ALIVE_MS = 25 * 1000;   // räknas som inne om sidan pingat så här nyligen
+// Så många spelare måste vara inne samtidigt för att "Kämpa!" ska ge en riktig motståndare
+// i stället för AI. Kan sättas lägre med PVP_MIN, t.ex. vid test.
+const PVP_MIN = Number(process.env.PVP_MIN) || 100;
+const QUEUE_SECONDS = 25;          // så länge man står i kö innan det blir en vanlig AI-match
+
+const validCid = (cid) => (typeof cid === 'string' && /^[a-z0-9]{8,32}$/.test(cid) ? cid : null);
 
 const parse = (raw) => (raw == null ? null : typeof raw === 'string' ? JSON.parse(raw) : raw);
 
@@ -65,6 +75,73 @@ const challengeView = (c) => ({
 });
 
 module.exports = dispatch({
+  // Sidan pingar med jämna mellanrum: räknar hur många som spelar, håller en beskyddare
+  // "online" på kartan och berättar om en utmaning väntar. Gjord så billig som möjligt —
+  // varje ping är några få databasanrop, och alla spelare pingar hela tiden.
+  ping: {
+    method: 'GET',
+    async handler(req) {
+      const q = req.query || {};
+      const cid = validCid(q.cid);
+      const now = Date.now();
+      if (cid) await redis.zadd('online', { score: now, member: cid });
+      if (Math.random() < 0.1) await redis.zremrangebyscore('online', 0, now - PING_ALIVE_MS);
+      const online = await redis.zcount('online', now - PING_ALIVE_MS, '+inf');
+      const out = { online, pvp: online >= PVP_MIN, pvpMin: PVP_MIN, incoming: null, outgoing: null };
+      const session = await sessionOf(req);
+      if (session) {
+        await redis.set(`seen:${session.key}`, now, { ex: 30 * 24 * 3600 });
+        const incId = await redis.get(`incoming:${session.key}`);
+        if (incId) {
+          const inc = await readChallenge(incId);
+          if (inc && statusOf(inc) === 'pending') out.incoming = challengeView(inc);
+        }
+        if (q.waiting) {
+          const o = await readChallenge(await redis.get(`outgoing:${session.key}`));
+          if (o) out.outgoing = challengeView(o);
+        }
+      }
+      return out;
+    },
+  },
+
+  // Ställ dig i kö för en riktig motståndare. Väntar redan någon annan blir ni ihop direkt
+  // (du går med i dennes rum); annars blir du den som väntar, med ett nytt rum.
+  queue: {
+    method: 'POST',
+    async handler(req, res, body) {
+      const cid = validCid(body.cid);
+      if (!cid) throw new HttpError(400, 'Ogiltig klient.');
+      const now = Date.now();
+      const online = await redis.zcount('online', now - PING_ALIVE_MS, '+inf');
+      if (online < PVP_MIN) return { room: null };
+      const waiting = parse(await redis.getdel('mm:waiting'));
+      if (waiting && waiting.cid !== cid && now - waiting.created < QUEUE_SECONDS * 1000) {
+        return { room: waiting.room, role: 'guest' };
+      }
+      const room = `m${crypto.randomBytes(6).toString('hex')}`;
+      // NX: hann någon annan ställa sig först precis nu, försök bli ihop med den i stället.
+      const ok = await redis.set('mm:waiting', JSON.stringify({ cid, room, created: now }), { nx: true, ex: QUEUE_SECONDS });
+      if (!ok) {
+        const other = parse(await redis.getdel('mm:waiting'));
+        if (other && other.cid !== cid) return { room: other.room, role: 'guest' };
+        await redis.set('mm:waiting', JSON.stringify({ cid, room, created: now }), { ex: QUEUE_SECONDS });
+      }
+      return { room, role: 'host', seconds: QUEUE_SECONDS };
+    },
+  },
+
+  // Lämna kön (t.ex. Tillbaka, eller ingen kom i tid).
+  unqueue: {
+    method: 'POST',
+    async handler(req, res, body) {
+      const cid = validCid(body.cid);
+      const waiting = parse(await redis.get('mm:waiting'));
+      if (cid && waiting && waiting.cid === cid) await redis.del('mm:waiting');
+      return { ok: true };
+    },
+  },
+
   state: {
     method: 'GET',
     async handler(req) {

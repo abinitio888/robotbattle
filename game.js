@@ -1244,8 +1244,15 @@ function showScreen(name) {
 
 // modeOverride: 'boss' från bossknappen (alltid tillgänglig, bossen slumpas) eller 'monster'
 // + monsterId. Annars avgörs läget av de vanliga match/insats-knapparna.
-async function startMatch(modeOverride, monsterId) {
+// forceAi: alltid mot AI, även när tillräckligt många spelar för riktiga motståndare.
+async function startMatch(modeOverride, monsterId, forceAi) {
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  // När tillräckligt många spelar möter en vanlig match en riktig spelare i stället för AI.
+  // Insatsmatcher, bossar och monster är alltid mot AI.
+  if (!forceAi && !modeOverride && !(game.mode === 'stake' && canStake()) && pvpInfo && pvpInfo.pvp && roomCap) {
+    startRealMatch();
+    return;
+  }
   byId('explore-bar').hidden = true; // en match (även en ny monsterstrid) stänger av gå-runt-läget
   if (friendRoom) leaveFriendRoom(); // en match mot AI ska aldrig lämna ett vänmatchsrum öppet i bakgrunden
   const wantStake = game.mode === 'stake' && canStake();
@@ -1532,6 +1539,7 @@ function showSelect() {
     : '';
 
   byId('select-error').textContent = '';
+  renderOnlineInfo();
   renderAccountBar();
   showScreen('select');
 }
@@ -1784,7 +1792,10 @@ function showResult() {
   byId('reward').replaceChildren();
 
   let text;
-  if (r.challenge) {
+  if (r.ranked && !r.error) {
+    // En riktig match räknas som en vanlig match: låda och erfarenhet vid vinst.
+    text = `${r.won ? `Du besegrade ${r.oppName} — en riktig spelare!` : `${r.oppName} vann — en riktig spelare.`} ${r.won ? 'Du fick en låda!' : 'Vinn en match för att få en låda.'}`;
+  } else if (r.challenge) {
     const name = continentName(r.challenge.continent);
     const leader = r.challenge.role === 'leader';
     if (leader && r.won) { byId('result-title').textContent = 'DU FÖRSVARADE!'; text = `Du försvarade ${name} mot ${r.oppName}!`; }
@@ -2242,7 +2253,7 @@ function randomRoomCode() {
 // att en jokerägares egen attack/färg/utrustning syns korrekt för motståndaren också,
 // utan att behöva räknas ut på nytt av någon server.
 function myFriendDef() { return applyEquipment(myDef(robotById[game.selectedId])); }
-function myFriendName() { return displayName(robotById[game.selectedId], true); }
+function myFriendName() { return net.username || 'Gäst'; }
 
 function stopFriendListening() {
   for (const un of friendUnsubs) { try { un(); } catch (e) { /* redan avregistrerad */ } }
@@ -2251,6 +2262,7 @@ function stopFriendListening() {
 
 function leaveFriendRoom() {
   dropChallenge();
+  dropRanked();
   stopFriendListening();
   if (friendRoom) { friendRoom.leave().catch(() => {}); friendRoom = null; }
   game.online = null;
@@ -2266,6 +2278,20 @@ function backToFriendLobby(message) {
 }
 
 function friendPeerLeftMidMatch() {
+  if (game.online && game.online.ranked && !game.online.ended) {
+    // Motståndaren gav upp mitt i en riktig match: du vinner.
+    game.online.ended = true;
+    game.phase = 'over';
+    game.winner = game.player;
+    game.overT = 1.2;
+    finishRanked(true);
+    return;
+  }
+  if (ranked && !game.online) { // motståndaren försvann innan matchen hann börja
+    leaveFriendRoom();
+    startMatch(undefined, undefined, true);
+    return;
+  }
   if (challenge) {
     const ch = challenge;
     leaveFriendRoom();
@@ -2317,8 +2343,9 @@ async function createFriendRoom(opts = {}) {
   if (!roomCap) { friendMessage('Vänmatcher går inte att spela i den här vyn.'); return; }
   leaveFriendRoom();
   challenge = opts.challenge || null;
+  ranked = opts.ranked || null;
   friendMessage('Skapar rum...');
-  const code = opts.challenge ? opts.challenge.id : randomRoomCode();
+  const code = opts.challenge ? opts.challenge.id : opts.ranked ? opts.ranked.room : randomRoomCode();
   let room;
   try {
     room = await roomCap.join(code);
@@ -2329,7 +2356,7 @@ async function createFriendRoom(opts = {}) {
   friendRoom = room;
   byId('friend-join').hidden = true;
   byId('friend-create').hidden = true;
-  byId('friend-code').hidden = !!challenge;
+  byId('friend-code').hidden = !!(challenge || ranked);
   byId('friend-code-text').textContent = code.toUpperCase();
   friendMessage(challenge
     ? `Väntar på att ${challenge.oppName} svarar på din utmaning om ${continentName(challenge.continent)}...`
@@ -2350,10 +2377,11 @@ async function createFriendRoom(opts = {}) {
 
 async function joinFriendRoom(opts = {}) {
   if (!roomCap) { friendMessage('Vänmatcher går inte att spela i den här vyn.'); return; }
-  const code = opts.challenge ? opts.challenge.id : byId('friend-code-input').value.trim().toLowerCase();
-  if (!opts.challenge && !/^[a-z0-9]{4}$/.test(code)) { friendMessage('Ange den fyrtecken-koden du fick av din vän.'); return; }
+  const code = opts.challenge ? opts.challenge.id : opts.ranked ? opts.ranked.room : byId('friend-code-input').value.trim().toLowerCase();
+  if (!opts.challenge && !opts.ranked && !/^[a-z0-9]{4}$/.test(code)) { friendMessage('Ange den fyrtecken-koden du fick av din vän.'); return; }
   leaveFriendRoom();
   challenge = opts.challenge || null;
+  ranked = opts.ranked || null;
   friendMessage('Ansluter...');
   let room;
   try {
@@ -2388,7 +2416,13 @@ function beginFriendMatch(isHost, payload) {
   game.fighters = [hostF, guestF];
   game.player = isHost ? hostF : guestF;
   game.ai = isHost ? guestF : hostF;
-  game.online = { isHost, oppName: challenge ? challenge.oppName : isHost ? payload.guest.name : payload.host.name, ended: false, frame: 0, lastGuestInput: { ...IDLE }, challenge };
+  game.online = { isHost, oppName: challenge ? challenge.oppName : isHost ? payload.guest.name : payload.host.name, ended: false, frame: 0, lastGuestInput: { ...IDLE }, challenge, ranked, rankedToken: null };
+  // En riktig match ger låda och erfarenhet precis som mot AI — via samma matchbiljett.
+  if (ranked) {
+    net.startMatch(game.selectedId, 'normal')
+      .then((r) => { if (game.online && game.online.ranked === ranked) game.online.rankedToken = r.match; })
+      .catch(() => {});
+  }
   game.projectiles = [];
   game.waves = [];
   game.beams = [];
@@ -2452,6 +2486,7 @@ function hostEndMatch(winnerIsHost) {
   game.overT = 1.6;
   game.result = { won: winnerIsHost, friend: true, oppName: game.online.oppName };
   finishChallenge(winnerIsHost);
+  finishRanked(winnerIsHost);
 }
 
 function guestEndMatch(data) {
@@ -2463,6 +2498,7 @@ function guestEndMatch(data) {
   game.overT = 1.6;
   game.result = { won: iWon, friend: true, oppName: game.online.oppName };
   finishChallenge(iWon);
+  finishRanked(iWon);
 }
 
 function sanitizeNum(v, fallback) { return typeof v === 'number' && Number.isFinite(v) ? v : fallback; }
@@ -2592,6 +2628,74 @@ function updateFriendMatch(dt) {
   }
 }
 
+
+// ---------- Riktiga motståndare ----------
+// När tillräckligt många spelar (pvpInfo.pvp, se api/world/[action].js) ställer "Kämpa!" en i
+// kö i stället för att starta en AI-match. Två i kö paras ihop i ett vänmatchsrum; kommer
+// ingen i tid blir det en vanlig AI-match ändå.
+const CLIENT_ID = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
+let pvpInfo = null; // { online, pvp, pvpMin } från senaste pingen
+let ranked = null;  // { room } medan man väntar på eller spelar en riktig match
+
+function renderOnlineInfo() {
+  const info = byId('online-info');
+  if (!pvpInfo) { info.textContent = ''; return; }
+  info.classList.toggle('pvp', pvpInfo.pvp);
+  info.textContent = pvpInfo.pvp
+    ? `🟢 ${pvpInfo.online} spelare är inne — du möter riktiga spelare i stället för AI!`
+    : `🟢 ${pvpInfo.online} ${pvpInfo.online === 1 ? 'spelare' : 'spelare'} inne just nu. När ${pvpInfo.pvpMin} är inne möter du riktiga spelare i stället för AI.`;
+}
+
+// Matchen tar slut: hämta låda/erfarenhet med matchbiljetten, som i en AI-match.
+function finishRanked(iWon) {
+  const om = game.online;
+  if (!om || !om.ranked) return;
+  const oppName = om.oppName;
+  game.result = null; // resultatskärmen väntar tills servern svarat
+  const done = (extra) => { game.result = { won: iWon, ranked: true, oppName, ...extra }; };
+  if (!om.rankedToken) { done({ error: 'Matchen hann inte registreras.' }); return; }
+  net.finishMatch(om.rankedToken, iWon)
+    .then((r) => { applyAcct(r.acct); done(r.result); })
+    .catch((e) => done({ error: e.message }));
+}
+
+function dropRanked() {
+  if (ranked && !game.online) {
+    const api = worldApi();
+    if (api) api.mmUnqueue(CLIENT_ID).catch(() => {});
+  }
+  ranked = null;
+}
+
+async function startRealMatch() {
+  if (friendRoom) leaveFriendRoom();
+  byId('explore-bar').hidden = true;
+  game.explore = null;
+  const api = worldApi();
+  let q = null;
+  try { q = api ? await api.mmQueue(CLIENT_ID) : null; } catch (e) { q = null; }
+  if (!q || !q.room) { startMatch(undefined, undefined, true); return; }
+  game.phase = 'friend';
+  showScreen('friend');
+  byId('friend-join').hidden = true;
+  byId('friend-create').hidden = true;
+  byId('friend-code').hidden = true;
+  const mine = { room: q.room };
+  if (q.role === 'host') {
+    await createFriendRoom({ ranked: mine });
+    friendMessage('Letar efter en riktig motståndare...');
+  } else {
+    await joinFriendRoom({ ranked: mine });
+    friendMessage('Hittade en riktig motståndare! Matchen börjar...');
+  }
+  // Ingen kom (eller den man hittade försvann) — då blir det en vanlig AI-match i stället.
+  setTimeout(() => {
+    if (ranked === mine && !game.online) {
+      leaveFriendRoom();
+      startMatch(undefined, undefined, true);
+    }
+  }, (q.role === 'host' ? q.seconds || 25 : 12) * 1000);
+}
 
 // ---------- Världskartan ----------
 // Varje världsdel kan ha en beskyddare: en riktig spelare (se api/world/[action].js). Titeln
@@ -2833,16 +2937,27 @@ async function answerChallenge(accept) {
 // man får som beskyddare, och svaret på en utmaning man själv skickat.
 let worldPolling = false;
 async function pollWorld() {
-  if (worldPolling || net.kind !== 'remote' || document.hidden) return;
+  const api = worldApi();
+  if (worldPolling || !api || document.hidden) return;
   const fighting = game.phase === 'intro' || game.phase === 'fight';
   worldPolling = true;
-  const st = await refreshWorld();
+  let st = null;
+  try {
+    st = await api.worldPing(CLIENT_ID, !!(challenge && challenge.role === 'challenger'));
+  } catch (e) {
+    st = null;
+  }
+  if (st && game.phase === 'world') {
+    await refreshWorld();
+    if (game.phase === 'world') renderWorld();
+  }
   worldPolling = false;
   if (!st) return;
-  if (game.phase === 'world') renderWorld();
+  pvpInfo = st;
+  renderOnlineInfo();
 
   const inc = st.incoming;
-  if (inc && !fighting && !game.online && !challenge && (!incomingShown || incomingShown.id !== inc.id)) showIncoming(inc);
+  if (inc && !fighting && !game.online && !challenge && !ranked && (!incomingShown || incomingShown.id !== inc.id)) showIncoming(inc);
   if (!inc && incomingShown) hideIncoming();
 
   const out = st.outgoing;
@@ -2856,7 +2971,7 @@ async function pollWorld() {
     }
   }
 }
-setInterval(pollWorld, 4000);
+setInterval(pollWorld, 5000);
 
 byId('btn-create-room').addEventListener('click', () => createFriendRoom());
 byId('btn-join-room').addEventListener('click', () => joinFriendRoom());
@@ -3601,6 +3716,7 @@ async function boot() {
   renderAccountBar();
   byId('btn-play').disabled = false;
   showScreen('menu');
+  pollWorld();
 }
 
 boot();

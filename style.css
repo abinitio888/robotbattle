@@ -687,3 +687,5 @@ button.world-btn {
 .super-row.owned { border-color: var(--divine); background: #14324a; }
 .super-row.owned .name { color: var(--divine); }
 #equipment-mega-progress { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.online-info { color: #7ee2a8; }
+.online-info.pvp { color: var(--legendary); font-weight: 700; }

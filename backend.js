@@ -247,6 +247,9 @@
     worldAnswer(id, accept) { return this.api('/api/world/answer', { id, accept }); }
     worldCancel(id) { return this.api('/api/world/cancel', { id }); }
     worldResult(id, won) { return this.api('/api/world/result', { id, won }); }
+    worldPing(cid, waiting) { return this.api(`/api/world/ping?cid=${encodeURIComponent(cid)}${waiting ? '&waiting=1' : ''}`); }
+    mmQueue(cid) { return this.api('/api/world/queue', { cid }); }
+    mmUnqueue(cid) { return this.api('/api/world/unqueue', { cid }); }
   }
 
   // Används bara av Claude-artefaktversionen (ingen egen server där): sparar kontot i
