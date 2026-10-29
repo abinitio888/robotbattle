@@ -33,6 +33,14 @@ async function readLeaders() {
   return out;
 }
 
+// Man kan bara beskydda EN världsdel: tar man en ny lämnar man den gamla, som blir ledig.
+async function releaseOthers(userKey, keepId) {
+  const leaders = await readLeaders();
+  for (const [id, l] of Object.entries(leaders)) {
+    if (id !== keepId && l.key === userKey) await redis.hdel(LEADERS, id);
+  }
+}
+
 async function seenAt(keys) {
   if (keys.length === 0) return {};
   const vals = await redis.mget(...keys.map((k) => `seen:${k}`));
@@ -108,6 +116,7 @@ module.exports = dispatch({
         if (Date.now() - last <= ABANDONED_MS) throw new HttpError(409, `${current.name} beskyddar redan ${c.name}. Utmana dem!`);
         await redis.hset(LEADERS, { [c.id]: entry });
       }
+      await releaseOthers(session.key, c.id);
       return { ok: true };
     },
   },
@@ -196,6 +205,7 @@ module.exports = dispatch({
       await redis.hset(LEADERS, {
         [ch.continent]: JSON.stringify({ key: ch.from, name: ch.fromName, robot: ch.robot, since: Date.now() }),
       });
+      await releaseOthers(ch.from, ch.continent);
       return { ok: true, changed: true };
     },
   },

@@ -2457,9 +2457,14 @@ function renderWorldDetail() {
   if (!info) { box.append(el('p', 'hint', 'Laddar...')); return; }
   const loggedIn = net.kind === 'remote';
   const buttons = el('div', 'buttons');
+  // Man kan bara beskydda en världsdel: tar man den här lämnar man sin gamla.
+  const mine = worldState.continents.find((x) => x.leader && x.leader.me && x.id !== c.id);
+  const leaveNote = () => {
+    if (mine) box.append(el('p', 'hint', `Du kan bara ha en världsdel. Tar du ${c.name} lämnar du ${continentName(mine.id)}.`));
+  };
   if (!info.leader) {
     box.append(el('p', '', `Ingen beskyddar ${c.name} än!`));
-    if (loggedIn) buttons.append(worldButton('Bli beskyddare', () => claimContinent(c.id)));
+    if (loggedIn) { buttons.append(worldButton('Bli beskyddare', () => claimContinent(c.id))); leaveNote(); }
     else box.append(el('p', 'hint', 'Logga in för att kunna bli beskyddare.'));
   } else if (info.leader.me) {
     box.append(el('p', 'crown', `👑 Du beskyddar ${c.name}!`));
@@ -2476,11 +2481,13 @@ function renderWorldDetail() {
     } else if (info.abandoned) {
       box.append(el('p', 'hint', `${info.leader.name} har inte varit här på flera dagar.`));
       buttons.append(worldButton('Ta över världsdelen', () => claimContinent(c.id)));
+      leaveNote();
     } else {
       buttons.append(worldButton(`Utmana ${info.leader.name}`, () => startChallenge(c.id), { disabled: !info.online || !roomCap }));
       box.append(el('p', 'hint', info.online
         ? `Du slåss live mot ${info.leader.name} med din valda robot, ${robotName(game.selectedId)}. Vinner du blir du beskyddare!`
         : `${info.leader.name} är inte online just nu. Bara spelare kan ta titeln, aldrig AI — så du får vänta tills de är här.`));
+      leaveNote();
     }
   }
   if (buttons.childElementCount) box.append(buttons);
