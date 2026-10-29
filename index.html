@@ -84,7 +84,7 @@
     <div class="wildcard-box">
       <p class="boss-title">UTRUSTNING</p>
       <p id="equipment-current" class="hint"></p>
-      <p id="equipment-mega-progress" class="hint"></p>
+      <div id="equipment-mega-progress"></div>
       <button id="btn-unequip" type="button" class="linklike" hidden>Ta av</button>
       <div id="equipment-list" class="cards"></div>
       <button id="btn-equipment-close" type="button" class="secondary">Stäng</button>
@@ -106,6 +106,7 @@
         <span id="name-player" class="label">DU</span>
       </div>
       <span id="type-player" class="type-label"></span>
+      <span id="super-player" class="super-label"></span>
       <div class="bar"><div id="hp-player" class="fill player"></div></div>
       <div class="bar thin"><div id="en-player" class="fill energy"></div></div>
     </div>
@@ -133,6 +134,7 @@
           <tr><td><b>Shift</b> eller <b>L</b></td><td>hoppa</td></tr>
           <tr><td><b>Mellanslag</b> eller <b>J</b></td><td>vanlig attack</td></tr>
           <tr><td><b>E</b> eller <b>K</b></td><td>specialattack (kostar 50 energi)</td></tr>
+          <tr><td><b>Q</b> eller <b>I</b></td><td>supervapnets superkraft (en gång per match)</td></tr>
         </table>
         <p class="hint">Allt går att spela med vänster hand: WASD, Shift, mellanslag och E. Kliv undan i djupled så missar attackerna!</p>
         <button id="btn-play" type="button" disabled>Spela (Enter)</button>
@@ -262,6 +264,7 @@
       <button id="touch-jump" type="button" class="touch-btn" aria-label="Hoppa">⤒</button>
       <button id="touch-attack" type="button" class="touch-btn touch-attack" aria-label="Attack">⬤</button>
       <button id="touch-special" type="button" class="touch-btn touch-special" aria-label="Specialattack">★</button>
+      <button id="touch-super" type="button" class="touch-btn touch-super" aria-label="Superkraft">⚡</button>
     </div>
   </div>
 </main>

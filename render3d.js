@@ -964,6 +964,15 @@
       tideWall: makePool(scene, () => new THREE.Mesh(box(1, 1, 1), new THREE.MeshStandardMaterial({ color: '#1f7fd0', emissive: '#0f4a8a', emissiveIntensity: 0.5, transparent: true, opacity: 0.72, roughness: 0.15, metalness: 0.1, depthWrite: false }))),
       tideFoam: makePool(scene, () => new THREE.Mesh(box(1, 1, 1), basic('#e8fbff', 0.9))),
       tideGap: makePool(scene, () => new THREE.Mesh(box(1, 1, 1), basic('#7ff9ff', 0.35, true))),
+      superGlow: makePool(scene, () => glowSprite(softTex())),
+      dragonFlame: makePool(scene, () => new THREE.Mesh(cone(1, 1, 6), basic('#ff8a2a', 0.9, true))),
+      mirror: makePool(scene, () => new THREE.Mesh(sphere(1), basic('#dff6ff', 0.3, true))),
+      mirrorRing: makePool(scene, () => new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 8, 48), basic('#ffffff', 0.9, true))),
+      gravRing: makePool(scene, () => { const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 8, 40), basic('#c47bff', 0.9, true)); m.rotation.x = -Math.PI / 2; return m; }),
+      reviveMote: makePool(scene, () => new THREE.Mesh(sphere(1), basic('#a6ffcb', 1, true))),
+      megaCharge: makePool(scene, () => glowSprite(softTex(), '#3ee8ff')),
+      boltSeg: makePool(scene, () => new THREE.Mesh(box(1, 1, 1), basic('#fff6c0', 1, true))),
+      boltGlow: makePool(scene, () => new THREE.Mesh(box(1, 1, 1), basic('#8fb8ff', 0.5, true))),
       boom: makePool(scene, () => new THREE.Mesh(sphere(1), basic('#c47bff', 0.8, true))),
       boomRing: makePool(scene, () => { const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 8, 48), basic('#ffffff', 1, true)); m.rotation.x = -Math.PI / 2; return m; }),
     };
@@ -983,6 +992,62 @@
       if (f.reflectT > 0) ell(pools.reflect, 0.95, 0.6).material.opacity = 0.18 + 0.12 * Math.sin(f.time * 20);
       if (f.frozenT > 0) ell(pools.frozen, 0.85, 0.58);
       if (f.shieldT > 0) ell(pools.shield, 0.95, 0.6);
+      // ---- Supervapnens superkrafter ----
+      if (f.dragonT > 0) {
+        // Drakvrede: lågor som slickar uppåt runt hela roboten.
+        const aura = pools.superGlow.get();
+        aura.position.set(cx, cy, cz);
+        aura.scale.set(f.w * 2.6, f.h * 1.9, 1);
+        aura.material.color.set('#ff5a1a');
+        aura.material.opacity = 0.55 + 0.2 * Math.sin(f.time * 18);
+        for (let i = 0; i < 9; i++) {
+          const fl = pools.dragonFlame.get();
+          const a = (i / 9) * Math.PI * 2 + f.time * 2;
+          const k = (f.time * 2.5 + i * 0.37) % 1;
+          fl.position.set(cx + Math.cos(a) * f.w * 0.55, wy(f.y) + k * f.h * 1.1, cz + Math.sin(a) * f.w * 0.55);
+          fl.scale.set(11 * (1 - k * 0.6), 34 * (1 - k * 0.5), 11 * (1 - k * 0.6));
+          fl.material.opacity = 0.9 * (1 - k);
+        }
+      }
+      if (f.mirrorT > 0) {
+        // Spegelvärn: en blank spegelbubbla med en ring som snurrar runt den.
+        const m = ell(pools.mirror, 1.0, 0.66);
+        m.material.opacity = 0.35 + 0.1 * Math.sin(f.time * 10);
+        const r = pools.mirrorRing.get();
+        r.position.set(cx, cy, cz);
+        r.scale.setScalar(f.w * 1.1);
+        r.rotation.set(1.1 + Math.sin(f.time * 3) * 0.3, f.time * 4, 0);
+      }
+      if (f.floatT > 0) {
+        // Antigravitation: lila ringar som håller roboten svävande, och ett sken på marken under.
+        for (let i = 0; i < 3; i++) {
+          const r = pools.gravRing.get();
+          const k = (f.time * 1.2 + i / 3) % 1;
+          r.position.set(cx, wy(f.y) - 10 + k * (f.h + 20), cz);
+          r.scale.setScalar(f.w * (0.9 + 0.3 * Math.sin(k * Math.PI)));
+          r.material.opacity = Math.sin(k * Math.PI) * 0.9;
+        }
+        const d = pools.holeDisc.get();
+        d.position.set(cx, 2, cz);
+        d.scale.setScalar(70);
+        d.rotation.z = f.time * 3;
+      }
+      if (f.reviveT > 0) {
+        // Livsljus: gröna ljus som spiralar uppåt.
+        const k0 = 1 - f.reviveT / 1.4;
+        for (let i = 0; i < 16; i++) {
+          const m = pools.reviveMote.get();
+          const k = (k0 * 1.5 + i / 16) % 1;
+          const a = i * 0.9 + k * 8;
+          m.position.set(cx + Math.cos(a) * f.w * 0.7, wy(f.y) + k * f.h * 1.4, cz + Math.sin(a) * f.w * 0.7);
+          m.scale.setScalar(3 * (1 - k) + 1);
+        }
+        const g = pools.superGlow.get();
+        g.position.set(cx, cy, cz);
+        g.scale.set(f.w * 2.4, f.h * 1.8, 1);
+        g.material.color.set('#7dffb0');
+        g.material.opacity = f.reviveT / 1.4 * 0.7;
+      }
       const a = f.act;
       if (a && f.def.special.type === 'snipe' && a.t < 0.85) {
         const m = pools.laser.get();
@@ -1207,6 +1272,61 @@
           r.scale.setScalar(30 + k * (320 - i * 120));
           r.material.opacity = 1 - k;
         }
+      }
+      for (const b of s.megabeams || []) {
+        const x0 = wx(b.x) + b.dir * 30;
+        const y = wy(b.y);
+        if (b.t < 0.4) {
+          // Laddning: ett växande, flimrande ljusklot framför roboten.
+          const c = pools.megaCharge.get();
+          c.position.set(x0, y, b.z);
+          c.scale.setScalar(30 + (b.t / 0.4) * 90 + Math.sin(b.t * 60) * 8);
+        } else {
+          const k = (b.t - 0.4) / 0.6;
+          const x1 = b.dir > 0 ? W / 2 + 200 : -W / 2 - 200;
+          const len = Math.abs(x1 - x0);
+          const mid = (x0 + x1) / 2;
+          const o = pools.beamOuter.get();
+          o.position.set(mid, y, b.z);
+          o.scale.set(46 * (1 - k * 0.5), len, 46 * (1 - k * 0.5));
+          o.material.color.set('#3ee8ff');
+          o.material.opacity = 0.85 * (1 - k);
+          const i = pools.beamInner.get();
+          i.position.copy(o.position);
+          i.scale.set(16 * (1 - k * 0.5), len, 16 * (1 - k * 0.5));
+          i.material.opacity = 1 - k;
+          const c = pools.megaCharge.get();
+          c.position.set(x0, y, b.z);
+          c.scale.setScalar(140 * (1 - k));
+        }
+      }
+      for (const [bi, b] of (s.bolts || []).entries()) {
+        if (!b.done) continue;
+        // En sicksackande blixt från himlen ner på motståndaren.
+        const k = b.t / 0.25;
+        const gx = wx(b.x);
+        const gz = b.z;
+        let px = gx;
+        let py = 0;
+        const segs = 7;
+        for (let j = 0; j < segs; j++) {
+          const ny = ((j + 1) / segs) * 650;
+          const nx = gx + (j === segs - 1 ? 0 : Math.sin(bi * 7.3 + j * 12.1) * 40);
+          const len = Math.hypot(nx - px, ny - py);
+          for (const [pool, w] of [[pools.boltSeg, 5], [pools.boltGlow, 18]]) {
+            const m = pool.get();
+            m.position.set((px + nx) / 2, (py + ny) / 2, gz);
+            m.scale.set(w, len, w);
+            m.rotation.set(0, 0, -Math.atan2(nx - px, ny - py));
+            m.material.opacity = (pool === pools.boltSeg ? 1 : 0.5) * (1 - k);
+          }
+          px = nx;
+          py = ny;
+        }
+        const r = pools.boomRing.get();
+        r.position.set(gx, 3, gz);
+        r.scale.setScalar(20 + k * 70);
+        r.material.opacity = 1 - k;
       }
       for (const c of s.clocks || []) {
         // Urverket: en urtavla på golvet med snurrande visare och en kupol där tiden går långsamt.

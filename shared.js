@@ -339,8 +339,8 @@
     // av en låda eller möta i en vanlig match (precis som bossar), men går heller aldrig in i
     // samlingen om man vinner. Vinner man får man ALLTID ett bestämt utrustningsföremål (drop
     // nedan) — alltså vet man i förväg exakt vad man får, ingen slump där. Dessutom finns
-    // alltid en liten chans (MEGA_FRAGMENT_CHANCE) att ÄVEN få en bit av Megavapnet, oavsett
-    // vilket monster man besegrar — se EQUIPMENT/MEGA_WEAPON längre ner. Utmanas från en egen
+    // alltid en chans (SUPER_PIECE_CHANCE) att ÄVEN hitta en del av ett supervapen, oavsett
+    // vilket monster man besegrar — se EQUIPMENT/SUPER_WEAPONS längre ner. Utmanas från en egen
     // meny, se Monstervärlden i game.js.
     {
       id: 'gnasher', name: 'Gnasher', rarity: 'monster', monster: true, types: ['gift', 'kryp'], drop: 'servoarms',
@@ -429,15 +429,44 @@
     { id: 'fangblade', name: 'Vasständer', stat: { punch: 2 }, desc: '+2 i slagstyrka så länge de bärs.' },
     { id: 'turbofeet', name: 'Turbofötter', stat: { speed: 35 }, desc: '+35 i fart så länge de bärs.' },
     { id: 'lightrig', name: 'Fjäderdon', stat: { speed: 18 }, desc: '+18 i fart så länge de bärs.' },
-    // Megavapnet går aldrig att få direkt — bara genom att sätta ihop MEGA_WEAPON_PIECES
-    // delar, som var och en kan droppa (utöver det bestämda föremålet) efter EN monstervinst,
-    // oavsett vilket monster, se MEGA_FRAGMENT_CHANCE och finishMatch().
-    { id: 'megavapen', name: 'Megavapnet', stat: { hp: 20, punch: 6, speed: 15 }, desc: 'Sätts ihop av fem delar — +20 HP, +6 i slagstyrka och +15 i fart samtidigt, så länge det bärs.' },
+    // Supervapen går aldrig att få direkt — bara genom att sätta ihop `pieces` delar, som kan
+    // droppa (utöver det bestämda föremålet) efter en monstervinst, oavsett vilket monster (se
+    // SUPER_PIECE_CHANCE och finishMatch()). Varje supervapen har en EGEN superkraft (`power`)
+    // som inget annat vapen har, och som man använder en gång per match (Q eller I).
+    {
+      id: 'megavapen', name: 'Megavapnet', pieces: 5, stat: { hp: 20, punch: 6, speed: 15 },
+      power: { type: 'megabeam', name: 'Megastråle', desc: 'En jättelik stråle tvärs över hela banan i din fil — 28 skada. Kliv undan i djupled!' },
+      desc: '+20 HP, +6 i slagstyrka och +15 i fart.',
+    },
+    {
+      id: 'askhammaren', name: 'Åskhammaren', pieces: 3, stat: { punch: 4 },
+      power: { type: 'thunder', name: 'Blixtnedslag', desc: 'Fem blixtar slår ner på motståndaren, var den än står — 6 skada var.' },
+      desc: '+4 i slagstyrka.',
+    },
+    {
+      id: 'drakhjartat', name: 'Drakhjärtat', pieces: 3, stat: { hp: 10 },
+      power: { type: 'dragon', name: 'Drakvrede', desc: 'I sex sekunder brinner du: dubbel skada på vanliga slag, och ingenting kan knuffa dig.' },
+      desc: '+10 HP.',
+    },
+    {
+      id: 'spegelskolden', name: 'Spegelskölden', pieces: 3, stat: { hp: 15 },
+      power: { type: 'mirror', name: 'Spegelvärn', desc: 'I fem sekunder studsar all skada du tar tillbaka på motståndaren.' },
+      desc: '+15 HP.',
+    },
+    {
+      id: 'livskristallen', name: 'Livskristallen', pieces: 3, stat: { hp: 20 },
+      power: { type: 'revive', name: 'Livsljus', desc: 'Läker hälften av ditt HP på en gång.' },
+      desc: '+20 HP.',
+    },
+    {
+      id: 'gravitronen', name: 'Gravitronen', pieces: 3, stat: { speed: 20 },
+      power: { type: 'gravity', name: 'Antigravitation', desc: 'Motståndaren svävar hjälplöst upp i luften i två sekunder och kraschar sedan i marken — 16 skada.' },
+      desc: '+20 i fart.',
+    },
   ];
   const EQUIPMENT_IDS = new Set(EQUIPMENT.map((e) => e.id));
-  const MEGA_WEAPON_ID = 'megavapen';
-  const MEGA_WEAPON_PIECES = 5;
-  const MEGA_FRAGMENT_CHANCE = 0.15; // 15 % chans per monstervinst, oavsett vilket monster
+  const SUPER_WEAPONS = EQUIPMENT.filter((e) => e.power);
+  const SUPER_PIECE_CHANCE = 0.25; // 25 % chans per monstervinst att hitta en del, oavsett vilket monster
 
   const robotById = Object.fromEntries(ROBOTS.map((r) => [r.id, r]));
   const BOSS_IDS = ROBOTS.filter((r) => r.boss).map((r) => r.id);
@@ -567,7 +596,7 @@
       inv: { bolt: 1 }, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0,
       wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
       wildcardHead: null, wildcardExtra: null,
-      equipmentInv: {}, equippedItem: null, megaFragments: 0,
+      equipmentInv: {}, equippedItem: null, superPieces: {},
     };
   }
 
@@ -592,7 +621,7 @@
       inv: {}, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0,
       wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
       wildcardHead: null, wildcardExtra: null,
-      equipmentInv: {}, equippedItem: null, megaFragments: 0,
+      equipmentInv: {}, equippedItem: null, superPieces: {},
     };
     if (raw && typeof raw === 'object') {
       const inv = raw.inv && typeof raw.inv === 'object' ? raw.inv : {};
@@ -624,7 +653,13 @@
       if (typeof raw.equippedItem === 'string' && EQUIPMENT_IDS.has(raw.equippedItem) && acct.equipmentInv[raw.equippedItem] > 0) {
         acct.equippedItem = raw.equippedItem;
       }
-      acct.megaFragments = Math.max(0, Math.min(MEGA_WEAPON_PIECES - 1, Math.floor(Number(raw.megaFragments)) || 0));
+      const pieces = raw.superPieces && typeof raw.superPieces === 'object' && !Array.isArray(raw.superPieces) ? raw.superPieces : {};
+      // Gamla konton hade bara Megavapnets delar, i megaFragments.
+      const old = { megavapen: raw.megaFragments, ...pieces };
+      for (const w of SUPER_WEAPONS) {
+        const n = Math.max(0, Math.min(w.pieces - 1, Math.floor(Number(old[w.id])) || 0));
+        if (n > 0) acct.superPieces[w.id] = n;
+      }
     }
     // Man ska alltid ha minst en Bolt — den går aldrig helt förlorad, oavsett hur kontot ser ut.
     acct.inv.bolt = Math.max(1, acct.inv.bolt || 0);
@@ -739,16 +774,16 @@
   // bossens robot (utan den stridstillfälliga boostern) — bossen går att utmana igen när du
   // vill, om och om igen. Förlorar du mot bossen kostar det inget — bara en ny chans.
   // En monstervinst ger varken låda, erfarenhet eller en robot — bara det bestämda föremålet
-  // just det monstret ger (def.drop, aldrig slumpat), plus en liten chans (MEGA_FRAGMENT_CHANCE)
-  // att ÄVEN hitta en bit av Megavapnet. Helt egen, parallell ekonomi; förlorar man kostar det
+  // just det monstret ger (def.drop, aldrig slumpat), plus en chans (SUPER_PIECE_CHANCE)
+  // att ÄVEN hitta en del av ett supervapen. Helt egen, parallell ekonomi; förlorar man kostar det
   // inget, precis som mot en boss.
-  // rng behövs bara vid vinst (för ett eventuellt nivåpris/föremål/Megavapen-bit) — vänmatcher
+  // rng behövs bara vid vinst (för ett eventuellt nivåpris/föremål/supervapendel) — vänmatcher
   // anropar aldrig den här funktionen.
   function finishMatch(acct, match, won, rng) {
     if (match.monster) {
       const result = {
         won, stake: false, gained: null, lost: null, box: false, levelUps: [], bossWon: null,
-        itemWon: null, fragmentWon: false, megaFragments: acct.megaFragments || 0, megaAssembled: false,
+        itemWon: null, superPiece: null, superPieces: 0, superAssembled: null,
       };
       if (won) {
         const drop = robotById[match.opp] && robotById[match.opp].drop;
@@ -756,15 +791,23 @@
           addEquipment(acct, drop);
           result.itemWon = drop;
         }
-        if (rng() < MEGA_FRAGMENT_CHANCE) {
-          result.fragmentWon = true;
-          acct.megaFragments = (acct.megaFragments || 0) + 1;
-          if (acct.megaFragments >= MEGA_WEAPON_PIECES) {
-            acct.megaFragments -= MEGA_WEAPON_PIECES;
-            addEquipment(acct, MEGA_WEAPON_ID);
-            result.megaAssembled = true;
+        if (rng() < SUPER_PIECE_CHANCE) {
+          // Delen hör till ett supervapen man inte har än (eller, har man alla, vilket som helst).
+          const missing = SUPER_WEAPONS.filter((w) => !(acct.equipmentInv[w.id] > 0));
+          const pool = missing.length ? missing : SUPER_WEAPONS;
+          const w = pool[Math.floor(rng() * pool.length)];
+          acct.superPieces = acct.superPieces || {};
+          const n = (acct.superPieces[w.id] || 0) + 1;
+          result.superPiece = w.id;
+          if (n >= w.pieces) {
+            delete acct.superPieces[w.id];
+            addEquipment(acct, w.id);
+            result.superAssembled = w.id;
+            result.superPieces = w.pieces;
+          } else {
+            acct.superPieces[w.id] = n;
+            result.superPieces = n;
           }
-          result.megaFragments = acct.megaFragments;
         }
       }
       return result;
@@ -839,8 +882,7 @@
       wildcardExtra: acct.wildcardExtra || null,
       equipmentInv: { ...(acct.equipmentInv || {}) },
       equippedItem: acct.equippedItem || null,
-      megaFragments: acct.megaFragments || 0,
-      megaWeaponPieces: MEGA_WEAPON_PIECES,
+      superPieces: { ...(acct.superPieces || {}) },
     };
   }
 
@@ -940,7 +982,7 @@
   return {
     RARITY, ROBOTS, robotById, rankOf, BOSS_IDS, MONSTER_IDS,
     CONTINENTS, continentById,
-    EQUIPMENT, MEGA_WEAPON_ID, MEGA_WEAPON_PIECES, MEGA_FRAGMENT_CHANCE, addEquipment, equipItem,
+    EQUIPMENT, SUPER_WEAPONS, SUPER_PIECE_CHANCE, addEquipment, equipItem,
     ARENAS, arenaById, pickArena,
     TYPES, typeMultiplier,
     WILDCARD_SPECIALS, wildcardSpecialFor, TYPE_DEFAULTS, customWildcardSpecial,

@@ -54,7 +54,16 @@ function hurt(target, dmg, dirX, knock, source) {
   dmg *= game.arena.dmgMul; // banans fysik, lika för båda sidorna
   dmg *= Shared.typeMultiplier(source.def.types, target.def.types); // typernas styrkor/svagheter
   dmg *= target.vulnT > 0 ? 1.4 : 1; // bara jokerns "Hån"
+  if (source.dragonT > 0 && source.act && source.act.kind === 'punch') dmg *= 2; // Drakhjärtats Drakvrede
+  if (target.dragonT > 0) knock = 0; // ...och då kan ingenting knuffa en
   target.hp = Math.max(0, target.hp - dmg);
+  // Spegelsköldens Spegelvärn: samma skada studsar tillbaka på den som slog.
+  if (target.mirrorT > 0 && source !== target && !source.dead) {
+    source.hp = Math.max(0, source.hp - dmg);
+    source.flash = 0.1;
+    sparks(source.x, source.y - source.h * 0.6, '#dff6ff', 12, source.z);
+    if (source.hp <= 0) source.dead = true;
+  }
   target.act = null;
   target.dashT = 0;
   target.hurt = 0.22;
@@ -492,6 +501,13 @@ class Fighter {
     this.reflectT = 0;
     this.frozenT = 0;
     this.slowT = 0; // inne i Kronos urverk: allt går i en tredjedels fart
+    // Supervapnets superkraft (se SUPERS): en gång per match, och bara om man bär ett supervapen.
+    this.superReady = !!def.superPower;
+    this.dragonT = 0;  // Drakvrede: dubbel slagskada, ingen knuff
+    this.mirrorT = 0;  // Spegelvärn: skadan studsar tillbaka
+    this.floatT = 0;   // Antigravitation: svävar hjälplöst i luften
+    this.slam = null;  // { dmg, owner } — kraschen när Antigravitationen tar slut
+    this.reviveT = 0;  // Livsljus: bara för att rita läkningen
     this.jinxT = 0; // bara jokerns "Förbannelse": halverar energiåterhämtningen medan den räknar ner
     this.vulnT = 0; // bara jokerns "Hån": tar 40 % mer skada medan den räknar ner
     this.dead = false;
@@ -541,13 +557,25 @@ class Fighter {
     this.vulnT = Math.max(0, this.vulnT - dt);
     const slow = this.slowT > 0 ? 0.33 : 1;
     this.slowT = Math.max(0, this.slowT - dt);
+    this.dragonT = Math.max(0, this.dragonT - dt);
+    this.mirrorT = Math.max(0, this.mirrorT - dt);
+    this.reviveT = Math.max(0, this.reviveT - dt);
+    const floating = this.floatT > 0;
+    if (floating) {
+      this.floatT -= dt;
+      if (this.floatT <= 0) this.vy = 900; // kraschar ner
+    }
 
     let walk = 0;
     let walkZ = 0;
     if (!this.dead) {
       this.facing = opp.x >= this.x ? 1 : -1;
       if (canFight) this.energy = Math.min(MAX_ENERGY, this.energy + 6 * dt * (this.jinxT > 0 ? 0.5 : 1));
-      if (this.hurt <= 0 && canFight) {
+      if (this.hurt <= 0 && canFight && !floating) {
+        if (input.super && this.superReady && !this.act) {
+          this.superReady = false;
+          useSuper(this, opp);
+        }
         if (this.act) {
           this.updateAct(dt * slow, opp);
         } else {
@@ -584,12 +612,26 @@ class Fighter {
     this.x = clamp(this.x, this.w / 2, W - this.w / 2);
     this.z = clamp(this.z + walkZ * dt, -DEPTH, DEPTH);
 
+    if (floating) {
+      // Antigravitation: lyfts mjukt upp och hänger kvar där.
+      this.y += (FLOOR - 170 - this.y) * Math.min(1, dt * 4);
+      this.vy = 0;
+      this.onGround = false;
+      return;
+    }
     this.vy += GRAVITY * game.arena.gravityMul * dt;
     this.y += this.vy * dt;
     if (this.y >= FLOOR) {
       this.y = FLOOR;
       this.vy = 0;
       this.onGround = true;
+      if (this.slam) {
+        const { dmg, owner } = this.slam;
+        this.slam = null;
+        game.shake = Math.max(game.shake, 0.45);
+        sparks(this.x, FLOOR - 6, '#b46bff', 22, this.z);
+        hurt(this, dmg, Math.sign(this.x - owner.x) || 1, 200, owner);
+      }
     }
   }
 }
@@ -822,6 +864,62 @@ function updateTides(dt) {
   game.tides = game.tides.filter((w) => (w.dir > 0 ? w.x < W + 80 : w.x > -80));
 }
 
+// ---------- Supervapnens superkrafter ----------
+// Varje supervapen (se EQUIPMENT i shared.js) har en egen kraft som inget annat har. Den
+// används en gång per match med Q eller I, och bara om man bär supervapnet.
+const SUPERS = {
+  megabeam: (f) => { game.megabeams.push({ owner: f, x: f.x, z: f.z, y: f.y - f.h * 0.55, dir: f.facing, t: 0, hit: false }); },
+  thunder: (f) => { for (let i = 0; i < 5; i++) game.bolts.push({ owner: f, t: -0.15 - i * 0.3, x: 0, z: 0, done: false }); },
+  dragon: (f) => { f.dragonT = 6; sparks(f.x, f.y - f.h / 2, '#ff6a1a', 24, f.z); },
+  mirror: (f) => { f.mirrorT = 5; sparks(f.x, f.y - f.h / 2, '#dff6ff', 20, f.z); },
+  revive: (f) => { f.hp = Math.min(f.maxHp, f.hp + f.maxHp * 0.5); f.reviveT = 1.4; sparks(f.x, f.y - f.h / 2, '#7dffb0', 26, f.z); },
+  gravity: (f, o) => {
+    if (o.dead) return;
+    o.floatT = 2;
+    o.act = null;
+    o.dashT = 0;
+    o.slam = { dmg: 16, owner: f };
+  },
+};
+
+function useSuper(f, opp) {
+  const power = f.def.superPower;
+  if (!power || !SUPERS[power.type]) return;
+  game.shake = Math.max(game.shake, 0.2);
+  game.superBanner = { name: power.name, t: 1.4, mine: f === game.player };
+  SUPERS[power.type](f, opp);
+}
+
+function updateSupers(dt) {
+  for (const b of game.megabeams) {
+    b.t += dt;
+    const target = b.owner === game.player ? game.ai : game.player;
+    if (!b.hit && b.t >= 0.4) {
+      // Strålen laddas en kort stund och skjuter sedan tvärs över hela banan i ens egen fil.
+      b.hit = true;
+      game.shake = Math.max(game.shake, 0.5);
+      if (inLane(target, b.z, 40) && b.dir * (target.x - b.x) > 0) hurt(target, 28, b.dir, 650, b.owner);
+    }
+  }
+  game.megabeams = game.megabeams.filter((b) => b.t < 1.0);
+  for (const b of game.bolts) {
+    b.t += dt;
+    if (!b.done && b.t >= 0) {
+      const target = b.owner === game.player ? game.ai : game.player;
+      b.done = true;
+      b.x = target.x;
+      b.z = target.z;
+      game.shake = Math.max(game.shake, 0.3);
+      sparks(target.x, target.y - target.h * 0.5, '#fff6a0', 14, target.z);
+      if (!target.dead) {
+        target.invuln = 0; // blixtarna kommer tätt — varje blixt ska träffa
+        hurt(target, 6, Math.sign(target.x - b.owner.x) || 1, 120, b.owner);
+      }
+    }
+  }
+  game.bolts = game.bolts.filter((b) => b.t < 0.25);
+}
+
 function updateClouds(dt) {
   for (const c of game.clouds) {
     c.life -= dt;
@@ -968,6 +1066,7 @@ function aiInput(f, o, brain, dt) {
 // ---------- Input ----------
 const keys = {};
 let specialBuffer = 0;    // kort tidsfönster så en tidig tryckning inte missas, lokalt och i vänmatch
+let superBuffer = 0;      // samma sak för supervapnets superkraft (Q eller I)
 
 function playerInput() {
   return {
@@ -977,16 +1076,19 @@ function playerInput() {
     jump: !!(keys.ShiftLeft || keys.ShiftRight || keys.KeyL),
     attack: !!(keys.Space || keys.KeyJ),
     special: specialBuffer > 0,
+    super: superBuffer > 0,
   };
 }
 
 function triggerSpecial() { specialBuffer = 0.15; }
+function triggerSuper() { superBuffer = 0.15; }
 
 window.addEventListener('keydown', (e) => {
   const handled = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
   if (handled.includes(e.code)) e.preventDefault();
   if (!e.repeat) {
     if (e.code === 'KeyE' || e.code === 'KeyK') triggerSpecial();
+    if (e.code === 'KeyQ' || e.code === 'KeyI') triggerSuper();
     const onButton = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT');
     if (e.code === 'Enter' && !onButton) onEnter();
     const locked = (game.stake || game.online) && (game.phase === 'intro' || game.phase === 'fight');
@@ -1025,6 +1127,7 @@ bindTouchButton('touch-down', () => { keys.ArrowDown = true; }, () => { keys.Arr
 bindTouchButton('touch-jump', () => { keys.KeyL = true; }, () => { keys.KeyL = false; });
 bindTouchButton('touch-attack', () => { keys.Space = true; }, () => { keys.Space = false; });
 bindTouchButton('touch-special', () => { triggerSpecial(); });
+bindTouchButton('touch-super', () => { triggerSuper(); });
 
 // ---------- Spelstate ----------
 const canvas = document.getElementById('game');
@@ -1052,6 +1155,7 @@ const hud = {
   enPlayer: document.getElementById('en-player'),
   enAi: document.getElementById('en-ai'),
   arena: document.getElementById('arena-label'),
+  superPlayer: document.getElementById('super-player'),
 };
 
 function showArenaLabel(def) {
@@ -1095,6 +1199,9 @@ const game = {
   halos: [],
   quakes: [],
   holes: [],
+  megabeams: [],
+  bolts: [],
+  superBanner: null,
   clocks: [],
   meteors: [],
   tides: [],
@@ -1180,6 +1287,9 @@ async function startMatch(modeOverride, monsterId) {
   game.halos = [];
   game.quakes = [];
   game.holes = [];
+  game.megabeams = [];
+  game.bolts = [];
+  game.superBanner = null;
   game.clocks = [];
   game.meteors = [];
   game.tides = [];
@@ -1266,6 +1376,7 @@ function applyEquipment(def) {
   if (!item) return def;
   const out = { ...def };
   for (const [stat, amount] of Object.entries(item.stat)) out[stat] = (out[stat] || 0) + amount;
+  if (item.power) out.superPower = item.power;
   return out;
 }
 
@@ -1530,19 +1641,37 @@ function renderEquipmentModal() {
   const current = byId('equipment-current');
   if (game.acct.equippedItem) {
     const item = Shared.EQUIPMENT.find((e) => e.id === game.acct.equippedItem);
-    current.textContent = item ? `Du bär: ${item.name} — ${item.desc}` : '';
+    current.textContent = item ? `Du bär: ${item.name} — ${item.desc}${item.power ? ` Superkraft (Q): ${item.power.name}.` : ''}` : '';
   } else {
     current.textContent = 'Du bär ingen utrustning just nu.';
   }
   byId('btn-unequip').hidden = !game.acct.equippedItem;
 
-  // Megavapnet sätts ihop automatiskt av fem slumpade bitar (ett hopp man kan få, oavsett
-  // vilket monster man besegrar) — visa hur nära man är, så länge man inte redan har det.
-  const megaProgress = byId('equipment-mega-progress');
-  const hasMega = (game.acct.equipmentInv.megavapen || 0) > 0;
-  megaProgress.textContent = hasMega
-    ? ''
-    : `Megavapnets delar: ${game.acct.megaFragments || 0}/${game.acct.megaWeaponPieces || 5} — en liten chans att hitta en, oavsett vilket monster du besegrar.`;
+  // Supervapnen sätts ihop automatiskt av delar man ibland hittar efter en monstervinst —
+  // visa alla, även de man inte har än, med hur nära man är och vilken superkraft de ger.
+  const superBox = byId('equipment-mega-progress');
+  superBox.replaceChildren();
+  const head = document.createElement('p');
+  head.className = 'boss-title';
+  head.textContent = 'SUPERVAPEN';
+  const info = document.createElement('p');
+  info.className = 'hint';
+  info.textContent = 'Varje supervapen har en egen superkraft (Q eller I, en gång per match). Delar hittar du ibland när du besegrar ett monster.';
+  superBox.append(head, info);
+  for (const w of Shared.SUPER_WEAPONS) {
+    const owned = (game.acct.equipmentInv[w.id] || 0) > 0;
+    const have = (game.acct.superPieces || {})[w.id] || 0;
+    const row = document.createElement('div');
+    row.className = `super-row${owned ? ' owned' : ''}`;
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = owned ? `⚡ ${w.name}` : `${w.name} — ${have}/${w.pieces} delar`;
+    const desc = document.createElement('div');
+    desc.className = 'stats';
+    desc.textContent = `${w.power.name}: ${w.power.desc}`;
+    row.append(name, desc);
+    superBox.append(row);
+  }
 
   const list = byId('equipment-list');
   list.replaceChildren();
@@ -1565,7 +1694,7 @@ function renderEquipmentModal() {
     name.textContent = `${item.name} ×${n}`;
     const desc = document.createElement('div');
     desc.className = 'stats';
-    desc.textContent = item.desc;
+    desc.textContent = item.power ? `${item.desc} Superkraft: ${item.power.name}.` : item.desc;
     card.append(name, desc);
     if (!equipped) {
       card.classList.add('pickable');
@@ -1679,12 +1808,12 @@ function showResult() {
       const item = Shared.EQUIPMENT.find((e) => e.id === r.itemWon);
       text = 'Du besegrade monstret och fick ett utrustningsföremål!';
       if (item) rewardEquipment('DU FICK ETT FÖREMÅL!', item);
-      if (r.megaAssembled) {
-        text += ' Och du hittade den femte och sista biten av Megavapnet — det är ihopsatt!';
-        const mega = Shared.EQUIPMENT.find((e) => e.id === Shared.MEGA_WEAPON_ID);
-        if (mega) rewardEquipment('MEGAVAPNET ÄR IHOPSATT!', mega);
-      } else if (r.fragmentWon) {
-        text += ` Du hittade dessutom en bit av Megavapnet (${r.megaFragments}/${game.acct.megaWeaponPieces || 5}).`;
+      const w = r.superPiece && Shared.EQUIPMENT.find((e) => e.id === r.superPiece);
+      if (w && r.superAssembled) {
+        text += ` Och du hittade sista delen av ${w.name} — det är ihopsatt! Bär det och tryck Q för ${w.power.name}.`;
+        rewardEquipment(`${w.name.toUpperCase()} ÄR IHOPSATT!`, w);
+      } else if (w) {
+        text += ` Du hittade dessutom en del av supervapnet ${w.name} (${r.superPieces}/${w.pieces}).`;
       }
     } else {
       text = 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
@@ -2179,6 +2308,7 @@ function normalizeFriendInput(data) {
     jump: !!data.jump,
     attack: !!data.attack,
     special: !!data.special,
+    super: !!data.super,
   };
 }
 
@@ -2268,6 +2398,9 @@ function beginFriendMatch(isHost, payload) {
   game.halos = [];
   game.quakes = [];
   game.holes = [];
+  game.megabeams = [];
+  game.bolts = [];
+  game.superBanner = null;
   game.clocks = [];
   game.meteors = [];
   game.tides = [];
@@ -2344,6 +2477,7 @@ function fighterSnapshot(f) {
     flash: f.flash, dashT: f.dashT, buffT: f.buffT, shieldT: f.shieldT, reflectT: f.reflectT,
     frozenT: f.frozenT, jinxT: f.jinxT, vulnT: f.vulnT, dead: f.dead, moving: f.moving,
     time: f.time, walkT: f.walkT, enrage: f.enrage,
+    dragonT: f.dragonT, mirrorT: f.mirrorT, floatT: f.floatT, reviveT: f.reviveT, superReady: f.superReady,
   };
 }
 
@@ -2379,6 +2513,11 @@ function applyFighterSnapshot(f, snap) {
   f.time = sanitizeNum(snap.time, f.time);
   f.walkT = sanitizeNum(snap.walkT, f.walkT);
   f.enrage = sanitizeNum(snap.enrage, f.enrage);
+  f.dragonT = sanitizeNum(snap.dragonT, f.dragonT);
+  f.mirrorT = sanitizeNum(snap.mirrorT, f.mirrorT);
+  f.floatT = sanitizeNum(snap.floatT, f.floatT);
+  f.reviveT = sanitizeNum(snap.reviveT, f.reviveT);
+  f.superReady = !!snap.superReady;
   if (f.hp < prevHp) { // enda sättet gästen vet att något träffade — inga egna fysikanrop att haka på
     sparks(f.x, f.y - f.h * 0.6, f.def.color, prevHp - f.hp >= 15 ? 18 : 10, f.z);
     game.shake = Math.max(game.shake, prevHp - f.hp >= 15 ? 0.25 : 0.1);
@@ -2439,6 +2578,7 @@ function updateFriendMatch(dt) {
       updateClocks(dt);
       updateMeteors(dt);
       updateTides(dt);
+      updateSupers(dt);
       if (!om.ended && (f0.hp <= 0 || f1.hp <= 0)) {
         om.ended = true;
         const winnerIsHost = f0.hp > 0;
@@ -2759,11 +2899,13 @@ byId('mode-normal').addEventListener('click', () => { game.mode = 'normal'; show
 byId('mode-stake').addEventListener('click', () => { game.mode = 'stake'; showSelect(); });
 
 // ---------- Uppdatering ----------
-const IDLE = { dir: 0, depth: 0, jump: false, attack: false, special: false };
+const IDLE = { dir: 0, depth: 0, jump: false, attack: false, special: false, super: false };
 
 function update(dt) {
   game.shake = Math.max(0, game.shake - dt);
   specialBuffer = Math.max(0, specialBuffer - dt);
+  superBuffer = Math.max(0, superBuffer - dt);
+  if (game.superBanner) { game.superBanner.t -= dt; if (game.superBanner.t <= 0) game.superBanner = null; }
   for (const p of game.particles) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
@@ -2810,6 +2952,7 @@ function update(dt) {
     updateClocks(dt);
     updateMeteors(dt);
     updateTides(dt);
+    updateSupers(dt);
 
     if (fighting && (player.hp <= 0 || ai.hp <= 0)) endMatch();
   }
@@ -3327,6 +3470,7 @@ function draw() {
     const none = [];
     r3d.render({
       arena: game.arena, shake: game.shake, fighters,
+      megabeams: fighting ? game.megabeams : none, bolts: fighting ? game.bolts : none,
       projectiles: fighting ? game.projectiles : none, beams: fighting ? game.beams : none,
       strikes: fighting ? game.strikes : none, waves: fighting ? game.waves : none,
       clouds: fighting ? game.clouds : none, mines: fighting ? game.mines : none,
@@ -3359,6 +3503,20 @@ function draw() {
   if (game.phase === 'intro') drawBanner(String(Math.ceil(game.introT / 0.8)), 120);
   else if (game.banner > 0) drawBanner('KÄMPA!', 84);
   else if (game.phase === 'over') drawBanner('K.O.', 96);
+  if (game.superBanner && game.phase === 'fight') {
+    const b = game.superBanner;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, b.t / 0.3);
+    ctx.font = 'bold 34px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillStyle = b.mine ? '#3ee8ff' : '#ff6b3d';
+    const text = `⚡ ${b.name.toUpperCase()}! ⚡`;
+    ctx.strokeText(text, W / 2, 90);
+    ctx.fillText(text, W / 2, 90);
+    ctx.restore();
+  }
   if (game.online && !game.online.ended && friendRoom && !friendRoom.connected()) {
     ctx.font = '18px ui-monospace, Menlo, monospace';
     ctx.textAlign = 'center';
@@ -3372,6 +3530,9 @@ function draw() {
     hud.enPlayer.style.width = `${player.energy}%`;
     hud.enAi.style.width = `${ai.energy}%`;
     hud.enPlayer.classList.toggle('ready', player.energy >= SPECIAL_COST);
+    const sp = player.def.superPower;
+    hud.superPlayer.textContent = sp ? (player.superReady ? `Q: ${sp.name}` : `${sp.name} — använd`) : '';
+    hud.superPlayer.classList.toggle('used', !!sp && !player.superReady);
     hud.enAi.classList.toggle('ready', ai.energy >= SPECIAL_COST);
   }
 }

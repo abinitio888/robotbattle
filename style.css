@@ -606,6 +606,8 @@ button.wildcard-attack-btn .desc { display: block; font-weight: 400; color: var(
   .touch-attack:active { background: rgba(255, 107, 61, 0.45); }
   .touch-special { background: rgba(255, 217, 61, 0.2); border-color: var(--energy); font-size: 20px; }
   .touch-special:active { background: rgba(255, 217, 61, 0.45); }
+  .touch-super { background: rgba(62, 232, 255, 0.2); border-color: var(--divine); font-size: 20px; }
+  .touch-super:active { background: rgba(62, 232, 255, 0.45); }
 }
 
 /* ---- Världskartan ---- */
@@ -675,3 +677,13 @@ button.world-btn {
 }
 #screen-world { gap: 8px; }
 #screen-world h3 { margin: 0; }
+
+/* Supervapnets superkraft i HUD:en */
+.super-label { display: block; min-height: 14px; font-size: 12px; font-weight: 700; color: var(--divine); text-shadow: 0 0 8px rgba(62, 232, 255, 0.6); }
+.super-label.used { color: var(--muted); text-shadow: none; font-weight: 400; }
+.super-row { width: 100%; text-align: left; padding: 6px 8px; border-radius: 8px; background: #1c2440; border: 1px solid #2a3556; font-size: 12px; }
+.super-row .name { font-weight: 700; color: var(--muted); }
+.super-row .stats { color: var(--muted); margin-top: 2px; }
+.super-row.owned { border-color: var(--divine); background: #14324a; }
+.super-row.owned .name { color: var(--divine); }
+#equipment-mega-progress { display: flex; flex-direction: column; gap: 6px; width: 100%; }
