@@ -50,6 +50,14 @@ function overlaps(o, x0, x1, top, bottom) {
 
 function hurt(target, dmg, dirX, knock, source) {
   if (target.dead || target.invuln > 0) return false;
+  if (target.passive === 'shadow' && target.shadowCd <= 0 && source !== target) {
+    // Skuggform: träffen glider rakt igenom, sedan laddas den om.
+    target.shadowCd = 8;
+    target.invuln = 0.3;
+    sparks(target.x, target.y - target.h * 0.6, '#7a3aff', 16, target.z);
+    return false;
+  }
+  if (target.passive === 'steadfast') { dmg *= 0.85; knock = 0; } // Orubblig
   dmg *= source.enrage || 1; // bossens boostrade skada, se updateBossEnrage()
   dmg *= game.arena.dmgMul; // banans fysik, lika för båda sidorna
   dmg *= Shared.typeMultiplier(source.def.types, target.def.types); // typernas styrkor/svagheter
@@ -78,6 +86,15 @@ function hurt(target, dmg, dirX, knock, source) {
   source.energy = Math.min(MAX_ENERGY, source.energy + 10);
   sparks(target.x, target.y - target.h * 0.6, target.def.color, dmg >= 15 ? 18 : 10, target.z);
   game.shake = Math.max(game.shake, dmg >= 15 ? 0.25 : 0.1);
+  if (target.passive === 'rewind' && !target.rewound && target.hp < target.maxHp * 0.25 && target.hpLog.length && target.hpLog[0] > target.hp) {
+    // Återspolning: tiden spolas tillbaka till hur det var för fyra sekunder sedan — räddar
+    // till och med från en träff som annars hade slagit ut.
+    target.rewound = true;
+    target.hp = Math.max(target.hp, target.hpLog[0]);
+    target.reviveT = 1.4;
+    sparks(target.x, target.y - target.h * 0.6, '#ffe28a', 24, target.z);
+    game.superBanner = { name: 'Återspolning', t: 1.4, mine: target === game.player };
+  }
   if (target.hp <= 0) target.dead = true;
   return true;
 }
@@ -479,6 +496,22 @@ const SPECIALS = {
 };
 
 class Fighter {
+  // De passiva förmågorna som räknar tid: Skuggform laddas, Havets kraft läker och
+  // Återspolning minns HP bakåt i tiden.
+  updatePassive(dt) {
+    if (this.dead) return;
+    if (this.passive === 'shadow') this.shadowCd = Math.max(0, this.shadowCd - dt);
+    if (this.passive === 'tidal') this.hp = Math.min(this.maxHp, this.hp + 1.5 * dt);
+    if (this.passive === 'rewind') {
+      this.hpLogT -= dt;
+      if (this.hpLogT <= 0) {
+        this.hpLogT = 0.5;
+        this.hpLog.push(this.hp);
+        if (this.hpLog.length > 8) this.hpLog.shift(); // 8 x 0,5 s = fyra sekunder
+      }
+    }
+  }
+
   constructor(def, x, facing) {
     this.def = def;
     this.w = BODY_W * def.scale;
@@ -512,6 +545,14 @@ class Fighter {
     this.floatT = 0;   // Antigravitation: svävar hjälplöst i luften
     this.slam = null;  // { dmg, owner } — kraschen när Antigravitationen tar slut
     this.reviveT = 0;  // Livsljus: bara för att rita läkningen
+    // De gudomligas passiva förmågor (def.passive), se PASSIVE i shared.js-robotarna.
+    this.passive = def.passive ? def.passive.type : null;
+    this.jumpHeld = false;   // Änglavingar: dubbelhoppet kräver ett nytt tryck i luften
+    this.doubleUsed = false;
+    this.shadowCd = 0;       // Skuggform: klar när den når 0
+    this.rewound = false;    // Återspolning: bara en gång per match
+    this.hpLog = [];         // Återspolning: HP de senaste sekunderna
+    this.hpLogT = 0;
     this.jinxT = 0; // bara jokerns "Förbannelse": halverar energiåterhämtningen medan den räknar ner
     this.vulnT = 0; // bara jokerns "Hån": tar 40 % mer skada medan den räknar ner
     this.dead = false;
@@ -574,7 +615,8 @@ class Fighter {
     let walkZ = 0;
     if (!this.dead) {
       this.facing = opp.x >= this.x ? 1 : -1;
-      if (canFight) this.energy = Math.min(MAX_ENERGY, this.energy + 6 * dt * (this.jinxT > 0 ? 0.5 : 1));
+      if (canFight) this.energy = Math.min(MAX_ENERGY, this.energy + 6 * dt * (this.jinxT > 0 ? 0.5 : 1) * (this.passive === 'solar' ? 2 : 1));
+      if (canFight) this.updatePassive(dt);
       if (this.hurt <= 0 && canFight && !floating) {
         if (input.super && this.superReady && !this.act) {
           this.superReady = false;
@@ -588,7 +630,13 @@ class Fighter {
           if (input.jump && this.onGround) {
             this.vy = -JUMP_V;
             this.onGround = false;
+          } else if (input.jump && !this.jumpHeld && !this.onGround && this.passive === 'doublejump' && !this.doubleUsed) {
+            // Änglavingar: ett extra hopp mitt i luften.
+            this.vy = -JUMP_V * 0.9;
+            this.doubleUsed = true;
+            sparks(this.x, this.y - 10, '#fff3b0', 12, this.z);
           }
+          this.jumpHeld = !!input.jump;
           if (input.attack && this.atkCd <= 0) {
             this.startAct('punch');
           } else if (input.special && this.energy >= SPECIAL_COST) {
@@ -629,6 +677,7 @@ class Fighter {
       this.y = FLOOR;
       this.vy = 0;
       this.onGround = true;
+      this.doubleUsed = false;
       if (this.slam) {
         const { dmg, owner } = this.slam;
         this.slam = null;
@@ -1464,7 +1513,7 @@ function setHudType(el, def) {
 }
 
 function detailText(def) {
-  return `${displayName(def, true)} (${RARITY[def.rarity].label} · ${typesText(def)}) · HP ${def.hp} · Fart ${def.speed} · Slag ${def.punch} · ${def.special.name}: ${def.special.desc}`;
+  return `${displayName(def, true)} (${RARITY[def.rarity].label} · ${typesText(def)}) · HP ${def.hp} · Fart ${def.speed} · Slag ${def.punch} · ${def.special.name}: ${def.special.desc}${def.passive ? ` · ✦ ${def.passive.name}: ${def.passive.desc}` : ''}`;
 }
 
 function createCard(def, { locked = false, selected = false, isNew = false, reveal = false, compact = false, n = null } = {}) {
@@ -1495,6 +1544,12 @@ function createCard(def, { locked = false, selected = false, isNew = false, reve
     const b = document.createElement('b');
     b.textContent = def.special.name;
     sp.append(b, `: ${def.special.desc}`);
+    if (def.passive) {
+      const ps = add('special passive', '');
+      const pb = document.createElement('b');
+      pb.textContent = `✦ ${def.passive.name}`;
+      ps.append(pb, `: ${def.passive.desc}`);
+    }
   }
   return card;
 }
@@ -3944,7 +3999,10 @@ function draw() {
     hud.enAi.style.width = `${ai.energy}%`;
     hud.enPlayer.classList.toggle('ready', player.energy >= SPECIAL_COST);
     const sp = player.def.superPower;
-    hud.superPlayer.textContent = sp ? (player.superReady ? `Q: ${sp.name}` : `${sp.name} — använd`) : '';
+    const pas = player.def.passive;
+    const pasText = pas ? `✦ ${pas.name}${player.passive === 'shadow' && player.shadowCd > 0 ? ` (${Math.ceil(player.shadowCd)} s)` : ''}${player.passive === 'rewind' && player.rewound ? ' — använd' : ''}` : '';
+    const supText = sp ? (player.superReady ? `Q: ${sp.name}` : `${sp.name} — använd`) : '';
+    hud.superPlayer.textContent = [pasText, supText].filter(Boolean).join(' · ');
     hud.superPlayer.classList.toggle('used', !!sp && !player.superReady);
     hud.enAi.classList.toggle('ready', ai.energy >= SPECIAL_COST);
   }

@@ -740,3 +740,4 @@ button.teleport-btn {
 }
 .portal-title { font-size: 17px; font-weight: 700; letter-spacing: 0.05em; }
 .portal-boss #boss-banner { margin: 0; }
+.card .special.passive b { color: var(--divine); }
