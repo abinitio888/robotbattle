@@ -8,6 +8,8 @@ const GRAVITY = 2200;
 const JUMP_V = 820;
 const MAX_ENERGY = 100;
 const SPECIAL_COST = 50;
+// Turbomotorn (butiksvara) gör specialattacken billigare.
+const specialCost = (f) => f.def.specialCost || SPECIAL_COST;
 const STEP = 1 / 60;
 const BODY_W = 46;
 const BODY_H = 120;
@@ -58,6 +60,14 @@ function hurt(target, dmg, dirX, knock, source) {
     return false;
   }
   if (target.passive === 'steadfast') { dmg *= 0.85; knock = 0; } // Orubblig
+  if (target.def.noKnock) knock = 0; // Magnetstövlarna
+  const punching = source.act && source.act.kind === 'punch';
+  if (punching && source.def.crit && Math.random() < source.def.crit) {
+    // Turchippet: en kritisk träff.
+    dmg *= 3;
+    game.shake = Math.max(game.shake, 0.35);
+    sparks(target.x, target.y - target.h * 0.6, '#ffd93d', 22, target.z);
+  }
   dmg *= source.enrage || 1; // bossens boostrade skada, se updateBossEnrage()
   dmg *= game.arena.dmgMul; // banans fysik, lika för båda sidorna
   dmg *= Shared.typeMultiplier(source.def.types, target.def.types); // typernas styrkor/svagheter
@@ -65,6 +75,11 @@ function hurt(target, dmg, dirX, knock, source) {
   if (source.dragonT > 0 && source.act && source.act.kind === 'punch') dmg *= 2; // Drakhjärtats Drakvrede
   if (target.dragonT > 0) knock = 0; // ...och då kan ingenting knuffa en
   target.hp = Math.max(0, target.hp - dmg);
+  // Taggrustningen: den som slår tar en del av skadan själv.
+  if (target.def.thorns && punching && source !== target && !source.dead) {
+    source.hp = Math.max(0, source.hp - dmg * target.def.thorns);
+    if (source.hp <= 0) source.dead = true;
+  }
   // Vampyrtanden: vanliga slag läker den som slår.
   if (source.def.lifesteal && source.act && source.act.kind === 'punch') {
     source.hp = Math.min(source.maxHp, source.hp + dmg * source.def.lifesteal);
@@ -617,6 +632,12 @@ class Fighter {
       this.facing = opp.x >= this.x ? 1 : -1;
       if (canFight) this.energy = Math.min(MAX_ENERGY, this.energy + 6 * dt * (this.jinxT > 0 ? 0.5 : 1) * (this.passive === 'solar' ? 2 : 1));
       if (canFight) this.updatePassive(dt);
+      if (canFight && this.def.startShield && !this.startShieldDone) {
+        // Sköldgeneratorn: osårbar de första sekunderna när striden väl börjat.
+        this.startShieldDone = true;
+        this.shieldT = this.def.startShield;
+        this.invuln = Math.max(this.invuln, this.def.startShield);
+      }
       if (this.hurt <= 0 && canFight && !floating) {
         if (input.super && this.superReady && !this.act) {
           this.superReady = false;
@@ -628,19 +649,19 @@ class Fighter {
           walk = input.dir * this.def.speed * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow;
           walkZ = (input.depth || 0) * this.def.speed * DEPTH_SPEED * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow;
           if (input.jump && this.onGround) {
-            this.vy = -JUMP_V;
+            this.vy = -JUMP_V * (this.def.jumpMul || 1); // Fjäderskorna hoppar högre
             this.onGround = false;
           } else if (input.jump && !this.jumpHeld && !this.onGround && this.passive === 'doublejump' && !this.doubleUsed) {
             // Änglavingar: ett extra hopp mitt i luften.
-            this.vy = -JUMP_V * 0.9;
+            this.vy = -JUMP_V * 0.9 * (this.def.jumpMul || 1);
             this.doubleUsed = true;
             sparks(this.x, this.y - 10, '#fff3b0', 12, this.z);
           }
           this.jumpHeld = !!input.jump;
           if (input.attack && this.atkCd <= 0) {
             this.startAct('punch');
-          } else if (input.special && this.energy >= SPECIAL_COST) {
-            this.energy -= SPECIAL_COST;
+          } else if (input.special && this.energy >= specialCost(this)) {
+            this.energy -= specialCost(this);
             this.startAct('special');
           }
         }
@@ -1124,7 +1145,7 @@ function aiInput(f, o, brain, dt) {
     else if (Math.random() < k.attack) brain.attack = true;
     else brain.retreat = rand(0.35, 0.8);
 
-    if (f.energy >= SPECIAL_COST && Math.random() < k.special && wantsSpecial(f, o, dist)) brain.special = true;
+    if (f.energy >= specialCost(f) && Math.random() < k.special && wantsSpecial(f, o, dist)) brain.special = true;
     if (f.onGround && Math.random() < k.jitter) brain.jump = true;
   }
   return input;
@@ -1663,7 +1684,7 @@ function showShop(message) {
   byId('shop-error').textContent = message || '';
   const list = byId('shop-list');
   list.replaceChildren();
-  for (const item of Shared.SHOP_ITEMS) {
+  for (const item of [...Shared.SHOP_ITEMS].sort((a, b) => a.shop - b.shop)) {
     const owned = (game.acct.equipmentInv[item.id] || 0) > 0;
     const row = el('div', `shop-item${owned ? ' owned' : ''}`);
     const info = el('div', 'shop-info');
@@ -3742,7 +3763,7 @@ function fighterPose(f, opp) {
     aimX: opp ? opp.x - f.x : f.facing, aimZ: opp ? opp.z - f.z : 0, time: f.time, walkT: f.walkT,
     moving: f.moving, air: !f.onGround, hurt: f.hurt > 0, flash: f.flash, dead: f.dead,
     actKind: a ? a.kind : null, actT: a ? a.t : 0, actDur: a ? a.dur : 1,
-    ready: f.energy >= SPECIAL_COST,
+    ready: f.energy >= specialCost(f),
   };
 }
 
@@ -3997,14 +4018,14 @@ function draw() {
     hud.hpAi.style.width = `${(ai.hp / ai.maxHp) * 100}%`;
     hud.enPlayer.style.width = `${player.energy}%`;
     hud.enAi.style.width = `${ai.energy}%`;
-    hud.enPlayer.classList.toggle('ready', player.energy >= SPECIAL_COST);
+    hud.enPlayer.classList.toggle('ready', player.energy >= specialCost(player));
     const sp = player.def.superPower;
     const pas = player.def.passive;
     const pasText = pas ? `✦ ${pas.name}${player.passive === 'shadow' && player.shadowCd > 0 ? ` (${Math.ceil(player.shadowCd)} s)` : ''}${player.passive === 'rewind' && player.rewound ? ' — använd' : ''}` : '';
     const supText = sp ? (player.superReady ? `Q: ${sp.name}` : `${sp.name} — använd`) : '';
     hud.superPlayer.textContent = [pasText, supText].filter(Boolean).join(' · ');
     hud.superPlayer.classList.toggle('used', !!sp && !player.superReady);
-    hud.enAi.classList.toggle('ready', ai.energy >= SPECIAL_COST);
+    hud.enAi.classList.toggle('ready', ai.energy >= specialCost(ai));
   }
 }
 
