@@ -317,6 +317,24 @@
       scale: 1.1, hp: 115, speed: 265, punch: 10,
       special: { type: 'blackhole', name: 'Svart hål', dmg: 6, blast: 22, desc: 'Ett svart hål suger in motståndaren och skadar hela tiden, och imploderar sedan. Spring därifrån!' },
     },
+    {
+      id: 'kronos', name: 'Kronos', rarity: 'divine', types: ['psykisk', 'stål'],
+      color: '#c9a85a', accent: '#3ee8ff', eye: '#ffffff', head: 'dome', extra: 'cape',
+      scale: 1.15, hp: 118, speed: 245, punch: 10,
+      special: { type: 'timestop', name: 'Tidsstopp', dmg: 8, desc: 'Ett jättelikt urverk under motståndaren: där inne går tiden i en tredjedels fart och varje tick gör ont. Ta dig ut ur cirkeln!' },
+    },
+    {
+      id: 'solaris', name: 'Solaris', rarity: 'divine', types: ['eld', 'fe'],
+      color: '#ff8a2a', accent: '#3ee8ff', eye: '#fff3b0', head: 'round', extra: 'jet',
+      scale: 1.1, hp: 112, speed: 270, punch: 11,
+      special: { type: 'meteor', name: 'Meteorregn', dmg: 9, desc: 'Sju meteorer faller en i taget där motståndaren står. En röd ring visar var de slår ner — fortsätt röra på dig!' },
+    },
+    {
+      id: 'leviatan', name: 'Leviatan', rarity: 'divine', types: ['vatten', 'mörk'],
+      color: '#1f6fb2', accent: '#3ee8ff', eye: '#7ff9ff', head: 'horn', extra: 'fins',
+      scale: 1.25, hp: 130, speed: 230, punch: 11,
+      special: { type: 'tide', name: 'Tidvatten', dmg: 17, desc: 'Två vattenväggar sköljer över hela banan med bara en lucka var. Gå in i luckan i djupled — hoppa över går inte!' },
+    },
     // Monstervärlden: en helt egen sorts motståndare, skild från robotarna — går aldrig att få
     // av en låda eller möta i en vanlig match (precis som bossar), men går heller aldrig in i
     // samlingen om man vinner. Vinner man får man ALLTID ett bestämt utrustningsföremål (drop

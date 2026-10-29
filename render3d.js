@@ -196,12 +196,59 @@
     return ACC_TEX;
   }
 
+  // Urtavla (för Kronos rygg och golvet i Tidsstopp) och visare, ritade på canvas.
+  let CLOCK_TEX = null;
+  let HANDS_TEX = null;
+  function clockTex() {
+    if (CLOCK_TEX) return CLOCK_TEX;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 256;
+    const c = cv.getContext('2d');
+    c.translate(128, 128);
+    const g = c.createRadialGradient(0, 0, 60, 0, 0, 124);
+    g.addColorStop(0, 'rgba(255,226,138,0.05)');
+    g.addColorStop(0.85, 'rgba(255,226,138,0.35)');
+    g.addColorStop(1, 'rgba(255,226,138,0)');
+    c.fillStyle = g;
+    c.beginPath(); c.arc(0, 0, 124, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = 'rgba(255,236,170,1)';
+    c.lineWidth = 6;
+    c.beginPath(); c.arc(0, 0, 110, 0, Math.PI * 2); c.stroke();
+    c.lineWidth = 2;
+    c.beginPath(); c.arc(0, 0, 96, 0, Math.PI * 2); c.stroke();
+    const nums = ['XII', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
+    c.fillStyle = 'rgba(255,236,170,1)';
+    c.font = 'bold 18px Georgia, serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2 - Math.PI / 2;
+      c.fillText(nums[k], Math.cos(a) * 78, Math.sin(a) * 78);
+      c.fillRect(Math.cos(a) * 100 - 3, Math.sin(a) * 100 - 3, 6, 6);
+    }
+    CLOCK_TEX = new THREE.CanvasTexture(cv);
+    return CLOCK_TEX;
+  }
+  function handsTex() {
+    if (HANDS_TEX) return HANDS_TEX;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 128;
+    const c = cv.getContext('2d');
+    c.fillStyle = 'rgba(255,240,190,1)';
+    c.fillRect(61, 18, 6, 48);   // minutvisare
+    c.fillRect(60, 36, 8, 30);   // timvisare
+    c.beginPath(); c.arc(64, 64, 7, 0, Math.PI * 2); c.fill();
+    HANDS_TEX = new THREE.CanvasTexture(cv);
+    return HANDS_TEX;
+  }
+
   function buildDivine(def, upper, inner, fists) {
     const mats = [];
     const reg = (mat) => { mats.push({ mat, color: mat.color.clone(), base: mat.opacity }); return mat; };
     const spin = [];  // grupper som snurrar runt roboten
     const flap = [];  // vingar
     const pulse = []; // saker som lyser upp under specialattacken
+    const spinners = []; // sprites (visare) och grupper som snurrar runt en egen axel
     const g = new THREE.Group();
     upper.add(g);
 
@@ -296,6 +343,114 @@
         spin.push({ g: rocks, speed: 0.9 });
         break;
       }
+      case 'timestop': { // Kronos: en lysande urtavla bakom ryggen och snurrande kugghjul
+        const face = glowSprite(clockTex(), '#ffe9a8');
+        face.scale.set(104, 104, 1);
+        face.position.set(-26, 104, 0);
+        g.add(face);
+        reg(face.material);
+        const hands = glowSprite(handsTex(), '#fff3c4');
+        hands.scale.set(80, 80, 1);
+        hands.position.copy(face.position);
+        g.add(hands);
+        reg(hands.material);
+        spinners.push({ mat: hands.material, speed: -1.6 });
+        pulse.push(face);
+        const gearMat = reg(shiny('#c9a85a', '#ffcf5a', 0.35));
+        const gears = new THREE.Group();
+        gears.position.y = 64;
+        for (let k = 0; k < 3; k++) {
+          const a = (k / 3) * Math.PI * 2;
+          const gear = new THREE.Group();
+          gear.add(new THREE.Mesh(new THREE.TorusGeometry(7, 2.2, 6, 12), gearMat));
+          for (let t = 0; t < 8; t++) {
+            const tooth = new THREE.Mesh(box(3, 3, 3), gearMat);
+            tooth.position.set(Math.cos(t * Math.PI / 4) * 9.5, Math.sin(t * Math.PI / 4) * 9.5, 0);
+            gear.add(tooth);
+          }
+          gear.position.set(Math.cos(a) * 46, Math.sin(a * 2) * 14, Math.sin(a) * 46);
+          gears.add(gear);
+        }
+        g.add(gears);
+        spin.push({ g: gears, speed: 0.8 });
+        break;
+      }
+      case 'meteor': { // Solaris: en flammande sol runt huvudet och eldklot som kretsar
+        const sun = glowSprite(softTex(), '#ff9a2a');
+        sun.scale.set(110, 110, 1);
+        sun.position.set(0, 112, 0);
+        g.add(sun);
+        reg(sun.material);
+        const core = glowSprite(softTex(), '#fff0a0');
+        core.scale.set(50, 50, 1);
+        core.position.copy(sun.position);
+        g.add(core);
+        reg(core.material);
+        pulse.push(sun, core);
+        const rays = new THREE.Group();
+        rays.position.set(0, 112, 0);
+        const rayMat = reg(glowMat('#ffb347', 0.85));
+        for (let k = 0; k < 10; k++) {
+          const ray = new THREE.Mesh(cone(3, 16, 5), rayMat);
+          const a = (k / 10) * Math.PI * 2;
+          ray.position.set(0, Math.cos(a) * 26, Math.sin(a) * 26);
+          ray.rotation.x = a;
+          rays.add(ray);
+        }
+        g.add(rays);
+        spinners.push({ obj: rays, axis: 'x', speed: 0.9 });
+        const balls = new THREE.Group();
+        balls.position.y = 70;
+        const fire = reg(glowMat('#ff7a1a', 0.95));
+        for (let k = 0; k < 4; k++) {
+          const a = (k / 4) * Math.PI * 2;
+          const b = new THREE.Mesh(sphere(5), fire);
+          b.position.set(Math.cos(a) * 48, Math.sin(a * 2) * 18, Math.sin(a) * 48);
+          const halo = new THREE.Mesh(sphere(9), reg(glowMat('#ffcf5a', 0.3)));
+          halo.position.copy(b.position);
+          balls.add(b, halo);
+        }
+        g.add(balls);
+        spin.push({ g: balls, speed: 1.6 });
+        break;
+      }
+      case 'tide': { // Leviatan: en treudd i handen och vattendroppar som virvlar runt den
+        const metal = reg(shiny('#cfe9ff', '#3ee8ff', 0.35));
+        const trident = new THREE.Group();
+        trident.add(new THREE.Mesh(cyl(1.8, 1.8, 92, 8), metal));
+        const bar = new THREE.Mesh(box(22, 3, 3), metal);
+        bar.position.y = 44;
+        trident.add(bar);
+        for (const x of [-10, 0, 10]) {
+          const prong = new THREE.Mesh(cone(2.6, 16, 6), metal);
+          prong.position.set(x, 54, 0);
+          trident.add(prong);
+        }
+        const glow = new THREE.Mesh(sphere(5), reg(glowMat('#7ff9ff', 0.8)));
+        glow.position.y = 46;
+        trident.add(glow);
+        trident.position.y = 26; // handen håller i nedre delen av skaftet
+        fists[0].add(trident);
+        const water = new THREE.Group();
+        water.position.y = 60;
+        const drop = reg(glowMat('#5fd0ff', 0.85));
+        for (let k = 0; k < 14; k++) {
+          const a = (k / 14) * Math.PI * 2;
+          const d = new THREE.Mesh(sphere(2.6 + (k % 3)), drop);
+          d.position.set(Math.cos(a) * 50, Math.sin(a * 3) * 30, Math.sin(a) * 50);
+          water.add(d);
+        }
+        g.add(water);
+        spin.push({ g: water, speed: 1.3 });
+        const mist = glowSprite(softTex(), '#2f8fe0');
+        mist.scale.set(130, 160, 1);
+        mist.position.set(0, 70, 0);
+        mist.material.opacity = 0.4;
+        g.add(mist);
+        reg(mist.material);
+        pulse.push(mist);
+        break;
+      }
       default: { // Eclipse: en förmörkad sol bakom huvudet och svarta kristaller
         const corona = glowSprite(coronaTex());
         corona.scale.set(96, 96, 1);
@@ -343,6 +498,10 @@
         for (const w of flap) w.pivot.rotation.x = w.side * (Math.sin(t * (4 + power * 10)) * 0.18 + power * 0.35);
         const p = 1 + power * 0.8 + Math.sin(t * 5) * 0.06;
         for (const m of pulse) m.scale.copy(m.userData.s).multiplyScalar(p);
+        for (const sp of spinners) {
+          if (sp.mat) sp.mat.rotation = t * sp.speed * (1 + power * 4);
+          else sp.obj.rotation[sp.axis] = t * sp.speed * (1 + power * 3);
+        }
       },
     };
   }
@@ -795,6 +954,16 @@
       holeDisk: makePool(scene, () => new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ map: accretionTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }))),
       holeCorona: makePool(scene, () => glowSprite(coronaTex())),
       holeBit: makePool(scene, () => new THREE.Mesh(sphere(1), basic('#d9a8ff', 1, true))),
+      clockFace: makePool(scene, () => { const m = new THREE.Mesh(new THREE.CircleGeometry(1, 64), new THREE.MeshBasicMaterial({ map: clockTex(), color: '#ffe9a8', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); m.rotation.x = -Math.PI / 2; return m; }),
+      clockHand: makePool(scene, () => new THREE.Mesh(box(1, 3, 1), basic('#fff3c4', 0.95, true))),
+      clockDome: makePool(scene, () => new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), basic('#9fd8ff', 0.12, true))),
+      meteorWarn: makePool(scene, () => { const m = new THREE.Mesh(new THREE.RingGeometry(0.75, 1, 40), basic('#ff3b1f', 0.85, true)); m.rotation.x = -Math.PI / 2; return m; }),
+      meteorRock: makePool(scene, () => new THREE.Mesh(new THREE.DodecahedronGeometry(1), new THREE.MeshStandardMaterial({ color: '#3a2418', emissive: '#ff5a1a', emissiveIntensity: 0.8, flatShading: true }))),
+      meteorFire: makePool(scene, () => glowSprite(softTex(), '#ff8a2a')),
+      meteorTrail: makePool(scene, () => new THREE.Mesh(new THREE.CylinderGeometry(1, 0.1, 1, 10, 1, true), fadeUp('#ffb347'))),
+      tideWall: makePool(scene, () => new THREE.Mesh(box(1, 1, 1), new THREE.MeshStandardMaterial({ color: '#1f7fd0', emissive: '#0f4a8a', emissiveIntensity: 0.5, transparent: true, opacity: 0.72, roughness: 0.15, metalness: 0.1, depthWrite: false }))),
+      tideFoam: makePool(scene, () => new THREE.Mesh(box(1, 1, 1), basic('#e8fbff', 0.9))),
+      tideGap: makePool(scene, () => new THREE.Mesh(box(1, 1, 1), basic('#7ff9ff', 0.35, true))),
       boom: makePool(scene, () => new THREE.Mesh(sphere(1), basic('#c47bff', 0.8, true))),
       boomRing: makePool(scene, () => { const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 8, 48), basic('#ffffff', 1, true)); m.rotation.x = -Math.PI / 2; return m; }),
     };
@@ -1038,6 +1207,86 @@
           r.scale.setScalar(30 + k * (320 - i * 120));
           r.material.opacity = 1 - k;
         }
+      }
+      for (const c of s.clocks || []) {
+        // Urverket: en urtavla på golvet med snurrande visare och en kupol där tiden går långsamt.
+        const grow = clamp((c.max - c.life) / 0.3, 0, 1) * clamp(c.life / 0.3, 0, 1);
+        const x = wx(c.x);
+        const z = c.z || 0;
+        const face = pools.clockFace.get();
+        face.position.set(x, 2, z);
+        face.scale.setScalar(c.r * grow);
+        face.rotation.z = (c.max - c.life) * 0.4;
+        face.material.opacity = 0.9;
+        const dome = pools.clockDome.get();
+        dome.position.set(x, 0, z);
+        dome.scale.set(c.r * grow, c.r * 0.75 * grow, c.r * grow);
+        const age = c.max - c.life;
+        for (const [len, speed, w] of [[c.r * 0.8, 3.2, 6], [c.r * 0.5, 0.7, 10]]) {
+          const h = pools.clockHand.get();
+          const a = age * speed;
+          h.scale.set(len * grow, 1, w);
+          h.rotation.y = -a;
+          h.position.set(x + Math.cos(a) * len * grow / 2, 4, z + Math.sin(a) * len * grow / 2);
+        }
+      }
+      for (const m of s.meteors || []) {
+        if (!m.locked) continue;
+        const x = wx(m.x);
+        const z = m.z || 0;
+        if (m.boom < 0) {
+          const k = clamp(m.t / m.delay, 0, 1);
+          const warn = pools.meteorWarn.get();
+          warn.position.set(x, 2, z);
+          warn.scale.setScalar(58 * (1.25 - 0.25 * k));
+          warn.material.opacity = 0.35 + 0.6 * k;
+          // Meteoren kommer snett uppifrån, från bakom banan.
+          const y = 20 + (1 - k) * 700;
+          const mz = z - (1 - k) * 380;
+          const rock = pools.meteorRock.get();
+          rock.position.set(x + (1 - k) * 160, y, mz);
+          rock.scale.setScalar(16);
+          rock.rotation.set(m.t * 7, m.t * 5, 0);
+          const fire = pools.meteorFire.get();
+          fire.position.copy(rock.position);
+          fire.scale.setScalar(70);
+          const trail = pools.meteorTrail.get();
+          trail.position.set(rock.position.x + 40, y + 110, mz - 60);
+          trail.scale.set(14, 230, 14);
+          trail.rotation.set(-0.48, 0, -0.38);
+          trail.material.opacity = 0.9;
+        } else {
+          const k = m.boom / 0.45;
+          const b = pools.boom.get();
+          b.position.set(x, 20, z);
+          b.scale.setScalar(20 + k * 90);
+          b.material.color.set('#ff8a2a');
+          b.material.opacity = 0.9 * (1 - k);
+          const r = pools.boomRing.get();
+          r.position.set(x, 3, z);
+          r.scale.setScalar(30 + k * 120);
+          r.material.opacity = 1 - k;
+        }
+      }
+      for (const w of s.tides || []) {
+        // En vattenvägg över hela djupet, med en enda lucka (gapZ) att ta sig igenom.
+        const x = wx(w.x);
+        const lo = -270; // ut till banans kantlinjer (±260)
+        const hi = 270;
+        const g0 = w.gapZ - w.gapW / 2;
+        const g1 = w.gapZ + w.gapW / 2;
+        for (const [a, b] of [[lo, g0], [g1, hi]]) {
+          if (b - a < 2) continue;
+          const wall = pools.tideWall.get();
+          wall.scale.set(44, 170, b - a);
+          wall.position.set(x, 85, (a + b) / 2);
+          const foam = pools.tideFoam.get();
+          foam.scale.set(54, 12, b - a);
+          foam.position.set(x + w.dir * 6, 172 + Math.sin(w.x * 0.05) * 4, (a + b) / 2);
+        }
+        const gap = pools.tideGap.get();
+        gap.scale.set(48, 4, w.gapW);
+        gap.position.set(x, 2, w.gapZ);
       }
       for (const p of s.particles || []) {
         const m = pools.particle.get();

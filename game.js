@@ -322,6 +322,38 @@ const SPECIALS = {
       game.holes.push({ owner: f, x: o.x, z: o.z, life: 2.2, max: 2.2, tickT: 0.45, dmg: sp.dmg, blast: sp.blast });
     },
   },
+  timestop: {
+    // Ett jättelikt urverk öppnar sig under motståndaren. Inne i det går tiden långsamt (allt
+    // går i en tredjedels fart) och varje tick gör ont — ta dig ut ur cirkeln!
+    dur: 0.6, fires: [0.25],
+    fire: (f, o, sp) => {
+      game.clocks.push({ owner: f, x: o.x, z: o.z, r: 165, life: 3.2, max: 3.2, tickT: 0.8, dmg: sp.dmg });
+      sparks(o.x, FLOOR - 40, '#ffe28a', 16, o.z);
+    },
+  },
+  meteor: {
+    // Sju meteorer faller en i taget där motståndaren står just då. En röd ring på marken
+    // visar var varje meteor slår ner — fortsätt röra på dig!
+    dur: 0.7, fires: [0.3],
+    fire: (f, o, sp) => {
+      for (let i = 0; i < 7; i++) {
+        game.meteors.push({ owner: f, t: -i * 0.34, delay: 0.75, x: o.x, z: o.z, dmg: sp.dmg, locked: false, boom: -1 });
+      }
+    },
+  },
+  tide: {
+    // Två vattenväggar sköljer över hela banan. Varje vägg har bara EN lucka i djupled — gå
+    // in i luckan innan vågen når dig. Hoppa över går inte, vågen är för hög.
+    dur: 0.7, fires: [0.3],
+    fire: (f, o, sp) => {
+      const dir = o.x >= f.x ? 1 : -1;
+      const g1 = (Math.random() * 2 - 1) * (DEPTH - 50);
+      const g2 = clamp(-g1 + (Math.random() - 0.5) * 80, -(DEPTH - 50), DEPTH - 50);
+      for (const [i, gapZ] of [g1, g2].entries()) {
+        game.tides.push({ owner: f, x: f.x + dir * 30 - dir * i * 380, dir, speed: 400, gapZ, gapW: 110, dmg: sp.dmg, hit: false });
+      }
+    },
+  },
 
   // ---- Jokerns egna specialattacker ----
   // Unika för jokern — ingen annan robot delar någon av dessa sex mekaniker, till skillnad
@@ -459,6 +491,7 @@ class Fighter {
     this.shieldT = 0;
     this.reflectT = 0;
     this.frozenT = 0;
+    this.slowT = 0; // inne i Kronos urverk: allt går i en tredjedels fart
     this.jinxT = 0; // bara jokerns "Förbannelse": halverar energiåterhämtningen medan den räknar ner
     this.vulnT = 0; // bara jokerns "Hån": tar 40 % mer skada medan den räknar ner
     this.dead = false;
@@ -506,6 +539,8 @@ class Fighter {
     this.frozenT = Math.max(0, this.frozenT - dt);
     this.jinxT = Math.max(0, this.jinxT - dt);
     this.vulnT = Math.max(0, this.vulnT - dt);
+    const slow = this.slowT > 0 ? 0.33 : 1;
+    this.slowT = Math.max(0, this.slowT - dt);
 
     let walk = 0;
     let walkZ = 0;
@@ -514,10 +549,10 @@ class Fighter {
       if (canFight) this.energy = Math.min(MAX_ENERGY, this.energy + 6 * dt * (this.jinxT > 0 ? 0.5 : 1));
       if (this.hurt <= 0 && canFight) {
         if (this.act) {
-          this.updateAct(dt, opp);
+          this.updateAct(dt * slow, opp);
         } else {
-          walk = input.dir * this.def.speed * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul;
-          walkZ = (input.depth || 0) * this.def.speed * DEPTH_SPEED * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul;
+          walk = input.dir * this.def.speed * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow;
+          walkZ = (input.depth || 0) * this.def.speed * DEPTH_SPEED * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow;
           if (input.jump && this.onGround) {
             this.vy = -JUMP_V;
             this.onGround = false;
@@ -737,6 +772,56 @@ function updateHoles(dt) {
   game.holes = game.holes.filter((h) => !h.done);
 }
 
+function updateClocks(dt) {
+  for (const c of game.clocks) {
+    c.life -= dt;
+    c.tickT -= dt;
+    const target = c.owner === game.player ? game.ai : game.player;
+    const inside = Math.hypot(target.x - c.x, target.z - c.z) < c.r;
+    if (inside) target.slowT = 0.15; // håller i sig så länge man står kvar i urverket
+    if (c.tickT <= 0) {
+      c.tickT = 0.8;
+      if (inside && !target.dead) hurt(target, c.dmg, Math.sign(target.x - c.x) || 1, 0, c.owner);
+    }
+  }
+  game.clocks = game.clocks.filter((c) => c.life > 0);
+}
+
+function updateMeteors(dt) {
+  for (const m of game.meteors) {
+    if (m.boom >= 0) { m.boom += dt; continue; } // smällen ritas en kort stund efter nedslaget
+    m.t += dt;
+    const target = m.owner === game.player ? game.ai : game.player;
+    if (!m.locked && m.t >= 0) {
+      // Varje meteor siktar på där motståndaren står precis när den börjar falla.
+      m.locked = true;
+      m.x = clamp(target.x + (Math.random() * 2 - 1) * 25, 30, W - 30);
+      m.z = clamp(target.z + (Math.random() * 2 - 1) * 25, -DEPTH, DEPTH);
+    }
+    if (m.locked && m.t >= m.delay) {
+      m.boom = 0;
+      game.shake = Math.max(game.shake, 0.22);
+      sparks(m.x, FLOOR - 10, '#ff8a2a', 14, m.z);
+      if (!target.dead && Math.hypot(target.x - m.x, target.z - m.z) < 58 && target.y > FLOOR - 110) {
+        hurt(target, m.dmg, Math.sign(target.x - m.x) || 1, 260, m.owner);
+      }
+    }
+  }
+  game.meteors = game.meteors.filter((m) => m.boom < 0.45);
+}
+
+function updateTides(dt) {
+  for (const w of game.tides) {
+    w.x += w.dir * w.speed * dt;
+    const target = w.owner === game.player ? game.ai : game.player;
+    const inGap = Math.abs(target.z - w.gapZ) < w.gapW / 2 - 10;
+    if (!w.hit && !target.dead && !inGap && Math.abs(target.x - w.x) < 26 + target.w / 2) {
+      if (hurt(target, w.dmg, w.dir, 700, w.owner)) w.hit = true;
+    }
+  }
+  game.tides = game.tides.filter((w) => (w.dir > 0 ? w.x < W + 80 : w.x > -80));
+}
+
 function updateClouds(dt) {
   for (const c of game.clouds) {
     c.life -= dt;
@@ -836,6 +921,9 @@ function wantsSpecial(f, o, dist) {
     case 'halo': return dist < 380 || f.hp < f.maxHp * 0.6;
     case 'quake': return o.onGround;
     case 'blackhole': return true;
+    case 'timestop': return dist < 300;
+    case 'meteor': return true;
+    case 'tide': return true;
     default: return false;
   }
 }
@@ -1007,6 +1095,9 @@ const game = {
   halos: [],
   quakes: [],
   holes: [],
+  clocks: [],
+  meteors: [],
+  tides: [],
   particles: [],
   shake: 0,
   introT: 0,
@@ -1089,6 +1180,9 @@ async function startMatch(modeOverride, monsterId) {
   game.halos = [];
   game.quakes = [];
   game.holes = [];
+  game.clocks = [];
+  game.meteors = [];
+  game.tides = [];
   game.particles = [];
   game.winner = null;
   game.result = null;
@@ -2174,6 +2268,9 @@ function beginFriendMatch(isHost, payload) {
   game.halos = [];
   game.quakes = [];
   game.holes = [];
+  game.clocks = [];
+  game.meteors = [];
+  game.tides = [];
   game.particles = [];
   game.winner = null;
   game.result = null;
@@ -2339,6 +2436,9 @@ function updateFriendMatch(dt) {
       updateHalos(dt);
       updateQuakes(dt);
       updateHoles(dt);
+      updateClocks(dt);
+      updateMeteors(dt);
+      updateTides(dt);
       if (!om.ended && (f0.hp <= 0 || f1.hp <= 0)) {
         om.ended = true;
         const winnerIsHost = f0.hp > 0;
@@ -2707,6 +2807,9 @@ function update(dt) {
     updateHalos(dt);
     updateQuakes(dt);
     updateHoles(dt);
+    updateClocks(dt);
+    updateMeteors(dt);
+    updateTides(dt);
 
     if (fighting && (player.hp <= 0 || ai.hp <= 0)) endMatch();
   }
@@ -3230,6 +3333,8 @@ function draw() {
       particles: fighting ? game.particles : none,
       halos: fighting ? game.halos : none, quakes: fighting ? game.quakes : none,
       holes: fighting ? game.holes : none,
+      clocks: fighting ? game.clocks : none, meteors: fighting ? game.meteors : none,
+      tides: fighting ? game.tides : none,
     });
     ctx.clearRect(0, 0, W, H);
   } else {
