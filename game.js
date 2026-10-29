@@ -77,6 +77,7 @@ function hurt(target, dmg, dirX, knock, source) {
   dmg *= target.vulnT > 0 ? 1.4 : 1; // bara jokerns "Hån"
   if (source.dragonT > 0 && source.act && source.act.kind === 'punch') dmg *= 2; // Drakhjärtats Drakvrede
   if (target.dragonT > 0) knock = 0; // ...och då kan ingenting knuffa en
+  if (game.training && target === game.ai) trainingHit(dmg);
   target.hp = Math.max(0, target.hp - dmg);
   // Taggrustningen: den som slår tar en del av skadan själv.
   if (target.def.thorns && punching && source !== target && !source.dead) {
@@ -1335,6 +1336,7 @@ const screens = {
   friend: document.getElementById('screen-friend'),
   world: document.getElementById('screen-world'),
   teleport: document.getElementById('screen-teleport'),
+  clan: document.getElementById('screen-clan'),
   shop: document.getElementById('screen-shop'),
   trade: document.getElementById('screen-trade'),
 };
@@ -1483,36 +1485,114 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.ai = new Fighter(aDef, W * 0.75, -1);
   game.brain = makeBrain(game.bossTier ? game.bossTier.skill : skillForLevel(game.acct.level));
   game.allies = aDef.royal ? makeAllies() : [];
-  game.projectiles = [];
-  game.waves = [];
-  game.beams = [];
-  game.strikes = [];
-  game.mines = [];
-  game.clouds = [];
-  game.halos = [];
-  game.quakes = [];
-  game.holes = [];
-  game.wolves = [];
-  game.roots = [];
-  game.tethers = [];
-  game.megabeams = [];
-  game.bolts = [];
+  game.training = null;
+  resetArena();
+  hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
+  hud.nameAi.textContent = game.boss ? '??? · MYSTISK ROBOT' : `${aDef.name} · ${game.monster ? 'MONSTER' : 'AI'}`;
+  setHudType(hud.typePlayer, pDef);
+  setHudType(hud.typeAi, aDef);
+  showScreen(null);
+}
+
+// Tömmer banan på alla attacker och effekter och startar nedräkningen till en ny match.
+function resetArena() {
+  for (const k of ['projectiles', 'waves', 'beams', 'strikes', 'mines', 'clouds', 'halos', 'quakes', 'holes',
+    'wolves', 'roots', 'tethers', 'megabeams', 'bolts', 'clocks', 'meteors', 'tides', 'particles']) game[k] = [];
   game.superBanner = null;
-  game.clocks = [];
-  game.meteors = [];
-  game.tides = [];
-  game.particles = [];
   game.winner = null;
   game.result = null;
   game.introT = 2.4;
   game.banner = 0;
   specialBuffer = 0;
   game.phase = 'intro';
-  hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
-  hud.nameAi.textContent = game.boss ? '??? · MYSTISK ROBOT' : `${aDef.name} · ${game.monster ? 'MONSTER' : 'AI'}`;
+}
+
+// ---------- Träningsarenan ----------
+// En träningsdocka som aldrig slår tillbaka och aldrig går sönder (den lagar sig själv), så
+// man kan prova sina attacker i lugn och ro och se hur mycket skada de gör. Ger inga priser.
+const DUMMY = {
+  id: 'dummy', name: 'Träningsdocka', rarity: 'common', types: ['normal'],
+  color: '#c9a36b', accent: '#7a5a32', eye: '#ff3b1f', head: 'round', extra: 'none',
+  scale: 1.15, hp: 2000, speed: 170, punch: 0,
+  special: { type: 'none', name: '—', desc: '' },
+};
+
+function startTraining(moving) {
+  if (friendRoom) leaveFriendRoom();
+  game.matchToken = null;
+  game.stake = false;
+  game.boss = false;
+  game.monster = false;
+  game.bossTier = null;
+  game.allies = [];
+  game.online = null;
+  game.fighters = null;
+  game.arena = arenaById.classic;
+  showArenaLabel(game.arena);
+  const pDef = applyEquipment(myDef(robotById[game.selectedId]));
+  game.player = new Fighter(pDef, W * 0.3, 1);
+  game.ai = new Fighter(DUMMY, W * 0.65, -1);
+  game.brain = makeBrain(SKILL_EASY);
+  game.training = { moving, total: 0, last: 0, hits: [], time: 0, moveT: 0, dir: 0, depth: 0 };
+  resetArena();
+  game.introT = 0.8;
+  hud.namePlayer.textContent = `DU · ${displayName(pDef, true)}`;
+  hud.nameAi.textContent = moving ? 'Träningsdocka · RÖRLIG' : 'Träningsdocka · STILLA';
   setHudType(hud.typePlayer, pDef);
-  setHudType(hud.typeAi, aDef);
+  setHudType(hud.typeAi, DUMMY);
+  byId('explore-bar').hidden = false;
+  byId('explore-hint').textContent = 'Träning — prova dina attacker. Dockan slår aldrig tillbaka.';
   showScreen(null);
+}
+
+// Dockans "AI": står still, eller vandrar fram och tillbaka (även i djupled) — men anfaller aldrig.
+function trainingInput(dt) {
+  const tr = game.training;
+  if (!tr.moving) return IDLE;
+  tr.moveT -= dt;
+  if (tr.moveT <= 0) {
+    tr.moveT = rand(0.6, 1.5);
+    tr.dir = [-1, 0, 1][Math.floor(Math.random() * 3)];
+    tr.depth = [-1, 0, 1][Math.floor(Math.random() * 3)];
+  }
+  return { ...IDLE, dir: tr.dir * 0.6, depth: tr.depth * 0.6 };
+}
+
+function updateTraining(dt) {
+  const tr = game.training;
+  tr.time += dt;
+  const { player, ai } = game;
+  if (ai.hp < ai.maxHp * 0.5) ai.hp = ai.maxHp; // dockan lagar sig själv
+  ai.dead = false;
+  if (player.def.superPower && !player.superReady) {
+    // I träningen laddas superkraften om efter fem sekunder, så man kan öva på den.
+    tr.superT = (tr.superT || 5) - dt;
+    if (tr.superT <= 0) { player.superReady = true; tr.superT = 5; }
+  }
+  tr.hits = tr.hits.filter((h) => tr.time - h.t < 5);
+}
+
+// Anropas från hurt(): räkna skadan på dockan.
+function trainingHit(dmg) {
+  const tr = game.training;
+  tr.total += dmg;
+  tr.last = dmg;
+  tr.hits.push({ t: tr.time, dmg });
+}
+
+function drawTrainingStats() {
+  const tr = game.training;
+  const dps = tr.hits.reduce((a, h) => a + h.dmg, 0) / 5;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(W / 2 - 170, 60, 340, 62);
+  ctx.font = 'bold 15px ui-monospace, Menlo, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffd93d';
+  ctx.fillText(`Senaste träff: ${Math.round(tr.last)}   Totalt: ${Math.round(tr.total)}`, W / 2, 84);
+  ctx.fillStyle = '#9fe8ff';
+  ctx.fillText(`Skada per sekund: ${dps.toFixed(1)}`, W / 2, 108);
+  ctx.restore();
 }
 
 // ---------- Kungastrid: du och fyra robotar mot en kung eller drottningen ----------
@@ -1708,6 +1788,7 @@ function showSelect() {
   if (!game.acct) return; // kontot är inte klart inläst än (t.ex. Enter tryckt innan boot() hann klart)
   byId('explore-bar').hidden = true; // t.ex. Escape rakt ut ur Monstervärlden, inte bara "Tillbaka"-knappen
   game.explore = null;
+  game.training = null;
   if (friendRoom) leaveFriendRoom(); // t.ex. Escape rakt ut ur en vänmatch, inte bara "Lämna"-knappen
   game.phase = 'select';
   if (game.mode === 'stake' && !canStake()) game.mode = 'normal';
@@ -1777,6 +1858,7 @@ function showSelect() {
     : '';
 
   byId('select-error').textContent = '';
+  renderQuests();
   renderOnlineInfo();
   renderAccountBar();
   showScreen('select');
@@ -1956,6 +2038,82 @@ byId('btn-trade').addEventListener('click', showTrade);
 byId('btn-trade-back').addEventListener('click', () => showSelect());
 byId('btn-trade-auto').addEventListener('click', autoFillTrade);
 byId('btn-trade-do').addEventListener('click', doTrade);
+
+// ---------- Dagliga uppdrag ----------
+function renderQuests() {
+  const box = byId('quests');
+  box.replaceChildren();
+  const q = game.acct.quests;
+  if (!q) return;
+  box.append(el('p', 'quests-title', '📜 Dagens uppdrag'));
+  for (const it of q.list) {
+    const row = el('div', `quest${it.done ? ' done' : ''}`);
+    row.append(el('span', 'qname', `${it.done ? '✅' : '◻️'} ${it.name}`), el('span', 'qprog', `${it.prog}/${it.goal} · +${it.coins} 🪙`));
+    box.append(row);
+  }
+  box.append(el('p', 'hint', q.bonus ? 'Alla klara idag — du fick bonuslådan! Nya uppdrag i morgon.' : 'Klara alla tre för en bonuslåda. Nya uppdrag varje dag.'));
+}
+
+// ---------- Klaner ----------
+// Gå med i (eller skapa) en klan. Varje vinst ger klanen poäng till topplistan, och klanens
+// medlemmar får 3 extra mynt per vinst. Kräver konto (se api/world/[action].js).
+async function showClan(message) {
+  if (!game.acct) return;
+  game.phase = 'clan';
+  showScreen('clan');
+  byId('clan-status').textContent = message || '';
+  const box = byId('clan-body');
+  box.replaceChildren(el('p', 'hint', 'Laddar...'));
+  const api = worldApi();
+  let data = null;
+  try { data = api ? await api.clans() : null; } catch (e) { data = null; }
+  if (game.phase !== 'clan') return;
+  box.replaceChildren();
+  if (!data) { box.append(el('p', 'hint', 'Klaner behöver sidans egen server.')); return; }
+  if (data.clan) {
+    const c = data.clan;
+    box.append(el('p', 'clan-name', `🛡 ${c.name}`), el('p', 'hint', `${c.points} klanpoäng${c.rank ? ` · plats ${c.rank} på topplistan` : ''} · ${c.members.length} medlemmar`));
+    const list = el('div', 'clan-members');
+    for (const m of c.members) list.append(el('span', 'clan-member', `${m.owner ? '👑 ' : ''}${m.name}`));
+    box.append(list, el('p', 'hint', 'Varje vinst ger klanen poäng (kung/drottning 10, boss 3, monster 2, annars 1) och dig 3 extra mynt.'));
+    box.append(worldButton('Lämna klanen', async () => {
+      try { await net.clanLeave(); } catch (e) { showClan(e.message); return; }
+      showClan('Du lämnade klanen.');
+    }, { secondary: true }));
+  } else if (!data.loggedIn) {
+    box.append(el('p', 'hint', 'Logga in för att skapa eller gå med i en klan.'));
+  } else {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 20;
+    input.placeholder = 'Klanens namn';
+    input.id = 'clan-name-input';
+    const buttons = el('div', 'buttons');
+    const act = (fn, done) => async () => {
+      try { await fn(input.value); } catch (e) { byId('clan-status').textContent = e.message; return; }
+      showClan(done);
+    };
+    buttons.append(worldButton('Skapa klan', act((n) => net.clanCreate(n), 'Klanen är skapad! Berätta namnet för dina kompisar.')),
+      worldButton('Gå med', act((n) => net.clanJoin(n), 'Du är med i klanen!'), { secondary: true }));
+    box.append(el('p', '', 'Du är inte med i någon klan än.'), input, buttons);
+  }
+  box.append(el('p', 'quests-title', '🏆 Topplista'));
+  if (!data.top.length) box.append(el('p', 'hint', 'Inga klaner än — skapa den första!'));
+  data.top.forEach((t, i) => {
+    const row = el('div', 'quest');
+    row.append(el('span', 'qname', `${i + 1}. ${t.name}`), el('span', 'qprog', `${t.points} p · ${t.members} st`));
+    if (!data.clan && data.loggedIn) {
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', () => { const inp = byId('clan-name-input'); if (inp) inp.value = t.name; });
+    }
+    box.append(row);
+  });
+}
+
+byId('btn-clan').addEventListener('click', () => showClan());
+byId('btn-clan-back').addEventListener('click', () => showSelect());
+byId('btn-train-still').addEventListener('click', () => startTraining(false));
+byId('btn-train-moving').addEventListener('click', () => startTraining(true));
 
 // ---------- Teleport ----------
 // Alla sorters matcher (arenan, mystiska robotar, Monstervärlden, Världskartan, vänmatch)
@@ -2178,6 +2336,7 @@ byId('btn-unequip').addEventListener('click', () => reequip(null));
 byId('btn-explore-back').addEventListener('click', () => {
   byId('explore-bar').hidden = true;
   game.explore = null;
+  game.training = null;
   showTeleport();
 });
 
@@ -2289,6 +2448,9 @@ function showResult() {
     text = 'Vinn en match för att få en låda.';
   }
   if (r.coins) text += ` +${r.coins} 🪙 mynt.`;
+  if (r.clanPoints) text += ` Klanen fick ${r.clanPoints} poäng.`;
+  for (const q of r.quests || []) text += ` 📜 Uppdrag klart: ${q.name}! +${q.coins} mynt.`;
+  if (r.questBonus) text += ' Alla dagens uppdrag klara — du fick en bonuslåda!';
   for (const up of r.levelUps || []) {
     rewardItem(`NIVÅ ${up.level}!`, robotById[up.prize], { isNew: true, n: invCount(up.prize) });
   }
@@ -2897,6 +3059,7 @@ function beginFriendMatch(isHost, payload) {
   game.result = null;
   game.mode = 'friend';
   game.allies = [];
+  game.training = null;
   game.stake = false;
   game.boss = false;
   game.monster = false;
@@ -3493,7 +3656,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan') return;
 
   if (game.online) {
     updateFriendMatch(dt);
@@ -3513,7 +3676,8 @@ function update(dt) {
     if (allies.length && fighting) chooseBossTarget(dt);
     const bossTarget = (allies.length && ai.target) || player;
     player.step(dt, fighting ? playerInput() : IDLE, ai, fighting);
-    ai.step(dt, fighting ? aiInput(ai, bossTarget, game.brain, dt) : IDLE, bossTarget, fighting);
+    const aiIn = !fighting ? IDLE : game.training ? trainingInput(dt) : aiInput(ai, bossTarget, game.brain, dt);
+    ai.step(dt, aiIn, bossTarget, fighting);
     for (const a of allies) a.f.step(dt, fighting ? aiInput(a.f, ai, a.brain, dt) : IDLE, ai, fighting);
     separate(player, ai);
     if (allies.length) {
@@ -3541,7 +3705,8 @@ function update(dt) {
     updateSupers(dt);
 
     const lost = allies.length ? player.hp <= 0 && allies.every((a) => a.f.hp <= 0) : player.hp <= 0;
-    if (fighting && (lost || ai.hp <= 0)) endMatch();
+    if (game.training) updateTraining(dt);
+    else if (fighting && (lost || ai.hp <= 0)) endMatch();
   }
 
   if (game.phase === 'over') {
@@ -4087,6 +4252,7 @@ function draw() {
     });
     ctx.clearRect(0, 0, W, H);
     if (fighting) drawAllyBars((x, y, z) => r3d.project(x, y, z));
+    if (fighting && game.training) drawTrainingStats();
   } else {
     ctx.save();
     if (game.shake > 0) ctx.translate(rand(-1, 1) * game.shake * 24, rand(-1, 1) * game.shake * 24);
@@ -4097,6 +4263,7 @@ function draw() {
       for (const a of game.allies) drawFighter(a.f, false);
       drawFighter(player, true);
       drawAllyBars((x, y) => ({ x, y }));
+      if (game.training) drawTrainingStats();
       drawProjectiles();
       for (const p of game.particles) {
         ctx.globalAlpha = clamp(p.life / p.max, 0, 1);

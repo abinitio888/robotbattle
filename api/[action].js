@@ -101,7 +101,7 @@ module.exports = dispatch({
     method: 'POST',
     async handler(req) {
       const session = await requireSession(req);
-      const prize = S.openBox(session.user.acct, randomFloat);
+      const prize = S.openBox(session.user.acct, randomFloat, clock().today);
       if (!prize) throw new HttpError(400, 'Du har inga lådor.');
       await saveUser(session.key, session.user);
       return { acct: acctView(session.user), prize };

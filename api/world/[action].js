@@ -10,8 +10,11 @@
 //   outgoing:<användare> id för den egna senaste utmaningen
 //   online               sorterad mängd: klient-id -> senaste ping (ms), för att räkna hur många som spelar
 //   mm:waiting           { cid, room } — den som väntar på en riktig motståndare just nu
+//   clan:<id>            { id, name, owner, members: [{ key, name, joined }], created }
+//   clanname:<namn>      klanens id (namnet med små bokstäver, så två klaner aldrig heter likadant)
+//   clans:points         sorterad mängd: klan-id -> klanpoäng (se api/match finish)
 const crypto = require('crypto');
-const { dispatch, requireSession, sessionOf, redis, HttpError, S, tooMany } = require('../_lib.js');
+const { dispatch, requireSession, sessionOf, redis, HttpError, S, tooMany, saveUser } = require('../_lib.js');
 
 const LEADERS = 'world:leaders';
 const ANSWER_SECONDS = 45;          // så länge en utmaning väntar på svar
@@ -24,6 +27,36 @@ const PING_ALIVE_MS = 25 * 1000;   // räknas som inne om sidan pingat så här 
 // i stället för AI. Kan sättas lägre med PVP_MIN, t.ex. vid test.
 const PVP_MIN = Number(process.env.PVP_MIN) || 100;
 const QUEUE_SECONDS = 25;          // så länge man står i kö innan det blir en vanlig AI-match
+
+const CLAN_MAX_MEMBERS = 20;
+const CLAN_NAME_RE = /^[A-Za-zÅÄÖåäö0-9 _-]{3,20}$/;
+
+async function readClan(id) {
+  if (typeof id !== 'string' || !/^k[a-f0-9]{12}$/.test(id)) return null;
+  return parse(await redis.get(`clan:${id}`));
+}
+const saveClan = (c) => redis.set(`clan:${c.id}`, JSON.stringify(c));
+
+function cleanClanName(raw) {
+  const name = typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ') : '';
+  if (!CLAN_NAME_RE.test(name)) throw new HttpError(400, 'Klanens namn ska vara 3–20 tecken: bokstäver, siffror, mellanslag, _ eller -.');
+  return name;
+}
+
+async function clanView(clan) {
+  const [points, rank] = await Promise.all([redis.zscore('clans:points', clan.id), redis.zrevrank('clans:points', clan.id)]);
+  return { name: clan.name, owner: clan.members.find((m) => m.key === clan.owner)?.name || '', members: clan.members.map((m) => ({ name: m.name, owner: m.key === clan.owner })), points: Number(points) || 0, rank: rank === null ? null : rank + 1 };
+}
+
+async function topClans() {
+  const raw = await redis.zrange('clans:points', 0, 9, { rev: true, withScores: true });
+  const out = [];
+  for (let i = 0; i < raw.length; i += 2) {
+    const clan = await readClan(raw[i]);
+    if (clan) out.push({ name: clan.name, points: Number(raw[i + 1]) || 0, members: clan.members.length });
+  }
+  return out;
+}
 
 const validCid = (cid) => (typeof cid === 'string' && /^[a-z0-9]{8,32}$/.test(cid) ? cid : null);
 
@@ -75,6 +108,71 @@ const challengeView = (c) => ({
 });
 
 module.exports = dispatch({
+  // ---------- Klaner ----------
+  clans: {
+    method: 'GET',
+    async handler(req) {
+      const session = await sessionOf(req);
+      const mine = session && session.user.clan ? await readClan(session.user.clan) : null;
+      return { loggedIn: !!session, clan: mine ? await clanView(mine) : null, top: await topClans() };
+    },
+  },
+
+  'clan-create': {
+    method: 'POST',
+    async handler(req, res, body) {
+      const session = await requireSession(req);
+      if (session.user.clan && (await readClan(session.user.clan))) throw new HttpError(409, 'Du är redan med i en klan. Lämna den först.');
+      if (await tooMany(`clan:${session.key}`, 10, 3600)) throw new HttpError(429, 'För många klaner på kort tid. Vänta en stund.');
+      const name = cleanClanName(body.name);
+      const id = `k${crypto.randomBytes(6).toString('hex')}`;
+      if (!(await redis.set(`clanname:${name.toLowerCase()}`, id, { nx: true }))) throw new HttpError(409, 'Det finns redan en klan som heter så.');
+      const clan = { id, name, owner: session.key, members: [{ key: session.key, name: session.user.name, joined: Date.now() }], created: Date.now() };
+      await saveClan(clan);
+      await redis.zadd('clans:points', { score: 0, member: id });
+      session.user.clan = id;
+      await saveUser(session.key, session.user);
+      return { clan: await clanView(clan) };
+    },
+  },
+
+  'clan-join': {
+    method: 'POST',
+    async handler(req, res, body) {
+      const session = await requireSession(req);
+      if (session.user.clan && (await readClan(session.user.clan))) throw new HttpError(409, 'Du är redan med i en klan. Lämna den först.');
+      const name = cleanClanName(body.name);
+      const clan = await readClan(await redis.get(`clanname:${name.toLowerCase()}`));
+      if (!clan) throw new HttpError(404, 'Det finns ingen klan som heter så.');
+      if (clan.members.length >= CLAN_MAX_MEMBERS) throw new HttpError(409, `Klanen är full (högst ${CLAN_MAX_MEMBERS} medlemmar).`);
+      if (!clan.members.some((m) => m.key === session.key)) clan.members.push({ key: session.key, name: session.user.name, joined: Date.now() });
+      await saveClan(clan);
+      session.user.clan = clan.id;
+      await saveUser(session.key, session.user);
+      return { clan: await clanView(clan) };
+    },
+  },
+
+  'clan-leave': {
+    method: 'POST',
+    async handler(req) {
+      const session = await requireSession(req);
+      const clan = await readClan(session.user.clan);
+      session.user.clan = null;
+      await saveUser(session.key, session.user);
+      if (!clan) return { ok: true };
+      clan.members = clan.members.filter((m) => m.key !== session.key);
+      if (clan.members.length === 0) {
+        // Sista medlemmen gick: klanen finns inte längre.
+        await Promise.all([redis.del(`clan:${clan.id}`), redis.del(`clanname:${clan.name.toLowerCase()}`), redis.zrem('clans:points', clan.id)]);
+        return { ok: true };
+      }
+      if (clan.owner === session.key) clan.owner = clan.members[0].key; // den som varit med längst tar över
+      await saveClan(clan);
+      return { ok: true };
+    },
+  },
+
   // Sidan pingar med jämna mellanrum: räknar hur många som spelar, håller en beskyddare
   // "online" på kartan och berättar om en utmaning väntar. Gjord så billig som möjligt —
   // varje ping är några få databasanrop, och alla spelare pingar hela tiden.

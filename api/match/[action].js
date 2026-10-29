@@ -1,10 +1,11 @@
 // Matcher mot AI: start och avslut, samlade i EN serverlös funktion (se dispatch() i
 // _lib.js) för att hålla sig inom Vercels gräns på 12 funktioner.
 const crypto = require('crypto');
-const { dispatch, requireSession, saveUser, acctView, randomFloat, redis, S, HttpError } = require('../_lib.js');
+const { dispatch, requireSession, saveUser, acctView, randomFloat, redis, S, HttpError, clock } = require('../_lib.js');
 
 const MATCH_TTL_SECONDS = 30 * 60; // en övergiven match glöms bort efter 30 minuter
-const MIN_MATCH_MS = 5000;         // en match som "tog" kortare än så kan inte ha spelats på riktigt
+const MIN_MATCH_MS = 5000;
+const CLAN_BONUS_COINS = 3;       // extra mynt per vinst för den som är med i en klan         // en match som "tog" kortare än så kan inte ha spelats på riktigt
 
 module.exports = dispatch({
   start: {
@@ -33,7 +34,16 @@ module.exports = dispatch({
       if (!entry || entry.key !== session.key) throw new HttpError(400, 'Ingen match pågår.');
       if (Date.now() - entry.startedAt < MIN_MATCH_MS) throw new HttpError(400, 'Matchen var för kort.');
       await redis.del(`match:${token}`);
-      const result = S.finishMatch(session.user.acct, entry.match, won === true, randomFloat);
+      const result = S.finishMatch(session.user.acct, entry.match, won === true, randomFloat, clock().today);
+      // Klan: varje vinst ger klanpoäng (mer för svårare motståndare) och lite extra mynt.
+      if (result.won && session.user.clan) {
+        const opp = S.robotById[entry.match.opp];
+        const points = opp && opp.royal ? 10 : entry.match.boss ? 3 : entry.match.monster ? 2 : 1;
+        await redis.zincrby('clans:points', points, session.user.clan).catch(() => {});
+        session.user.acct.coins = (session.user.acct.coins || 0) + CLAN_BONUS_COINS;
+        result.coins = (result.coins || 0) + CLAN_BONUS_COINS;
+        result.clanPoints = points;
+      }
       await saveUser(session.key, session.user);
       return { acct: acctView(session.user), result };
     },

@@ -173,8 +173,10 @@
           <button id="btn-equipment" type="button" class="secondary">Utrustning</button>
           <button id="btn-shop" type="button" class="shop-btn">🛒 Butiken</button>
           <button id="btn-trade" type="button" class="trade-btn">🔁 Byteshandel</button>
+          <button id="btn-clan" type="button" class="clan-btn">🛡 Klaner</button>
         </div>
         <p id="daily-info" class="hint"></p>
+        <div id="quests" class="quests"></div>
         <div class="buttons">
           <button id="btn-import-guest" type="button" class="daily" hidden>Importera gästsamling</button>
         </div>
@@ -214,6 +216,14 @@
             <button id="btn-world" type="button" class="world-btn">Res dit</button>
           </div>
           <div class="portal">
+            <p class="portal-title">🎯 Träningsarenan</p>
+            <p class="hint">Öva på en träningsdocka som aldrig slår tillbaka, och se hur mycket skada du gör.</p>
+            <div class="buttons">
+              <button id="btn-train-still" type="button" class="secondary">Stilla docka</button>
+              <button id="btn-train-moving" type="button" class="secondary">Rörlig docka</button>
+            </div>
+          </div>
+          <div class="portal">
             <p class="portal-title">🤝 Vänmatch</p>
             <p class="hint">Spela mot en kompis med en rumskod.</p>
             <button id="btn-friend" type="button" class="secondary">Vänmatch (online)</button>
@@ -248,6 +258,14 @@
         <div id="world-detail"></div>
         <p id="world-status" class="hint"></p>
         <button id="btn-world-back" type="button" class="linklike">Tillbaka</button>
+      </section>
+
+      <section id="screen-clan" hidden>
+        <h2>🛡 Klaner</h2>
+        <p class="hint">Gå ihop med dina kompisar i en klan och klättra på topplistan tillsammans.</p>
+        <div id="clan-body" class="clan-body"></div>
+        <p id="clan-status" class="hint"></p>
+        <button id="btn-clan-back" type="button" class="linklike">Tillbaka</button>
       </section>
 
       <section id="screen-shop" hidden>

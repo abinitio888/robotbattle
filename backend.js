@@ -121,14 +121,14 @@
 
     async finishMatch(match, won) {
       if (!this.match) throw new Error('Ingen match pågår.');
-      const result = S.finishMatch(this.acct, this.match, won, Math.random);
+      const result = S.finishMatch(this.acct, this.match, won, Math.random, todayKey());
       this.match = null;
       this.save();
       return { acct: this.view(), result };
     }
 
     async openBox() {
-      const prize = S.openBox(this.acct, Math.random);
+      const prize = S.openBox(this.acct, Math.random, todayKey());
       if (!prize) throw new Error('Du har inga lådor.');
       this.save();
       return { acct: this.view(), prize };
@@ -266,6 +266,10 @@
     worldPing(cid, waiting) { return this.api(`/api/world/ping?cid=${encodeURIComponent(cid)}${waiting ? '&waiting=1' : ''}`); }
     mmQueue(cid) { return this.api('/api/world/queue', { cid }); }
     mmUnqueue(cid) { return this.api('/api/world/unqueue', { cid }); }
+    clans() { return this.api('/api/world/clans'); }
+    clanCreate(name) { return this.api('/api/world/clan-create', { name }); }
+    clanJoin(name) { return this.api('/api/world/clan-join', { name }); }
+    clanLeave() { return this.api('/api/world/clan-leave', {}); }
   }
 
   // Används bara av Claude-artefaktversionen (ingen egen server där): sparar kontot i
@@ -353,14 +357,14 @@
 
     async finishMatch(match, won) {
       if (!this.match) throw new Error('Ingen match pågår.');
-      const result = S.finishMatch(this.acct, this.match, won, Math.random);
+      const result = S.finishMatch(this.acct, this.match, won, Math.random, todayKey());
       this.match = null;
       await this.save();
       return { acct: this.view(), result };
     }
 
     async openBox() {
-      const prize = S.openBox(this.acct, Math.random);
+      const prize = S.openBox(this.acct, Math.random, todayKey());
       if (!prize) throw new Error('Du har inga lådor.');
       await this.save();
       return { acct: this.view(), prize };
