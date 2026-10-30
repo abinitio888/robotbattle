@@ -2470,7 +2470,9 @@ function showMonsters() {
       }),
     ],
     near: null,
-    attackHeld: false,
+    // Man går in hit från staden med mellanslag/J — samma tryck får inte direkt utmana
+    // monstret närmast startplatsen (Gnasher), så man måste släppa knappen först.
+    attackHeld: true,
   };
   byId('explore-bar').hidden = false;
   byId('explore-hint').textContent = 'Gå med WASD eller piltangenterna.';
