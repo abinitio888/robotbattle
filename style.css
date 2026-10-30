@@ -755,3 +755,20 @@ button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-sha
 .clan-members { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .clan-member { padding: 3px 10px; border-radius: 12px; background: #26304f; font-size: 13px; }
 #clan-name-input { width: min(260px, 100%); }
+
+/* ---- Startskärmen: en glödande, skimrande titel ---- */
+@keyframes title-shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+@keyframes title-glow {
+  0%, 100% { filter: drop-shadow(0 0 10px rgba(62, 232, 255, 0.55)); }
+  50% { filter: drop-shadow(0 0 26px rgba(180, 107, 255, 0.9)); }
+}
+#screen-menu h1 {
+  font-size: clamp(36px, 8vw, 76px);
+  background: linear-gradient(90deg, #3ee8ff, #b46bff, #ffd93d, #3ee8ff);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: title-shimmer 4s linear infinite, title-glow 2.6s ease-in-out infinite;
+}
+#screen-menu #btn-play { font-size: 20px; padding: 14px 40px; animation: portal-glow 2.4s ease-in-out infinite; }

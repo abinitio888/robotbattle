@@ -1064,6 +1064,41 @@
     let lastT = performance.now();
     const lights = createLights(scene);
 
+    // Glöd: allt som lyser starkt (attacker, portaler, ögon, gudomliga effekter) får ett sken.
+    let composer = null;
+    if (THREE.EffectComposer && THREE.RenderPass && THREE.UnrealBloomPass) {
+      try {
+        composer = new THREE.EffectComposer(renderer);
+        composer.addPass(new THREE.RenderPass(scene, camera));
+        composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(W, H), 0.65, 0.45, 0.86));
+      } catch (e) {
+        composer = null;
+      }
+    }
+
+    // Svävande glödkorn i luften på varje bana, i banans färg.
+    const MOTES = 180;
+    const motePos = new Float32Array(MOTES * 3);
+    const moteSpeed = new Float32Array(MOTES);
+    for (let i = 0; i < MOTES; i++) {
+      motePos[i * 3] = -1400 + Math.random() * 4400;
+      motePos[i * 3 + 1] = Math.random() * 420;
+      motePos[i * 3 + 2] = -650 + Math.random() * 1000;
+      moteSpeed[i] = 8 + Math.random() * 22;
+    }
+    const moteGeo = new THREE.BufferGeometry();
+    moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+    const moteMat = new THREE.PointsMaterial({ size: 7, map: softTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: '#3ee8ff', opacity: 0.8 });
+    scene.add(new THREE.Points(moteGeo, moteMat));
+    function driftMotes(dt) {
+      for (let i = 0; i < MOTES; i++) {
+        motePos[i * 3 + 1] += moteSpeed[i] * dt;
+        motePos[i * 3] += Math.sin(motePos[i * 3 + 1] * 0.02 + i) * 6 * dt;
+        if (motePos[i * 3 + 1] > 440) motePos[i * 3 + 1] = 0;
+      }
+      moteGeo.attributes.position.needsUpdate = true;
+    }
+
     const arenas = {};
     let currentArena = null;
     function setArena(arena) {
@@ -1079,6 +1114,7 @@
       scene.background = a.sky;
       scene.fog = a.fog;
       lights.hemi.groundColor.set(arena.line);
+      moteMat.color.set(arena.line);
       currentArena = arena.id;
     }
 
@@ -1766,13 +1802,15 @@
       for (const p of Object.values(pools)) p.finish();
 
       const now = performance.now();
-      aimCamera(s.focus || s.fighters || [], Math.min((now - lastT) / 1000, 0.1));
+      const frameDt = Math.min((now - lastT) / 1000, 0.1);
+      aimCamera(s.focus || s.fighters || [], frameDt);
       lastT = now;
       if (s.shake > 0) {
         camera.position.x += (Math.random() * 2 - 1) * s.shake * 24;
         camera.position.y += (Math.random() * 2 - 1) * s.shake * 24;
       }
-      renderer.render(scene, camera);
+      driftMotes(frameDt);
+      if (composer) composer.render(); else renderer.render(scene, camera);
     }
 
     // Var på skärmen (i spelets 960x540-koordinater) en spelpunkt hamnar, för text ovanpå 3D:n.

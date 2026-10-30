@@ -115,7 +115,38 @@ function hurt(target, dmg, dirX, knock, source) {
     game.superBanner = { name: 'Återspolning', t: 1.4, mine: target === game.player };
   }
   if (target.hp <= 0) target.dead = true;
+  popDamage(target, dmg, dmg >= 30);
+  if (dmg >= 15) game.hitStop = Math.max(game.hitStop || 0, dmg >= 30 ? 0.09 : 0.05); // tunga träffar fryser bilden ett ögonblick
   return true;
+}
+
+// Skadesiffror som flyger upp ur den som träffas.
+function popDamage(f, dmg, big) {
+  if (!(dmg >= 1)) return;
+  (game.dmgNums || (game.dmgNums = [])).push({
+    x: f.x + rand(-14, 14), y: f.y - f.h - 6, z: f.z, v: Math.round(dmg), t: 0, big,
+    color: f === game.player ? '#ff6b6b' : big ? '#ffd93d' : '#ffffff',
+  });
+}
+
+function drawDamageNumbers(project) {
+  for (const n of game.dmgNums || []) {
+    const k = n.t / 0.9;
+    const at = project(n.x, n.y - k * 50, n.z);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - k * k);
+    ctx.font = `bold ${n.big ? 30 : 20}px ui-monospace, Menlo, monospace`;
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillStyle = n.color;
+    const scale = 1 + Math.max(0, 0.3 - n.t) * 2; // poppar till lite i början
+    ctx.translate(at.x, at.y);
+    ctx.scale(scale, scale);
+    ctx.strokeText(String(n.v), 0, 0);
+    ctx.fillText(String(n.v), 0, 0);
+    ctx.restore();
+  }
 }
 
 function meleeHit(f, o, dmg, reach, knock) {
@@ -1691,6 +1722,7 @@ function endMatch() {
   // I en kungastrid vinner laget när kungen faller, även om du själv redan ligger ner.
   const won = game.allies.length ? game.ai.hp <= 0 : game.player.hp > 0;
   game.phase = 'over';
+  game.slowMo = 1.2;
   game.winner = won ? game.player : game.ai;
   game.overT = 1.6;
   game.result = null;
@@ -3375,6 +3407,7 @@ function guestStartMatch(room, payload) {
 }
 
 function hostEndMatch(winnerIsHost) {
+  game.slowMo = 1.2;
   game.phase = 'over';
   game.winner = winnerIsHost ? game.player : game.ai;
   game.overT = 1.6;
@@ -3384,6 +3417,7 @@ function hostEndMatch(winnerIsHost) {
 }
 
 function guestEndMatch(data) {
+  game.slowMo = 1.2;
   if (!game.online) return;
   game.online.ended = true;
   game.phase = 'over';
@@ -3450,6 +3484,7 @@ function applyFighterSnapshot(f, snap) {
   f.reviveT = sanitizeNum(snap.reviveT, f.reviveT);
   f.superReady = !!snap.superReady;
   if (f.hp < prevHp) { // enda sättet gästen vet att något träffade — inga egna fysikanrop att haka på
+    popDamage(f, prevHp - f.hp, prevHp - f.hp >= 30);
     sparks(f.x, f.y - f.h * 0.6, f.def.color, prevHp - f.hp >= 15 ? 18 : 10, f.z);
     game.shake = Math.max(game.shake, prevHp - f.hp >= 15 ? 0.25 : 0.1);
   }
@@ -4499,8 +4534,8 @@ function drawBanner(text, size) {
 }
 
 function draw() {
-  // Mätarna hör till striderna — inte när man går omkring i staden eller Monstervärlden.
-  document.getElementById('hud').style.visibility = game.phase === 'hub' || game.phase === 'monsters' ? 'hidden' : '';
+  // Mätarna hör bara till striderna — inte menyer, staden eller Monstervärlden.
+  document.getElementById('hud').style.visibility = game.phase === 'intro' || game.phase === 'fight' || game.phase === 'over' ? '' : 'hidden';
   if (game.phase === 'monsters') { drawExplore(); return; }
   if (game.phase === 'hub') { drawHub(); return; }
   const arenaId = game.arena.id;
@@ -4533,6 +4568,7 @@ function draw() {
     ctx.clearRect(0, 0, W, H);
     if (fighting) drawAllyBars((x, y, z) => r3d.project(x, y, z));
     if (fighting && game.training) drawTrainingStats();
+    if (fighting) drawDamageNumbers((x, y, z) => r3d.project(x, y, z));
   } else {
     ctx.save();
     if (game.shake > 0) ctx.translate(rand(-1, 1) * game.shake * 24, rand(-1, 1) * game.shake * 24);
@@ -4544,6 +4580,7 @@ function draw() {
       drawFighter(player, true);
       drawAllyBars((x, y) => ({ x, y }));
       if (game.training) drawTrainingStats();
+      drawDamageNumbers((x, y) => ({ x, y }));
       drawProjectiles();
       for (const p of game.particles) {
         ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
@@ -4604,8 +4641,13 @@ function draw() {
 let last = performance.now();
 let acc = 0;
 function frame(now) {
-  acc += Math.min((now - last) / 1000, 0.1);
+  let real = Math.min((now - last) / 1000, 0.1);
   last = now;
+  for (const n of game.dmgNums || []) n.t += real;
+  if (game.dmgNums) game.dmgNums = game.dmgNums.filter((n) => n.t < 0.9);
+  if (game.hitStop > 0) { game.hitStop -= real; real = 0; } // tung träff: bilden står still ett ögonblick
+  if (game.slowMo > 0) { game.slowMo -= real; real *= 0.3; } // K.O. i slow motion
+  acc += real;
   while (acc >= STEP) {
     update(STEP);
     acc -= STEP;
