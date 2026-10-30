@@ -628,70 +628,120 @@
   const MAX_COINS = 10000000;
   const addCoins = (acct, n) => { acct.coins = Math.min(MAX_COINS, (acct.coins || 0) + n); return n; };
 
-  // ---------- Dagliga uppdrag ----------
-  // Tre nya uppdrag varje dag, valda ur QUEST_POOL utifrån datumet (alla får samma uppdrag
-  // samma dag). Framstegen räknas i finishMatch()/openBox() — aldrig av klienten själv — och
-  // mynten delas ut så fort ett uppdrag är klart. Klarar man alla tre får man en bonuslåda.
+  // ---------- Uppdrag ----------
+  // Fyra uppdrag åt gången, och de tar aldrig slut: så fort ett blir klart kommer ett nytt i
+  // dess ställe. Ju fler man klarat, desto högre uppdragsnivå — större mål men mer mynt.
+  // Var tredje klarat uppdrag ger en bonuslåda. Framstegen räknas i finishMatch()/openBox() —
+  // aldrig av klienten själv — och mynten delas ut så fort ett uppdrag är klart.
+  // name(n, param) ger texten, där n är målet och param typen/sällsyntheten (om uppdraget har en).
+  const plural = (n, one, many) => (n === 1 ? one : `${n} ${many}`);
   const QUEST_POOL = [
-    { id: 'win3', name: 'Vinn 3 matcher', goal: 3, coins: 40, on: 'win' },
-    { id: 'play5', name: 'Spela 5 matcher', goal: 5, coins: 30, on: 'play' },
-    { id: 'monster2', name: 'Besegra 2 monster', goal: 2, coins: 50, on: 'monster' },
-    { id: 'boss1', name: 'Besegra en mystisk robot', goal: 1, coins: 60, on: 'boss' },
-    { id: 'stake1', name: 'Vinn en insatsmatch', goal: 1, coins: 50, on: 'stake' },
-    { id: 'royal1', name: 'Besegra en kung eller drottningen', goal: 1, coins: 150, on: 'royal' },
-    { id: 'box2', name: 'Öppna 2 lådor', goal: 2, coins: 30, on: 'box' },
-    { id: 'type2', name: 'Vinn 2 matcher med en {typ}-robot', goal: 2, coins: 50, on: 'typewin' },
-    { id: 'divine1', name: 'Vinn en match med en gudomlig robot', goal: 1, coins: 60, on: 'divinewin' },
+    { id: 'win', on: 'win', goal: 3, step: 1, coins: 40, name: (n) => `Vinn ${plural(n, 'en match', 'matcher')}` },
+    { id: 'play', on: 'play', goal: 5, step: 2, coins: 30, name: (n) => `Spela ${plural(n, 'en match', 'matcher')}` },
+    { id: 'streak', on: 'streak', goal: 2, step: 1, coins: 60, name: (n) => `Vinn ${n} matcher i rad` },
+    { id: 'monster', on: 'monster', goal: 2, step: 1, coins: 50, name: (n) => `Besegra ${plural(n, 'ett monster', 'monster')}` },
+    { id: 'boss', on: 'boss', goal: 1, step: 1, coins: 60, name: (n) => `Besegra ${plural(n, 'en mystisk robot', 'mystiska robotar')}` },
+    { id: 'stake', on: 'stake', goal: 1, step: 1, coins: 50, name: (n) => `Vinn ${plural(n, 'en insatsmatch', 'insatsmatcher')}` },
+    { id: 'royal', on: 'royal', goal: 1, step: 0, coins: 150, name: () => 'Besegra en kung eller drottningen' },
+    { id: 'box', on: 'box', goal: 2, step: 1, coins: 30, name: (n) => `Öppna ${plural(n, 'en låda', 'lådor')}` },
+    { id: 'type', on: 'typewin', goal: 2, step: 1, coins: 50, param: 'type', name: (n, p) => `Vinn ${plural(n, 'en match', 'matcher')} med en ${TYPES[p].label}-robot` },
+    { id: 'rarity', on: 'raritywin', goal: 2, step: 1, coins: 50, param: 'rarity', name: (n, p) => `Vinn ${plural(n, 'en match', 'matcher')} med en ${RARITY[p].label.toLowerCase()} robot` },
+    { id: 'divine', on: 'divinewin', goal: 1, step: 1, coins: 60, name: (n) => `Vinn ${plural(n, 'en match', 'matcher')} med en gudomlig robot` },
   ];
-  const QUEST_COUNT = 3;
-  const QUEST_TYPES = ['eld', 'vatten', 'gräs', 'elektrisk', 'stål', 'flygande', 'mörk', 'is', 'sten', 'fe'];
+  const questById = Object.fromEntries(QUEST_POOL.map((q) => [q.id, q]));
+  const QUEST_SLOTS = 4;
+  const QUEST_BONUS_EVERY = 3;
+  const QUESTS_PER_LEVEL = 5;
+  const QUEST_MAX_LEVEL = 6;
+  // Minst två av de här ligger alltid på tavlan, så att det alltid finns något som går att klara.
+  const EASY_QUESTS = ['win', 'play', 'streak', 'box', 'monster'];
+  const MIN_EASY = 2;
+  // Ett uppdrag som inte gått framåt på så här många matcher byts mot ett nytt.
+  const QUEST_STALE = 8;
+  const QUEST_RARITIES = ['common', 'rare', 'epic', 'legendary']; // gudomliga har ett eget uppdrag
 
-  // Dagens uppdrag: samma för alla, ändras vid midnatt.
-  function questsFor(today) {
-    let h = hashName(`uppdrag-${today}`);
-    const next = () => { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; h = (h ^ (h >>> 13)) >>> 0; return h; };
-    // Minst ett lätt uppdrag varje dag, de andra två valfria.
-    const easy = QUEST_POOL.filter((q) => ['win3', 'play5', 'box2', 'monster2'].includes(q.id));
-    const picked = [easy[next() % easy.length]];
-    const pool = QUEST_POOL.filter((q) => q !== picked[0]);
-    while (picked.length < QUEST_COUNT && pool.length) picked.push(pool.splice(next() % pool.length, 1)[0]);
-    const type = QUEST_TYPES[next() % QUEST_TYPES.length];
-    return picked.map((q) => (q.on === 'typewin' ? { ...q, type, name: q.name.replace('{typ}', TYPES[type].label) } : q));
-  }
+  const questLevel = (done) => Math.min(QUEST_MAX_LEVEL, Math.floor(done / QUESTS_PER_LEVEL));
 
-  function questState(acct, today) {
-    if (!acct.quests || acct.quests.day !== today) acct.quests = { day: today, prog: {}, done: [], bonus: false };
-    return acct.quests;
-  }
-
-  // events: vad som hände, t.ex. ['play', 'win', 'monster']. types: robotens typer (för typewin).
-  function questEvent(acct, today, events, types = []) {
-    const out = { completed: [], bonus: false };
-    if (!today) return out;
-    const st = questState(acct, today);
-    for (const q of questsFor(today)) {
-      if (st.done.includes(q.id) || !events.includes(q.on)) continue;
-      if (q.on === 'typewin' && !types.includes(q.type)) continue;
-      st.prog[q.id] = (st.prog[q.id] || 0) + 1;
-      if (st.prog[q.id] >= q.goal) {
-        st.done.push(q.id);
-        addCoins(acct, q.coins);
-        out.completed.push({ name: q.name, coins: q.coins });
-      }
+  // Nästa uppdrag i kedjan: bestäms av löpnumret seq, men hoppar över sådana som redan ligger
+  // på tavlan och sådana man inte kan klara med sina robotar (typen och sällsyntheten väljs
+  // bland robotarna man har). Mål och belöning låses när uppdraget dyker upp.
+  function nextQuest(acct, st) {
+    const owned = Object.keys(acct.inv || {}).filter((id) => acct.inv[id] > 0).map((id) => robotById[id]).filter(Boolean);
+    const types = [...new Set(owned.flatMap((r) => r.types))];
+    const rarities = QUEST_RARITIES.filter((r) => owned.some((o) => o.rarity === r));
+    const taken = new Set(st.active.map((q) => q.id));
+    const needEasy = st.active.filter((q) => EASY_QUESTS.includes(q.id)).length < MIN_EASY;
+    for (;;) {
+      st.seq += 1;
+      let h = hashName(`uppdrag-${st.seq}`);
+      const next = () => { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; h = (h ^ (h >>> 13)) >>> 0; return h; };
+      const base = QUEST_POOL[next() % QUEST_POOL.length];
+      if (taken.has(base.id) || (needEasy && !EASY_QUESTS.includes(base.id))) continue;
+      if ((base.param === 'type' && !types.length) || (base.param === 'rarity' && !rarities.length)) continue;
+      if (base.id === 'divine' && !owned.some((o) => o.rarity === 'divine')) continue;
+      const level = questLevel(st.done);
+      const q = { id: base.id, goal: base.goal + base.step * level, coins: Math.round(base.coins * (1 + 0.25 * level)), prog: 0, idle: 0 };
+      if (base.param === 'type') q.param = types[next() % types.length];
+      if (base.param === 'rarity') q.param = rarities[next() % rarities.length];
+      return q;
     }
-    if (!st.bonus && st.done.length >= QUEST_COUNT) {
-      st.bonus = true;
-      acct.boxes += 1;
-      out.bonus = true;
+  }
+
+  function questState(acct) {
+    if (!acct.quests) acct.quests = { seq: 0, done: 0, streak: 0, active: [] };
+    const st = acct.quests;
+    while (st.active.length < QUEST_SLOTS) st.active.push(nextQuest(acct, st));
+    return st;
+  }
+
+  const questName = (q) => questById[q.id].name(q.goal, q.param);
+
+  // events: vad som hände, t.ex. ['play', 'win', 'monster']. robotDef: roboten man spelade med
+  // (för typ- och sällsynthetsuppdragen).
+  function questEvent(acct, events, robotDef) {
+    const out = { completed: [], added: [], bonus: 0 };
+    const st = questState(acct);
+    const played = events.includes('play');
+    if (played) st.streak = events.includes('win') ? st.streak + 1 : 0;
+    st.active = st.active.filter((q) => {
+      const base = questById[q.id];
+      const before = q.prog;
+      if (base.on === 'streak') {
+        q.prog = Math.min(q.goal, Math.max(q.prog, st.streak));
+      } else if (events.includes(base.on)
+        && !(base.param === 'type' && !(robotDef && robotDef.types.includes(q.param)))
+        && !(base.param === 'rarity' && !(robotDef && robotDef.rarity === q.param))) {
+        q.prog += 1;
+      }
+      if (q.prog > before) q.idle = 0;
+      else if (played) q.idle += 1;
+      if (q.idle >= QUEST_STALE) return false;
+      if (q.prog < q.goal) return true;
+      addCoins(acct, q.coins);
+      out.completed.push({ name: questName(q), coins: q.coins });
+      st.done += 1;
+      if (st.done % QUEST_BONUS_EVERY === 0) {
+        acct.boxes += 1;
+        out.bonus += 1;
+      }
+      return false;
+    });
+    while (st.active.length < QUEST_SLOTS) {
+      const q = nextQuest(acct, st);
+      st.active.push(q);
+      out.added.push(questName(q));
     }
     return out;
   }
 
-  function questView(acct, today) {
-    const st = acct.quests && acct.quests.day === today ? acct.quests : { prog: {}, done: [], bonus: false };
+  function questView(acct) {
+    const st = questState(acct);
     return {
-      list: questsFor(today).map((q) => ({ id: q.id, name: q.name, goal: q.goal, coins: q.coins, prog: Math.min(q.goal, st.prog[q.id] || 0), done: st.done.includes(q.id) })),
-      bonus: !!st.bonus,
+      list: st.active.map((q) => ({ id: q.id, name: questName(q), goal: q.goal, coins: q.coins, prog: q.prog, staleIn: QUEST_STALE - q.idle })),
+      done: st.done,
+      level: questLevel(st.done) + 1,
+      toBonus: QUEST_BONUS_EVERY - (st.done % QUEST_BONUS_EVERY),
+      streak: st.streak,
     };
   }
 
@@ -943,15 +993,24 @@
         acct.equippedItem = raw.equippedItem;
       }
       acct.coins = Math.max(0, Math.min(MAX_COINS, Math.floor(Number(raw.coins)) || 0));
+      // Gamla konton hade tre dagliga uppdrag ({ day, prog, ... }) — de får bara nya uppdrag.
       const q = raw.quests;
-      if (q && typeof q === 'object' && typeof q.day === 'string' && q.day.length <= 10) {
-        const ids = new Set(QUEST_POOL.map((x) => x.id));
-        const prog = {};
-        for (const id of ids) {
-          const n = Math.floor(Number(q.prog && q.prog[id]));
-          if (n > 0 && n < 1000) prog[id] = n;
+      if (q && typeof q === 'object' && Array.isArray(q.active)) {
+        const int = (v, max) => Math.max(0, Math.min(max, Math.floor(Number(v)) || 0));
+        const active = [];
+        for (const it of q.active.slice(0, QUEST_SLOTS)) {
+          const base = it && questById[it.id];
+          if (!base || active.some((x) => x.id === it.id)) continue;
+          if (base.param === 'type' && !Object.prototype.hasOwnProperty.call(TYPES, it.param)) continue;
+          if (base.param === 'rarity' && !QUEST_RARITIES.includes(it.param)) continue;
+          const goal = Math.max(1, int(it.goal, 100));
+          const quest = {
+            id: it.id, goal, coins: int(it.coins, 1000), prog: Math.min(goal - 1, int(it.prog, 100)), idle: int(it.idle, QUEST_STALE - 1),
+          };
+          if (base.param) quest.param = it.param;
+          active.push(quest);
         }
-        acct.quests = { day: q.day, prog, done: Array.isArray(q.done) ? q.done.filter((id) => ids.has(id)).slice(0, QUEST_COUNT) : [], bonus: !!q.bonus };
+        acct.quests = { seq: int(q.seq, 1e9), done: int(q.done, 1e9), streak: int(q.streak, 1e6), active };
       }
       const pieces = raw.superPieces && typeof raw.superPieces === 'object' && !Array.isArray(raw.superPieces) ? raw.superPieces : {};
       // Gamla konton hade bara Megavapnets delar, i megaFragments.
@@ -1112,8 +1171,8 @@
   // inget, precis som mot en boss.
   // rng behövs bara vid vinst (för ett eventuellt nivåpris/föremål/supervapendel) — vänmatcher
   // anropar aldrig den här funktionen.
-  function finishMatch(acct, match, won, rng, today) {
-    // Dagens uppdrag: vad hände i matchen?
+  function finishMatch(acct, match, won, rng) {
+    // Uppdragen: vad hände i matchen?
     const robotDef = robotById[match.robot];
     const oppDef = robotById[match.opp];
     const events = ['play'];
@@ -1123,12 +1182,13 @@
       if (match.monster && oppDef && oppDef.royal) events.push('royal');
       if (match.boss) events.push('boss');
       if (match.stake) events.push('stake');
-      events.push('typewin');
+      events.push('typewin', 'raritywin');
       if (robotDef && robotDef.rarity === 'divine') events.push('divinewin');
     }
-    const quest = questEvent(acct, today, events, robotDef ? robotDef.types : []);
+    const quest = questEvent(acct, events, robotDef);
     const result = finishMatchInner(acct, match, won, rng);
     result.quests = quest.completed;
+    result.newQuests = quest.added;
     result.questBonus = quest.bonus;
     return result;
   }
@@ -1205,10 +1265,10 @@
     return { equipped: itemId };
   }
 
-  function openBox(acct, rng, today) {
+  function openBox(acct, rng) {
     if (acct.boxes <= 0) return null;
     acct.boxes -= 1;
-    questEvent(acct, today, ['box']);
+    questEvent(acct, ['box']);
     const prize = rollBox(rng);
     addRobot(acct, prize.id);
     return { id: prize.id, n: count(acct, prize.id) };
@@ -1244,7 +1304,7 @@
       equippedItem: acct.equippedItem || null,
       superPieces: { ...(acct.superPieces || {}) },
       coins: acct.coins || 0,
-      quests: questView(acct, today),
+      quests: questView(acct),
     };
   }
 
@@ -1355,6 +1415,6 @@
     xpNeeded, addXp,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem,
-    QUEST_POOL, questsFor, questEvent,
+    QUEST_POOL, questEvent, questView,
   };
 });

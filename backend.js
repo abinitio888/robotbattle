@@ -121,14 +121,14 @@
 
     async finishMatch(match, won) {
       if (!this.match) throw new Error('Ingen match pågår.');
-      const result = S.finishMatch(this.acct, this.match, won, Math.random, todayKey());
+      const result = S.finishMatch(this.acct, this.match, won, Math.random);
       this.match = null;
       this.save();
       return { acct: this.view(), result };
     }
 
     async openBox() {
-      const prize = S.openBox(this.acct, Math.random, todayKey());
+      const prize = S.openBox(this.acct, Math.random);
       if (!prize) throw new Error('Du har inga lådor.');
       this.save();
       return { acct: this.view(), prize };
@@ -357,14 +357,14 @@
 
     async finishMatch(match, won) {
       if (!this.match) throw new Error('Ingen match pågår.');
-      const result = S.finishMatch(this.acct, this.match, won, Math.random, todayKey());
+      const result = S.finishMatch(this.acct, this.match, won, Math.random);
       this.match = null;
       await this.save();
       return { acct: this.view(), result };
     }
 
     async openBox() {
-      const prize = S.openBox(this.acct, Math.random, todayKey());
+      const prize = S.openBox(this.acct, Math.random);
       if (!prize) throw new Error('Du har inga lådor.');
       await this.save();
       return { acct: this.view(), prize };

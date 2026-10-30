@@ -2127,24 +2127,33 @@ byId('btn-trade-back').addEventListener('click', () => (game.fromHub ? showHub()
 byId('btn-trade-auto').addEventListener('click', autoFillTrade);
 byId('btn-trade-do').addEventListener('click', doTrade);
 
-// ---------- Dagliga uppdrag ----------
+// ---------- Uppdrag ----------
+// Uppdragen tar aldrig slut: så fort ett blir klart kommer ett nytt (se questEvent i shared.js).
 function showQuestBoard() {
   game.phase = 'questboard';
   renderQuests(byId('quests-board'));
   showScreen('questboard');
 }
 
-function renderQuests(box = byId('quests')) {
+// fresh: namnen på uppdrag som just dök upp, de märks med NYTT.
+function renderQuests(box = byId('quests'), fresh = []) {
   box.replaceChildren();
   const q = game.acct.quests;
   if (!q) return;
-  box.append(el('p', 'quests-title', '📜 Dagens uppdrag'));
+  box.append(el('p', 'quests-title', `📜 Uppdrag · nivå ${q.level}${q.streak > 1 ? ` · 🔥 ${q.streak} vinster i rad` : ''}`));
   for (const it of q.list) {
-    const row = el('div', `quest${it.done ? ' done' : ''}`);
-    row.append(el('span', 'qname', `${it.done ? '✅' : '◻️'} ${it.name}`), el('span', 'qprog', `${it.prog}/${it.goal} · +${it.coins} 🪙`));
+    const isNew = fresh.includes(it.name);
+    const row = el('div', `quest${isNew ? ' new' : ''}`);
+    const name = el('span', 'qname', it.name);
+    if (isNew) name.prepend(el('b', 'qnew', 'NYTT'));
+    const bar = el('span', 'qbar');
+    bar.append(el('i'));
+    bar.firstChild.style.width = `${(100 * it.prog) / it.goal}%`;
+    row.append(name, el('span', 'qprog', `${it.prog}/${it.goal} · +${it.coins} 🪙`), bar);
+    if (it.prog === 0 && it.staleIn <= 3) row.append(el('span', 'qstale', `byts om ${it.staleIn} ${it.staleIn === 1 ? 'match' : 'matcher'}`));
     box.append(row);
   }
-  box.append(el('p', 'hint', q.bonus ? 'Alla klara idag — du fick bonuslådan! Nya uppdrag i morgon.' : 'Klara alla tre för en bonuslåda. Nya uppdrag varje dag.'));
+  box.append(el('p', 'hint', `${q.done} uppdrag klarade. ${q.toBonus === 1 ? 'Nästa uppdrag' : `${q.toBonus} uppdrag till`} ger en bonuslåda! Nya uppdrag kommer hela tiden.`));
 }
 
 // ---------- Klaner ----------
@@ -2244,7 +2253,7 @@ const STATION_HINT = {
   stake: 'sätt en robot på spel — vinn motståndarens',
   garage: 'välj vilken robot du spelar med',
   boxes: 'öppna lådor och hämta den dagliga',
-  quests: 'dagens uppdrag',
+  quests: 'nya uppdrag hela tiden',
   equipment: 'välj vad din robot bär',
   boss: 'möt en mystisk robot',
   monsters: 'res till Monstervärlden',
@@ -2758,13 +2767,16 @@ function showResult() {
   if (r.coins) text += ` +${r.coins} 🪙 mynt.`;
   if (r.clanPoints) text += ` Klanen fick ${r.clanPoints} poäng.`;
   for (const q of r.quests || []) text += ` 📜 Uppdrag klart: ${q.name}! +${q.coins} mynt.`;
-  if (r.questBonus) text += ' Alla dagens uppdrag klara — du fick en bonuslåda!';
+  if (r.questBonus) text += ` Var tredje uppdrag ger en bonuslåda — du fick ${r.questBonus === 1 ? 'en' : r.questBonus}!`;
+  for (const name of r.newQuests || []) text += ` ✨ Nytt uppdrag: ${name}.`;
   for (const up of r.levelUps || []) {
     rewardItem(`NIVÅ ${up.level}!`, robotById[up.prize], { isNew: true, n: invCount(up.prize) });
   }
   const gainedIds = [r.bossWon, r.gained, ...(r.levelUps || []).map((u) => u.prize)].filter(Boolean);
   if (gainedIds.includes('wildcard')) maybePromptWildcardName('wildcard');
   byId('result-text').textContent = text;
+  if (friend) byId('result-quests').replaceChildren();
+  else renderQuests(byId('result-quests'), r.newQuests);
   byId('btn-again').hidden = friend;
   byId('btn-open-result').hidden = friend || game.acct.boxes === 0;
   byId('btn-open-result').textContent = `Öppna låda (${game.acct.boxes})`;

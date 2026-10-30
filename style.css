@@ -749,6 +749,13 @@ button.teleport-btn {
 .quest { display: flex; justify-content: space-between; gap: 8px; padding: 5px 10px; border-radius: 8px; background: #1c2440; border: 1px solid #2a3556; font-size: 13px; text-align: left; }
 .quest.done { border-color: #3ddc84; color: #9ff0c0; }
 .quest .qprog { color: var(--legendary); white-space: nowrap; }
+.quest { flex-wrap: wrap; }
+.quest .qbar { flex: 1 0 100%; height: 5px; border-radius: 3px; background: #2a3556; overflow: hidden; }
+.quest .qbar i { display: block; height: 100%; background: linear-gradient(90deg, #3ee8ff, #ffd93d); box-shadow: 0 0 8px #3ee8ff; transition: width 0.6s ease-out; }
+.quest .qstale { flex: 1 0 100%; font-size: 11px; color: #8a96bd; }
+.quest .qnew { margin-right: 6px; padding: 1px 6px; border-radius: 6px; background: var(--legendary); color: #1a1a2e; font-size: 10px; letter-spacing: 0.08em; }
+@keyframes quest-arrive { 0% { transform: translateX(-24px) scale(0.96); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.quest.new { border-color: var(--legendary); box-shadow: 0 0 14px rgba(255, 217, 61, 0.45); animation: quest-arrive 0.5s ease-out both; }
 button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-shadow: 0 0 14px rgba(110, 80, 255, 0.45); }
 .clan-body { width: min(520px, 100%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .clan-name { font-size: 22px; font-weight: 700; color: var(--legendary); }

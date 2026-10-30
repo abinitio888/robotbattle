@@ -18,13 +18,18 @@
   // Byggs ur samma def som 2D-roboten: färger, huvudform, extra. Framåt är +X lokalt, upp är +Y,
   // fötterna står på Y = 0. Måtten är samma "pixlar" som i 2D-ritningen.
   function makeMaterials(def) {
-    const std = (color) => new THREE.MeshStandardMaterial({ color, metalness: 0.35, roughness: 0.45 });
+    const std = (color) => new THREE.MeshStandardMaterial({ color, metalness: 0.45, roughness: 0.38 });
+    const additive = (opacity) => new THREE.MeshBasicMaterial({
+      color: def.eye, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
     return {
       body: std(def.color),
       dark: std(def.accent),
       eye: new THREE.MeshBasicMaterial({ color: def.eye }),
       gold: std('#ffd93d'),
       glow: new THREE.MeshBasicMaterial({ color: def.eye, transparent: true, opacity: 0.7, depthWrite: false }),
+      line: additive(0.9), // energilinjerna på kroppen
+      thrust: additive(0.8), // jetflammorna under fötterna
     };
   }
 
@@ -669,8 +674,22 @@
       pivot.position.set(0, 40, side * 11);
       pivot.add(mesh(box(12, 34, 12), M.dark, 0, -17, 0));
       pivot.add(mesh(box(22, 10, 16), M.body, 3, -35, 0));
+      // Knä med en lysande punkt och en energilinje ner mot foten.
+      pivot.add(mesh(sphere(7), M.body, 1, -16, 0));
+      pivot.add(mesh(sphere(2.2), M.line, 7.5, -16, 0));
+      pivot.add(mesh(box(1.4, 10, 2.4), M.line, 6.4, -27, 0));
+      // Jetflamma under foten, syns bara i luften.
+      const thrust = new THREE.Group();
+      thrust.position.set(3, -40, 0);
+      const flameCone = mesh(cone(6, 22, 12), M.thrust, 0, -11, 0);
+      flameCone.rotation.z = Math.PI;
+      const ring = mesh(new THREE.TorusGeometry(7, 1.5, 6, 18), M.thrust);
+      ring.rotation.x = Math.PI / 2;
+      thrust.add(flameCone, ring);
+      thrust.visible = false;
+      pivot.add(thrust);
       inner.add(pivot);
-      legs.push({ pivot, side });
+      legs.push({ pivot, side, thrust });
     }
 
     const upper = new THREE.Group(); // allt ovanför benen, gungar lite när den står still
@@ -679,16 +698,35 @@
     upper.add(mesh(box(4, 22, 24), M.dark, 22, 77, 0));
     const core = mesh(sphere(5), M.eye, 24, 77, 0);
     upper.add(core);
+    // Bälte med ett lysande spänne, energilinjer på bröstet och lysande ventiler på sidorna.
+    upper.add(mesh(box(47, 7, 37), M.dark, 0, 42, 0));
+    upper.add(mesh(box(2, 4, 10), M.line, 24, 42, 0));
+    for (const z of [-9, 9]) upper.add(mesh(box(1.4, 14, 2.6), M.line, 22.4, 56, z));
+    upper.add(mesh(box(1.4, 2.6, 28), M.line, 22.4, 92, 0));
+    for (const z of [-17.4, 17.4]) {
+      for (const y of [62, 68, 74]) upper.add(mesh(box(18, 2, 1.2), M.line, -4, y, z));
+    }
 
     const arm = (z, mat) => {
       const pivot = new THREE.Group();
       pivot.position.set(2, 88, z);
       const limb = mesh(cyl(5, 5, 40, 10), mat, 0, -20, 0);
+      limb.add(mesh(box(1.4, 26, 1.4), M.line, 5, 0, 0)); // följer med när armen sträcks
       const fist = mesh(sphere(7), mat, 0, -40, 0);
+      fist.add(mesh(new THREE.TorusGeometry(7.2, 1.2, 6, 18), M.line));
       pivot.add(limb, fist);
       upper.add(pivot);
       return { pivot, limb, fist };
     };
+    // Rundade axelskydd (om roboten inte redan har stora axlar).
+    if (def.extra !== 'shoulders') {
+      for (const z of [-24, 24]) {
+        const pad = mesh(new THREE.SphereGeometry(11, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), M.dark, 2, 90, z);
+        pad.scale.set(1.1, 0.8, 1);
+        upper.add(pad);
+        upper.add(mesh(sphere(2), M.line, 2, 99, z));
+      }
+    }
     const back = arm(-24, M.dark);
     const front = arm(24, M.body);
 
@@ -750,7 +788,12 @@
       upper.add(flame);
     }
 
-    const head = buildHead(def, M, upper);
+    // Huvudet sitter på en led i halsen så att det kan spana runt.
+    const neck = new THREE.Group();
+    neck.position.y = 96;
+    upper.add(neck);
+    const head = buildHead(def, M, neck);
+    head.position.y = -96;
     if (def.extra === 'antenna') {
       const rod = mesh(cyl(1.5, 1.5, 18, 6), M.dark, -6, 131, 0);
       rod.rotation.z = 0.25;
@@ -770,7 +813,7 @@
 
     root.traverse((o) => { if (o.isMesh) o.castShadow = o.material.blending !== THREE.AdditiveBlending; });
     glow.castShadow = false;
-    return { def, root, inner, upper, legs, back, front, core, cape, flame, glow, divine, M };
+    return { def, root, inner, upper, legs, back, front, core, cape, flame, glow, divine, neck, M };
   }
 
   const SIL_BODY = new THREE.Color('#232c4a');
@@ -796,6 +839,24 @@
 
     const t = p.time || 0;
     const air = !!p.air;
+    // Energilinjerna pulserar lugnt, starkare när specialen är laddad, flimrar vid träff och
+    // slocknar när roboten är besegrad. Silhuetter (robotar man inte har) lyser inte alls.
+    M.line.color.set(flash ? WHITE : def.eye);
+    M.thrust.color.set(def.eye);
+    let pulse = p.ready ? 0.75 + 0.25 * Math.sin(t * 9) : 0.6 + 0.25 * Math.sin(t * 3);
+    if (p.hurt) pulse = 0.3 + 0.7 * Math.abs(Math.sin(t * 47));
+    if (p.dead) pulse = 0.12;
+    M.line.opacity = sil ? 0 : pulse * alpha;
+    M.line.visible = !sil;
+    for (const leg of rig.legs) {
+      leg.thrust.visible = air && !sil && !p.dead;
+      leg.thrust.scale.set(1, 0.8 + 0.4 * Math.abs(Math.sin(t * 31 + leg.side)), 1);
+    }
+    M.thrust.opacity = 0.8 * alpha;
+    // Står den still spanar huvudet runt lite; i strid tittar den rakt fram.
+    const idle = !p.moving && !air && !p.actKind && !p.dead;
+    rig.neck.rotation.y = idle ? Math.sin(t * 0.9) * 0.3 : 0;
+    rig.neck.rotation.z = idle ? Math.sin(t * 0.6) * 0.06 : 0;
     rig.root.position.set(wx(p.x), wy(p.y), p.z || 0);
     // Roboten tittar mot motståndaren (även snett i djupled), plus en liten vridning mot
     // kameran så att man ser den snett framifrån, inte rakt från sidan.
