@@ -819,6 +819,13 @@
       gravityMul: 1, speedMul: 1, dmgMul: 1,
       sky: '#1a0f08', ground: '#0a0503', line: '#5a3a1a',
     },
+    // Robotstaden: världen man går omkring i mellan matcherna (se showHub i game.js). Också
+    // monster: true, så den aldrig slumpas fram som bana för en match.
+    {
+      id: 'hub', name: 'Robotstaden', hint: '', monster: true,
+      gravityMul: 1, speedMul: 1, dmgMul: 1,
+      sky: '#10203f', ground: '#0a1630', line: '#3ee8ff',
+    },
   ];
   const arenaById = Object.fromEntries(ARENAS.map((a) => [a.id, a]));
   // rng är en funktion som ger ett tal i [0, 1) — samma mönster som rollBox/pickOpponent.

@@ -1139,6 +1139,26 @@
       }),
       rootLeaf: makePool(scene, () => new THREE.Mesh(box(8, 1.5, 4), basic('#5fd06a', 0.95))),
       chainLink: makePool(scene, () => new THREE.Mesh(new THREE.TorusGeometry(4, 1.2, 6, 10), basic('#ffd93d', 1, true))),
+      // Robotstadens portaler: en sockel, en stående ring och en ljuspelare i portalens färg.
+      station: makePool(scene, () => {
+        const g = new THREE.Group();
+        const base = new THREE.Mesh(cyl(46, 52, 10, 32), new THREE.MeshStandardMaterial({ color: '#2a3556', metalness: 0.5, roughness: 0.4 }));
+        base.position.y = 5;
+        base.receiveShadow = true;
+        const ringMat = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.9, metalness: 0.4, roughness: 0.3 });
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(40, 5, 12, 40), ringMat);
+        ring.position.y = 58;
+        const fillMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+        const fill = new THREE.Mesh(new THREE.CircleGeometry(36, 32), fillMat);
+        fill.position.y = 58;
+        const beamMat = fadeUp('#ffffff');
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, 1, 24, 1, true), beamMat);
+        beam.scale.y = 260;
+        beam.position.y = 130;
+        g.add(base, ring, fill, beam);
+        g.userData = { ring, fill, ringMat, fillMat, beamMat };
+        return g;
+      }),
       clockFace: makePool(scene, () => { const m = new THREE.Mesh(new THREE.CircleGeometry(1, 64), new THREE.MeshBasicMaterial({ map: clockTex(), color: '#ffe9a8', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); m.rotation.x = -Math.PI / 2; return m; }),
       clockHand: makePool(scene, () => new THREE.Mesh(box(1, 3, 1), basic('#fff3c4', 0.95, true))),
       clockDome: makePool(scene, () => new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), basic('#9fd8ff', 0.12, true))),
@@ -1523,6 +1543,22 @@
         r.scale.setScalar(20 + k * 70);
         r.material.opacity = 1 - k;
       }
+      for (const st of s.stations || []) {
+        const m = pools.station.get();
+        const u = m.userData;
+        m.position.set(wx(st.x), 0, st.z);
+        const t = performance.now() / 1000;
+        u.ring.rotation.y = t * 0.8 + st.x;
+        u.fill.rotation.y = u.ring.rotation.y;
+        u.ringMat.color.set(st.color);
+        u.ringMat.emissive.set(st.color);
+        u.ringMat.emissiveIntensity = st.near ? 1.4 : 0.7;
+        u.fillMat.color.set(st.color);
+        u.fillMat.opacity = (st.near ? 0.45 : 0.2) + Math.sin(t * 3 + st.x) * 0.06;
+        u.beamMat.color.set(st.color);
+        u.beamMat.opacity = st.near ? 0.55 : 0.25;
+        m.scale.setScalar(st.near ? 1.08 : 1);
+      }
       for (const w of s.wolves || []) {
         if (w.t < 0) continue;
         const x = wx(w.x);
@@ -1694,7 +1730,7 @@
       for (const p of Object.values(pools)) p.finish();
 
       const now = performance.now();
-      aimCamera(s.fighters || [], Math.min((now - lastT) / 1000, 0.1));
+      aimCamera(s.focus || s.fighters || [], Math.min((now - lastT) / 1000, 0.1));
       lastT = now;
       if (s.shake > 0) {
         camera.position.x += (Math.random() * 2 - 1) * s.shake * 24;

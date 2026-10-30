@@ -1647,7 +1647,7 @@ function endMatch() {
 
 function onEnter() {
   if (game.phase === 'menu') showSelect();
-  else if (game.phase === 'select') showTeleport();
+  else if (game.phase === 'select') showHub();
   else if (game.phase === 'teleport') startMatch();
   else if (game.phase === 'over' && !screens.result.hidden && !game.online) startMatch();
   else if (game.phase === 'box') {
@@ -1789,6 +1789,7 @@ function showSelect() {
   byId('explore-bar').hidden = true; // t.ex. Escape rakt ut ur Monstervärlden, inte bara "Tillbaka"-knappen
   game.explore = null;
   game.training = null;
+  game.hub = null;
   if (friendRoom) leaveFriendRoom(); // t.ex. Escape rakt ut ur en vänmatch, inte bara "Lämna"-knappen
   game.phase = 'select';
   if (game.mode === 'stake' && !canStake()) game.mode = 'normal';
@@ -1898,8 +1899,8 @@ async function buyShopItem(item) {
   showShop(`Du köpte ${item.name}! Bär den under Utrustning.`);
 }
 
-byId('btn-shop').addEventListener('click', () => showShop());
-byId('btn-shop-back').addEventListener('click', () => showSelect());
+byId('btn-shop').addEventListener('click', () => { game.fromHub = false; showShop(); });
+byId('btn-shop-back').addEventListener('click', () => (game.fromHub ? showHub() : showSelect()));
 
 // ---------- Byteshandel ----------
 // Handlaren är en AI som byter bort robotar mot andra robotar som tillsammans är värda minst
@@ -2034,8 +2035,8 @@ async function doTrade() {
   if (want === 'wildcard') maybePromptWildcardName('wildcard');
 }
 
-byId('btn-trade').addEventListener('click', showTrade);
-byId('btn-trade-back').addEventListener('click', () => showSelect());
+byId('btn-trade').addEventListener('click', () => { game.fromHub = false; showTrade(); });
+byId('btn-trade-back').addEventListener('click', () => (game.fromHub ? showHub() : showSelect()));
 byId('btn-trade-auto').addEventListener('click', autoFillTrade);
 byId('btn-trade-do').addEventListener('click', doTrade);
 
@@ -2110,10 +2111,172 @@ async function showClan(message) {
   });
 }
 
-byId('btn-clan').addEventListener('click', () => showClan());
-byId('btn-clan-back').addEventListener('click', () => showSelect());
+byId('btn-clan').addEventListener('click', () => { game.fromHub = false; showClan(); });
+byId('btn-clan-back').addEventListener('click', () => (game.fromHub ? showHub() : showSelect()));
 byId('btn-train-still').addEventListener('click', () => startTraining(false));
 byId('btn-train-moving').addEventListener('click', () => startTraining(true));
+
+// ---------- Robotstaden: en värld att gå omkring i ----------
+// I stället för en meny går man runt med sin robot bland portaler. Gå fram till en och tryck
+// mellanslag/J för att gå in. Några AI-robotar vandrar omkring för att det ska kännas levande.
+const HUB_RANGE = 80;
+const STATIONS = [
+  { id: 'monsters', name: 'Monstervärlden', emoji: '👾', color: '#ff7a1a', x: 160, z: -170 },
+  { id: 'boss', name: 'Mystiska robotar', emoji: '❓', color: '#ff1744', x: 480, z: -170 },
+  { id: 'world', name: 'Världskartan', emoji: '🌍', color: '#3ddc84', x: 800, z: -170 },
+  { id: 'arena', name: 'Arenan', emoji: '⚔', color: '#35d0ff', x: 250, z: -10 },
+  { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 480, z: -10 },
+  { id: 'stake', name: 'Insatsarenan', emoji: '💰', color: '#ffd93d', x: 710, z: -10 },
+  { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 130, z: 170 },
+  { id: 'trade', name: 'Handlaren', emoji: '🔁', color: '#ff9a2a', x: 360, z: 170 },
+  { id: 'clan', name: 'Klanhuset', emoji: '🛡', color: '#a07bff', x: 600, z: 170 },
+  { id: 'training', name: 'Träningsarenan', emoji: '🎯', color: '#c9a36b', x: 830, z: 170 },
+];
+const STATION_HINT = {
+  arena: 'vanlig match — vinn en låda',
+  stake: 'sätt en robot på spel',
+  boss: 'möt en mystisk robot',
+  monsters: 'res till Monstervärlden',
+  world: 'världsdelarna och deras beskyddare',
+  friend: 'spela mot en kompis',
+  shop: 'köp varor för mynt',
+  trade: 'byt robotar med Handlaren',
+  clan: 'gå med i en klan',
+  training: 'öva på en träningsdocka',
+};
+const HUB_HINT = 'Gå med WASD eller piltangenterna. Gå fram till en portal och tryck MELLANSLAG/J.';
+
+function showHub() {
+  if (!game.acct) return;
+  if (friendRoom) leaveFriendRoom();
+  game.training = null;
+  game.explore = null;
+  game.phase = 'hub';
+  game.fromHub = true;
+  game.arena = arenaById.hub;
+  showArenaLabel(game.arena);
+  const prev = game.hub;
+  const player = new Fighter(applyEquipment(myDef(robotById[game.selectedId])), prev ? prev.player.x : W / 2, 1);
+  player.z = prev ? prev.player.z : 90;
+  const pool = ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard');
+  const walkers = prev ? prev.walkers : [];
+  if (!prev) {
+    for (let i = 0; i < 5; i++) {
+      const f = new Fighter(pool[Math.floor(Math.random() * pool.length)], rand(80, W - 80), 1);
+      f.z = rand(-DEPTH, DEPTH);
+      walkers.push({ f, dir: 0, depth: 0, t: 0 });
+    }
+  }
+  game.hub = { player, walkers, near: null, attackHeld: true };
+  byId('explore-bar').hidden = false;
+  byId('explore-hint').textContent = HUB_HINT;
+  showScreen(null);
+}
+
+function updateHub(dt) {
+  const hub = game.hub;
+  if (!hub) return;
+  const input = playerInput();
+  const p = hub.player;
+  p.time += dt;
+  const walk = input.dir * p.def.speed;
+  const walkZ = input.depth * p.def.speed * DEPTH_SPEED;
+  p.moving = walk !== 0 || walkZ !== 0;
+  if (p.moving) p.walkT += dt;
+  if (input.dir) p.facing = input.dir;
+  p.x = clamp(p.x + walk * dt, p.w / 2, W - p.w / 2);
+  p.z = clamp(p.z + walkZ * dt, -DEPTH, DEPTH);
+
+  // De vandrande robotarna byter riktning då och då.
+  for (const w of hub.walkers) {
+    const f = w.f;
+    f.time += dt;
+    w.t -= dt;
+    if (w.t <= 0) {
+      w.t = rand(1, 3);
+      w.dir = Math.random() < 0.3 ? 0 : Math.random() < 0.5 ? -1 : 1;
+      w.depth = Math.random() < 0.5 ? 0 : Math.random() < 0.5 ? -1 : 1;
+    }
+    const sp = f.def.speed * 0.4;
+    f.x = clamp(f.x + w.dir * sp * dt, f.w / 2, W - f.w / 2);
+    f.z = clamp(f.z + w.depth * sp * DEPTH_SPEED * dt, -DEPTH, DEPTH);
+    f.moving = w.dir !== 0 || w.depth !== 0;
+    if (f.moving) f.walkT += dt;
+    if (w.dir) f.facing = w.dir;
+  }
+
+  let near = null;
+  let best = HUB_RANGE;
+  for (const st of STATIONS) {
+    const d = Math.hypot(st.x - p.x, st.z - p.z);
+    if (d < best) { best = d; near = st; }
+  }
+  if (near !== hub.near) {
+    byId('explore-hint').textContent = near ? `${near.emoji} ${near.name} — ${STATION_HINT[near.id]}. MELLANSLAG/J: Gå in` : HUB_HINT;
+  }
+  hub.near = near;
+  if (near && input.attack && !hub.attackHeld) enterStation(near.id);
+  hub.attackHeld = input.attack;
+}
+
+function enterStation(id) {
+  const blocked = (msg) => { byId('explore-hint').textContent = msg; };
+  if (id === 'stake' && !canStake()) { blocked('💰 Insatsarenan kräver minst 2 robotar.'); return; }
+  if (id === 'friend' && !roomCap) { blocked('Vänmatcher går inte att spela här just nu.'); return; }
+  byId('explore-bar').hidden = true;
+  switch (id) {
+    case 'arena': game.mode = 'normal'; startMatch(); break;
+    case 'stake': game.mode = 'stake'; startMatch(); break;
+    case 'boss': startMatch('boss'); break;
+    case 'monsters': showMonsters(); break;
+    case 'world': showWorld(); break;
+    case 'friend': showFriend(); break;
+    case 'shop': showShop(); break;
+    case 'trade': showTrade(); break;
+    case 'clan': showClan(); break;
+    case 'training': startTraining(true); break;
+    default:
+  }
+}
+
+function drawHub() {
+  const hub = game.hub;
+  if (!hub) return;
+  const stations = STATIONS.map((st) => ({ ...st, near: hub.near === st }));
+  if (r3d) {
+    const fighters = hub.walkers.map((w) => ({ f: w.f, pose: fighterPose(w.f) }));
+    fighters.push({ f: hub.player, pose: fighterPose(hub.player), isPlayer: true });
+    r3d.render({ arena: game.arena, shake: 0, fighters, focus: [{ f: hub.player }], stations });
+    ctx.clearRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    for (const st of stations) {
+      const at = r3d.project(st.x, FLOOR - 120, st.z);
+      ctx.font = `bold ${st.near ? 18 : 14}px ui-monospace, Menlo, monospace`;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillStyle = st.near ? '#ffffff' : st.color;
+      ctx.strokeText(`${st.emoji} ${st.name}`, at.x, at.y);
+      ctx.fillText(`${st.emoji} ${st.name}`, at.x, at.y);
+    }
+    return;
+  }
+  // Utan 3D: en enkel karta ovanifrån.
+  ctx.fillStyle = '#0a1630';
+  ctx.fillRect(0, 0, W, H);
+  const toY = (z) => H / 2 + (z / DEPTH) * (H * 0.4);
+  ctx.textAlign = 'center';
+  for (const st of stations) {
+    ctx.fillStyle = st.color;
+    ctx.globalAlpha = st.near ? 1 : 0.6;
+    ctx.beginPath(); ctx.arc(st.x, toY(st.z), 30, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.font = 'bold 14px ui-monospace, Menlo, monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`${st.emoji} ${st.name}`, st.x, toY(st.z) - 38);
+  }
+  ctx.fillStyle = '#35d0ff';
+  ctx.beginPath(); ctx.arc(hub.player.x, toY(hub.player.z), 12, 0, Math.PI * 2); ctx.fill();
+}
 
 // ---------- Teleport ----------
 // Alla sorters matcher (arenan, mystiska robotar, Monstervärlden, Världskartan, vänmatch)
@@ -2127,9 +2290,9 @@ function showTeleport() {
   showScreen('teleport');
 }
 // Tillbaka dit man kom ifrån: Teleport om man var där, annars robotvalet.
-const backToTeleport = () => (game.acct ? showTeleport() : showSelect());
+const backToTeleport = () => (game.acct ? showHub() : showSelect());
 
-byId('btn-teleport').addEventListener('click', showTeleport);
+byId('btn-teleport').addEventListener('click', showHub);
 byId('btn-teleport-back').addEventListener('click', () => showSelect());
 
 // ---------- Monstervärlden ----------
@@ -2335,9 +2498,10 @@ byId('btn-equipment-close').addEventListener('click', () => { byId('equipment-pr
 byId('btn-unequip').addEventListener('click', () => reequip(null));
 byId('btn-explore-back').addEventListener('click', () => {
   byId('explore-bar').hidden = true;
+  const wasHub = game.phase === 'hub';
   game.explore = null;
   game.training = null;
-  showTeleport();
+  if (wasHub) showSelect(); else showHub();
 });
 
 async function importGuestCollection() {
@@ -3653,6 +3817,7 @@ function update(dt) {
   game.particles = game.particles.filter((p) => p.life > 0);
 
   if (game.phase === 'monsters') { updateExplore(dt); return; }
+  if (game.phase === 'hub') { updateHub(dt); return; }
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
@@ -4222,7 +4387,10 @@ function drawBanner(text, size) {
 }
 
 function draw() {
+  // Mätarna hör till striderna — inte när man går omkring i staden eller Monstervärlden.
+  document.getElementById('hud').style.visibility = game.phase === 'hub' || game.phase === 'monsters' ? 'hidden' : '';
   if (game.phase === 'monsters') { drawExplore(); return; }
+  if (game.phase === 'hub') { drawHub(); return; }
   const arenaId = game.arena.id;
   if (!backgroundCache[arenaId]) backgroundCache[arenaId] = buildBackground(game.arena);
   const { player, ai } = game;
