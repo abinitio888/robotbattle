@@ -822,7 +822,7 @@
     // Robotstaden: världen man går omkring i mellan matcherna (se showHub i game.js). Också
     // monster: true, så den aldrig slumpas fram som bana för en match.
     {
-      id: 'hub', name: 'Robotstaden', hint: '', monster: true,
+      id: 'hub', name: 'Robotstaden', hint: '', monster: true, width: 2500,
       gravityMul: 1, speedMul: 1, dmgMul: 1,
       sky: '#10203f', ground: '#0a1630', line: '#3ee8ff',
     },

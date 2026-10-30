@@ -2127,25 +2127,32 @@ byId('btn-train-moving').addEventListener('click', () => startTraining(true));
 // I stället för en meny går man runt med sin robot bland portaler. Gå fram till en och tryck
 // mellanslag/J för att gå in. Några AI-robotar vandrar omkring för att det ska kännas levande.
 const HUB_RANGE = 80;
+const HUB_W = 2500; // Robotstaden är mycket bredare än en bana — kameran följer med
+// Fyra kvarter längs gatan, med gott om plats emellan.
+const DISTRICTS = [
+  { name: '🏠 Hemma', x: 310 },
+  { name: '⚔ Matcher', x: 910 },
+  { name: '🛒 Handel', x: 1510 },
+  { name: '👾 Äventyr', x: 2110 },
+];
 const STATIONS = [
-  // Längst in: äventyr
-  { id: 'monsters', name: 'Monstervärlden', emoji: '👾', color: '#ff7a1a', x: 130, z: -190 },
-  { id: 'boss', name: 'Mystiska robotar', emoji: '❓', color: '#ff1744', x: 370, z: -190 },
-  { id: 'world', name: 'Världskartan', emoji: '🌍', color: '#3ddc84', x: 610, z: -190 },
-  { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 850, z: -190 },
-  // Matcher
-  { id: 'arena', name: 'Vanlig match', emoji: '⚔', color: '#35d0ff', x: 130, z: -65 },
-  { id: 'stake', name: 'Insatsmatch', emoji: '💰', color: '#ffd93d', x: 370, z: -65 },
-  { id: 'training', name: 'Träningsarenan', emoji: '🎯', color: '#c9a36b', x: 610, z: -65 },
-  { id: 'clan', name: 'Klanhuset', emoji: '🛡', color: '#a07bff', x: 850, z: -65 },
-  // Ditt eget
-  { id: 'garage', name: 'Garaget', emoji: '🤖', color: '#9fd8ff', x: 130, z: 65 },
-  { id: 'boxes', name: 'Lådor', emoji: '🎁', color: '#ff8ac0', x: 370, z: 65 },
-  { id: 'quests', name: 'Uppdragstavlan', emoji: '📜', color: '#e8d27a', x: 610, z: 65 },
-  { id: 'equipment', name: 'Utrustning', emoji: '🎒', color: '#5fd0ff', x: 850, z: 65 },
-  // Handel
-  { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 250, z: 190 },
-  { id: 'trade', name: 'Handlaren', emoji: '🔁', color: '#ff9a2a', x: 710, z: 190 },
+  { id: 'garage', name: 'Garaget', emoji: '🤖', color: '#9fd8ff', x: 200, z: -120 },
+  { id: 'boxes', name: 'Lådor', emoji: '🎁', color: '#ff8ac0', x: 200, z: 120 },
+  { id: 'equipment', name: 'Utrustning', emoji: '🎒', color: '#5fd0ff', x: 420, z: -120 },
+  { id: 'quests', name: 'Uppdragstavlan', emoji: '📜', color: '#e8d27a', x: 420, z: 120 },
+
+  { id: 'arena', name: 'Vanlig match', emoji: '⚔', color: '#35d0ff', x: 800, z: -120 },
+  { id: 'stake', name: 'Insatsmatch', emoji: '💰', color: '#ffd93d', x: 800, z: 120 },
+  { id: 'training', name: 'Träningsarenan', emoji: '🎯', color: '#c9a36b', x: 1020, z: -120 },
+  { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 1020, z: 120 },
+
+  { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 1400, z: -120 },
+  { id: 'trade', name: 'Handlaren', emoji: '🔁', color: '#ff9a2a', x: 1400, z: 120 },
+  { id: 'clan', name: 'Klanhuset', emoji: '🛡', color: '#a07bff', x: 1620, z: 0 },
+
+  { id: 'monsters', name: 'Monstervärlden', emoji: '👾', color: '#ff7a1a', x: 2000, z: -120 },
+  { id: 'boss', name: 'Mystiska robotar', emoji: '❓', color: '#ff1744', x: 2000, z: 120 },
+  { id: 'world', name: 'Världskartan', emoji: '🌍', color: '#3ddc84', x: 2220, z: 0 },
 ];
 const STATION_HINT = {
   arena: 'vanlig match mot AI — vinn en låda',
@@ -2175,13 +2182,13 @@ function showHub() {
   game.arena = arenaById.hub;
   showArenaLabel(game.arena);
   const prev = game.hub;
-  const player = new Fighter(applyEquipment(myDef(robotById[game.selectedId])), prev ? prev.player.x : W / 2, 1);
+  const player = new Fighter(applyEquipment(myDef(robotById[game.selectedId])), prev ? prev.player.x : 610, 1);
   player.z = prev ? prev.player.z : 0;
   const pool = ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard');
   const walkers = prev ? prev.walkers : [];
   if (!prev) {
-    for (let i = 0; i < 5; i++) {
-      const f = new Fighter(pool[Math.floor(Math.random() * pool.length)], rand(80, W - 80), 1);
+    for (let i = 0; i < 4; i++) {
+      const f = new Fighter(pool[Math.floor(Math.random() * pool.length)], rand(100, HUB_W - 100), 1);
       f.z = rand(-DEPTH, DEPTH);
       walkers.push({ f, dir: 0, depth: 0, t: 0 });
     }
@@ -2204,7 +2211,7 @@ function updateHub(dt) {
   p.moving = walk !== 0 || walkZ !== 0;
   if (p.moving) p.walkT += dt;
   if (input.dir) p.facing = input.dir;
-  p.x = clamp(p.x + walk * dt, p.w / 2, W - p.w / 2);
+  p.x = clamp(p.x + walk * dt, p.w / 2, HUB_W - p.w / 2);
   p.z = clamp(p.z + walkZ * dt, -DEPTH, DEPTH);
 
   // De vandrande robotarna byter riktning då och då.
@@ -2218,8 +2225,9 @@ function updateHub(dt) {
       w.depth = Math.random() < 0.5 ? 0 : Math.random() < 0.5 ? -1 : 1;
     }
     const sp = f.def.speed * 0.4;
-    f.x = clamp(f.x + w.dir * sp * dt, f.w / 2, W - f.w / 2);
-    f.z = clamp(f.z + w.depth * sp * DEPTH_SPEED * dt, -DEPTH, DEPTH);
+    f.x = clamp(f.x + w.dir * sp * dt, f.w / 2, HUB_W - f.w / 2);
+    // De håller sig på gatan mellan portalraderna, så de inte står i vägen.
+    f.z = clamp(f.z + w.depth * sp * DEPTH_SPEED * dt, -50, 50);
     f.moving = w.dir !== 0 || w.depth !== 0;
     if (f.moving) f.walkT += dt;
     if (w.dir) f.facing = w.dir;
@@ -2282,7 +2290,19 @@ function drawHub() {
     r3d.render({ arena: game.arena, shake: 0, fighters, focus: [{ f: hub.player }], stations });
     ctx.clearRect(0, 0, W, H);
     ctx.textAlign = 'center';
+    // Kvarterens namn högt upp, och bara namnen på portalerna som är nära.
+    for (const d of DISTRICTS) {
+      if (Math.abs(d.x - hub.player.x) > 600) continue;
+      const at = r3d.project(d.x, FLOOR - 230, -150);
+      ctx.font = 'bold 22px ui-monospace, Menlo, monospace';
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.strokeText(d.name, at.x, at.y);
+      ctx.fillText(d.name, at.x, at.y);
+    }
     for (const st of stations) {
+      if (Math.abs(st.x - hub.player.x) > 380) continue;
       const at = r3d.project(st.x, FLOOR - 120, st.z);
       ctx.font = `bold ${st.near ? 18 : 14}px ui-monospace, Menlo, monospace`;
       ctx.lineWidth = 4;
@@ -2297,18 +2317,19 @@ function drawHub() {
   ctx.fillStyle = '#0a1630';
   ctx.fillRect(0, 0, W, H);
   const toY = (z) => H / 2 + (z / DEPTH) * (H * 0.4);
+  const toX = (x) => (x / HUB_W) * W;
   ctx.textAlign = 'center';
   for (const st of stations) {
     ctx.fillStyle = st.color;
     ctx.globalAlpha = st.near ? 1 : 0.6;
-    ctx.beginPath(); ctx.arc(st.x, toY(st.z), 30, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(toX(st.x), toY(st.z), 22, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.font = 'bold 14px ui-monospace, Menlo, monospace';
+    ctx.font = 'bold 11px ui-monospace, Menlo, monospace';
     ctx.fillStyle = '#fff';
-    ctx.fillText(`${st.emoji} ${st.name}`, st.x, toY(st.z) - 38);
+    ctx.fillText(`${st.emoji} ${st.name}`, toX(st.x), toY(st.z) - 28);
   }
   ctx.fillStyle = '#35d0ff';
-  ctx.beginPath(); ctx.arc(hub.player.x, toY(hub.player.z), 12, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(toX(hub.player.x), toY(hub.player.z), 10, 0, Math.PI * 2); ctx.fill();
 }
 
 // ---------- Teleport ----------

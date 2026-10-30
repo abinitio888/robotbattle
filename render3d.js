@@ -901,27 +901,33 @@
 
   function buildArena(arena) {
     const g = new THREE.Group();
+    const extra = (arena.width || W) - W; // hur mycket bredare än en vanlig bana (Robotstaden)
     const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(4000, 3200),
+      new THREE.PlaneGeometry(4000 + extra, 3200),
       new THREE.MeshStandardMaterial({ map: floorTexture(arena), metalness: 0.2, roughness: arena.id === 'ice' ? 0.15 : 0.8 }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.z = -100;
+    floor.position.x = extra / 2;
+    floor.material.map.repeat.set((4000 + extra) / 250, 13); // samma rutstorlek även på ett bredare golv
     floor.receiveShadow = true;
     g.add(floor);
 
     // En lysande kant längs själva kampbanan, där golvlinjen satt i 2D.
-    const edge = new THREE.Mesh(box(W + 40, 3, 4), new THREE.MeshBasicMaterial({ color: arena.line }));
-    edge.position.set(0, 1.5, 260);
+    // Banan är W bred, utom Robotstaden som är en bredare värld (arena.width).
+    const width = arena.width || W;
+    const midX = width / 2 - W / 2;
+    const edge = new THREE.Mesh(box(width + 40, 3, 4), new THREE.MeshBasicMaterial({ color: arena.line }));
+    edge.position.set(midX, 1.5, 260);
     g.add(edge);
-    const back = new THREE.Mesh(box(W + 40, 3, 4), new THREE.MeshBasicMaterial({ color: arena.line }));
-    back.position.set(0, 1.5, -260);
+    const back = new THREE.Mesh(box(width + 40, 3, 4), new THREE.MeshBasicMaterial({ color: arena.line }));
+    back.position.set(midX, 1.5, -260);
     g.add(back);
 
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     for (const row of [{ z: -700, n: 22, base: 0.55 }, { z: -1100, n: 26, base: 0.35 }]) {
-      for (let x = -1600; x < 1600;) {
+      for (let x = -1600; x < 1600 + extra;) {
         const bw = 60 + rnd() * 110;
         const bh = 120 + rnd() * 380;
         const bd = 60 + rnd() * 80;
@@ -996,6 +1002,7 @@
     // Kameran följer kämparna: den siktar mitt emellan dem och går närmare ju närmare de står
     // varandra, men aldrig så nära att någon av dem hamnar utanför bild.
     const cam = { x: 0, z: 0, dist: 1080 };
+    let camWorld = W; // hur bred världen är just nu (Robotstaden är bredare än en bana)
     const halfWidthPerDist = Math.tan((FOV / 2) * Math.PI / 180) * (W / H);
     // Kameran tittar snett uppifrån och följer robotarna både åt sidorna och i djupled.
     function aimCamera(fighters, dt) {
@@ -1015,8 +1022,11 @@
         z = (zLo + zHi) / 2;
         dist = clamp(((hi - lo) / 2 + 160) / halfWidthPerDist + (zHi - zLo) * 0.6, 760, 1150);
         // Kanterna på banan ska aldrig hamna innanför bild: håll kameran inom det x:et tillåter.
-        const room = Math.max(0, W / 2 + 40 - dist * halfWidthPerDist);
-        x = clamp(x, -room, room);
+        // Kanterna på världen ska aldrig hamna innanför bild.
+        const view = dist * halfWidthPerDist;
+        const edgeLo = -W / 2 - 40 + view;
+        const edgeHi = camWorld - W / 2 + 40 - view;
+        x = edgeLo <= edgeHi ? clamp(x, edgeLo, edgeHi) : (camWorld - W) / 2;
       }
       const k = 1 - Math.exp(-dt * 4);
       cam.x += (x - cam.x) * k;
@@ -1712,6 +1722,7 @@
     // s: { arena, shake, fighters: [{ f, pose, isPlayer }], projectiles, beams, ... }
     function render(s) {
       setArena(s.arena);
+      camWorld = s.arena.width || W;
       for (const byOwner of rigs.values()) for (const k in byOwner) { byOwner[k].used = false; }
       for (const entry of s.fighters || []) drawFighter(entry);
       drawProjectiles(s);
