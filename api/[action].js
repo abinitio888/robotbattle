@@ -85,6 +85,24 @@ module.exports = dispatch({
     handler: acctAction((acct, body) => S.equipItem(acct, typeof body.itemId === 'string' ? body.itemId : null)),
   },
 
+  // Smälta en dubblett till robot-XP och mynt — se meltDuplicate() i shared.js.
+  melt: {
+    method: 'POST',
+    async handler(req, res, body) {
+      const session = await requireSession(req);
+      const melted = S.meltDuplicate(session.user.acct, typeof body.robot === 'string' ? body.robot : null);
+      if (melted.error) throw new HttpError(400, melted.error);
+      await saveUser(session.key, session.user);
+      return { acct: acctView(session.user), melted };
+    },
+  },
+
+  // Byta skin på en robot — se setSkin() i shared.js.
+  skin: {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.setSkin(acct, typeof body.robot === 'string' ? body.robot : null, typeof body.skin === 'string' ? body.skin : null)),
+  },
+
   // Butiken — se buyItem() i shared.js. Mynten finns bara på servern.
   buy: {
     method: 'POST',
@@ -112,7 +130,7 @@ module.exports = dispatch({
     method: 'POST',
     async handler(req) {
       const session = await requireSession(req);
-      const ok = S.claimDaily(session.user.acct, clock().today);
+      const ok = S.claimDaily(session.user.acct, clock().today, randomFloat);
       if (ok) await saveUser(session.key, session.user);
       return { acct: acctView(session.user), ok };
     },

@@ -628,10 +628,11 @@
   const MAX_COINS = 10000000;
   const addCoins = (acct, n) => { acct.coins = Math.min(MAX_COINS, (acct.coins || 0) + n); return n; };
 
-  // ---------- Dagliga uppdrag ----------
-  // Tre nya uppdrag varje dag, valda ur QUEST_POOL utifrån datumet (alla får samma uppdrag
-  // samma dag). Framstegen räknas i finishMatch()/openBox() — aldrig av klienten själv — och
-  // mynten delas ut så fort ett uppdrag är klart. Klarar man alla tre får man en bonuslåda.
+  // ---------- Uppdrag: dagens, veckans och månadens ----------
+  // Tre uppdrag per period, valda ur periodens pool utifrån datumet (alla får samma uppdrag
+  // samma dag/vecka/månad). Framstegen räknas i finishMatch()/openBox() — aldrig av klienten
+  // själv — och mynten delas ut så fort ett uppdrag är klart. Klarar man alla tre i en period
+  // får man periodens bonus (lådor, och för månaden även mynt).
   const QUEST_POOL = [
     { id: 'win3', name: 'Vinn 3 matcher', goal: 3, coins: 40, on: 'win' },
     { id: 'play5', name: 'Spela 5 matcher', goal: 5, coins: 30, on: 'play' },
@@ -643,56 +644,241 @@
     { id: 'type2', name: 'Vinn 2 matcher med en {typ}-robot', goal: 2, coins: 50, on: 'typewin' },
     { id: 'divine1', name: 'Vinn en match med en gudomlig robot', goal: 1, coins: 60, on: 'divinewin' },
   ];
+  const WEEK_QUEST_POOL = [
+    { id: 'w-win15', name: 'Vinn 15 matcher', goal: 15, coins: 200, on: 'win' },
+    { id: 'w-play25', name: 'Spela 25 matcher', goal: 25, coins: 150, on: 'play' },
+    { id: 'w-monster8', name: 'Besegra 8 monster', goal: 8, coins: 250, on: 'monster' },
+    { id: 'w-boss3', name: 'Besegra 3 mystiska robotar', goal: 3, coins: 250, on: 'boss' },
+    { id: 'w-stake3', name: 'Vinn 3 insatsmatcher', goal: 3, coins: 200, on: 'stake' },
+    { id: 'w-royal2', name: 'Besegra 2 kungar eller drottningen', goal: 2, coins: 400, on: 'royal' },
+    { id: 'w-box8', name: 'Öppna 8 lådor', goal: 8, coins: 150, on: 'box' },
+    { id: 'w-hunt3', name: 'Klara monsterjakten 3 gånger', goal: 3, coins: 300, on: 'hunt' },
+    { id: 'w-type6', name: 'Vinn 6 matcher med en {typ}-robot', goal: 6, coins: 250, on: 'typewin' },
+  ];
+  const MONTH_QUEST_POOL = [
+    { id: 'm-win50', name: 'Vinn 50 matcher', goal: 50, coins: 800, on: 'win' },
+    { id: 'm-play80', name: 'Spela 80 matcher', goal: 80, coins: 600, on: 'play' },
+    { id: 'm-monster25', name: 'Besegra 25 monster', goal: 25, coins: 900, on: 'monster' },
+    { id: 'm-boss10', name: 'Besegra 10 mystiska robotar', goal: 10, coins: 900, on: 'boss' },
+    { id: 'm-royal5', name: 'Besegra 5 kungar eller drottningen', goal: 5, coins: 1200, on: 'royal' },
+    { id: 'm-box25', name: 'Öppna 25 lådor', goal: 25, coins: 600, on: 'box' },
+    { id: 'm-hunt10', name: 'Klara monsterjakten 10 gånger', goal: 10, coins: 1000, on: 'hunt' },
+    { id: 'm-divine10', name: 'Vinn 10 matcher med en gudomlig robot', goal: 10, coins: 900, on: 'divinewin' },
+  ];
   const QUEST_COUNT = 3;
   const QUEST_TYPES = ['eld', 'vatten', 'gräs', 'elektrisk', 'stål', 'flygande', 'mörk', 'is', 'sten', 'fe'];
 
-  // Dagens uppdrag: samma för alla, ändras vid midnatt.
-  function questsFor(today) {
-    let h = hashName(`uppdrag-${today}`);
+  // Datumhjälp. today är alltid 'ÅÅÅÅ-MM-DD'; räknas i UTC så att tidszonen inte spelar roll.
+  const parseDay = (today) => { const [y, m, d] = today.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+  const dayBefore = (today) => { const t = parseDay(today); t.setUTCDate(t.getUTCDate() - 1); return t.toISOString().slice(0, 10); };
+  // ISO-vecka, t.ex. '2026-V44' — veckan börjar på måndag.
+  function weekKey(today) {
+    const t = parseDay(today);
+    t.setUTCDate(t.getUTCDate() + 3 - ((t.getUTCDay() + 6) % 7)); // veckans torsdag avgör året
+    const jan4 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+    const week = 1 + Math.round(((t - jan4) / 86400000 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
+    return `${t.getUTCFullYear()}-V${String(week).padStart(2, '0')}`;
+  }
+
+  const QUEST_PERIODS = {
+    day: { field: 'quests', pool: QUEST_POOL, seed: 'uppdrag', key: (today) => today, bonusBoxes: 1, bonusCoins: 0, easy: ['win3', 'play5', 'box2', 'monster2'] },
+    week: { field: 'questsWeek', pool: WEEK_QUEST_POOL, seed: 'vecka', key: weekKey, bonusBoxes: 3, bonusCoins: 0, easy: ['w-win15', 'w-play25', 'w-box8'] },
+    month: { field: 'questsMonth', pool: MONTH_QUEST_POOL, seed: 'manad', key: (today) => today.slice(0, 7), bonusBoxes: 6, bonusCoins: 500, easy: ['m-win50', 'm-play80', 'm-box25'] },
+  };
+
+  // Periodens uppdrag: samma för alla, byts när perioden byts.
+  function periodQuests(period, key) {
+    const P = QUEST_PERIODS[period];
+    let h = hashName(`${P.seed}-${key}`);
     const next = () => { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; h = (h ^ (h >>> 13)) >>> 0; return h; };
-    // Minst ett lätt uppdrag varje dag, de andra två valfria.
-    const easy = QUEST_POOL.filter((q) => ['win3', 'play5', 'box2', 'monster2'].includes(q.id));
+    // Minst ett lätt uppdrag varje period, de andra två valfria.
+    const easy = P.pool.filter((q) => P.easy.includes(q.id));
     const picked = [easy[next() % easy.length]];
-    const pool = QUEST_POOL.filter((q) => q !== picked[0]);
+    const pool = P.pool.filter((q) => q !== picked[0]);
     while (picked.length < QUEST_COUNT && pool.length) picked.push(pool.splice(next() % pool.length, 1)[0]);
     const type = QUEST_TYPES[next() % QUEST_TYPES.length];
     return picked.map((q) => (q.on === 'typewin' ? { ...q, type, name: q.name.replace('{typ}', TYPES[type].label) } : q));
   }
+  const questsFor = (today) => periodQuests('day', today);
 
-  function questState(acct, today) {
-    if (!acct.quests || acct.quests.day !== today) acct.quests = { day: today, prog: {}, done: [], bonus: false };
-    return acct.quests;
+  function questState(acct, period, key) {
+    const f = QUEST_PERIODS[period].field;
+    if (!acct[f] || acct[f].day !== key) acct[f] = { day: key, prog: {}, done: [], bonus: false };
+    return acct[f];
   }
 
   // events: vad som hände, t.ex. ['play', 'win', 'monster']. types: robotens typer (för typewin).
+  // Räknas mot alla tre perioderna på en gång.
   function questEvent(acct, today, events, types = []) {
-    const out = { completed: [], bonus: false };
+    const out = { completed: [], bonus: false, bonuses: [] };
     if (!today) return out;
-    const st = questState(acct, today);
-    for (const q of questsFor(today)) {
-      if (st.done.includes(q.id) || !events.includes(q.on)) continue;
-      if (q.on === 'typewin' && !types.includes(q.type)) continue;
-      st.prog[q.id] = (st.prog[q.id] || 0) + 1;
-      if (st.prog[q.id] >= q.goal) {
-        st.done.push(q.id);
-        addCoins(acct, q.coins);
-        out.completed.push({ name: q.name, coins: q.coins });
+    for (const period of Object.keys(QUEST_PERIODS)) {
+      const P = QUEST_PERIODS[period];
+      const key = P.key(today);
+      const st = questState(acct, period, key);
+      for (const q of periodQuests(period, key)) {
+        if (st.done.includes(q.id) || !events.includes(q.on)) continue;
+        if (q.on === 'typewin' && !types.includes(q.type)) continue;
+        st.prog[q.id] = (st.prog[q.id] || 0) + 1;
+        if (st.prog[q.id] >= q.goal) {
+          st.done.push(q.id);
+          addCoins(acct, q.coins);
+          out.completed.push({ name: q.name, coins: q.coins, period });
+        }
       }
-    }
-    if (!st.bonus && st.done.length >= QUEST_COUNT) {
-      st.bonus = true;
-      acct.boxes += 1;
-      out.bonus = true;
+      if (!st.bonus && st.done.length >= QUEST_COUNT) {
+        st.bonus = true;
+        acct.boxes += P.bonusBoxes;
+        if (P.bonusCoins) addCoins(acct, P.bonusCoins);
+        if (period === 'day') out.bonus = true;
+        out.bonuses.push({ period, boxes: P.bonusBoxes, coins: P.bonusCoins });
+      }
     }
     return out;
   }
 
-  function questView(acct, today) {
-    const st = acct.quests && acct.quests.day === today ? acct.quests : { prog: {}, done: [], bonus: false };
+  function questView(acct, today, period = 'day') {
+    const P = QUEST_PERIODS[period];
+    const key = P.key(today);
+    const saved = acct[P.field];
+    const st = saved && saved.day === key ? saved : { prog: {}, done: [], bonus: false };
     return {
-      list: questsFor(today).map((q) => ({ id: q.id, name: q.name, goal: q.goal, coins: q.coins, prog: Math.min(q.goal, st.prog[q.id] || 0), done: st.done.includes(q.id) })),
+      list: periodQuests(period, key).map((q) => ({ id: q.id, name: q.name, goal: q.goal, coins: q.coins, prog: Math.min(q.goal, st.prog[q.id] || 0), done: st.done.includes(q.id) })),
       bonus: !!st.bonus,
+      bonusBoxes: P.bonusBoxes,
+      bonusCoins: P.bonusCoins,
     };
+  }
+
+  // ---------- Streak: spela dagar i rad, ända upp till ett helt år ----------
+  // Varje dag man spelar en match eller hämtar den dagliga lådan räknas. Missar man en dag
+  // börjar streaken om från 1. När man når en milstolpe får man belöningen direkt — de stora
+  // milstolparna ger även en robot av minst en viss sällsynthet.
+  const STREAK_MILESTONES = [
+    { days: 3, coins: 50, boxes: 1 },
+    { days: 7, coins: 150, boxes: 2 },
+    { days: 14, coins: 300, boxes: 3 },
+    { days: 30, coins: 600, boxes: 5, robot: 'epic' },
+    { days: 60, coins: 1200, boxes: 6, robot: 'legendary' },
+    { days: 100, coins: 2000, boxes: 10, robot: 'legendary' },
+    { days: 200, coins: 4000, boxes: 15, robot: 'legendary' },
+    { days: 365, coins: 10000, boxes: 30, robot: 'divine' },
+  ];
+
+  // Returnerar den milstolpe som just nåddes (med en ev. vunnen robot), annars null.
+  function touchStreak(acct, today, rng) {
+    if (!today) return null;
+    const s = acct.streak || (acct.streak = { last: '', days: 0, best: 0 });
+    if (s.last === today) return null;
+    s.days = s.last && s.last === dayBefore(today) ? s.days + 1 : 1;
+    s.last = today;
+    s.best = Math.max(s.best, s.days);
+    const m = STREAK_MILESTONES.find((x) => x.days === s.days);
+    if (!m) return null;
+    addCoins(acct, m.coins);
+    acct.boxes += m.boxes;
+    const out = { days: m.days, coins: m.coins, boxes: m.boxes, robot: null };
+    if (m.robot && rng) {
+      // Lådslumpens jokerchans hör inte hemma här — milstolpen lovar en viss sällsynthet.
+      let prize;
+      do prize = rollBoxFrom(rng, m.robot); while (prize.id === 'wildcard');
+      addRobot(acct, prize.id);
+      out.robot = prize.id;
+    }
+    return out;
+  }
+
+  function streakView(acct, today) {
+    const s = acct.streak || { last: '', days: 0, best: 0 };
+    // Spelade man varken i dag eller i går är streaken redan bruten, även om den inte nollats än.
+    const alive = !!today && (s.last === today || s.last === dayBefore(today));
+    const days = alive ? s.days : 0;
+    return { days, best: s.best || 0, playedToday: s.last === today, next: STREAK_MILESTONES.find((m) => m.days > days) || null };
+  }
+
+  // ---------- Monsterjakt ----------
+  // Varje dag är ett av de vanliga monstren "dagens byte" (samma för alla). Första gången man
+  // besegrar det den dagen får man dubbla mynt, en extra låda och alltid en supervapendel.
+  function huntFor(today) {
+    const pool = ROBOTS.filter((r) => r.monster && !r.royal);
+    return pool[hashName(`jakt-${today}`) % pool.length].id;
+  }
+
+  // ---------- Robotnivåer, dubbletter och skins ----------
+  // Varje robot man äger får egen erfarenhet: en per vunnen match med den (tre mot en kung
+  // eller drottningen), och mer om man smälter en dubblett av den. Varje nivå över 1 ger +3 %
+  // HP och slagstyrka. Högre nivåer låser upp skins (nya färger) för just den roboten.
+  const ROBOT_LEVEL_XP = [0, 3, 8, 15, 25, 40, 60, 85, 115, 150]; // xp som krävs för nivå 1..10
+  const ROBOT_MAX_LEVEL = ROBOT_LEVEL_XP.length;
+  const ROBOT_LEVEL_BONUS = 0.03;
+  function robotLevel(xp) {
+    let lvl = 1;
+    while (lvl < ROBOT_MAX_LEVEL && (xp || 0) >= ROBOT_LEVEL_XP[lvl]) lvl += 1;
+    return lvl;
+  }
+  function robotLevelInfo(acct, id) {
+    const xp = (acct.robotXp && acct.robotXp[id]) || 0;
+    const level = robotLevel(xp);
+    const from = ROBOT_LEVEL_XP[level - 1];
+    const to = level < ROBOT_MAX_LEVEL ? ROBOT_LEVEL_XP[level] : null;
+    return { xp, level, from, to, bonus: ROBOT_LEVEL_BONUS * (level - 1) };
+  }
+  function addRobotXp(acct, id, n) {
+    if (!robotById[id] || !(n > 0)) return;
+    acct.robotXp = acct.robotXp || {};
+    acct.robotXp[id] = Math.min(1e6, (acct.robotXp[id] || 0) + n);
+  }
+
+  // Smälta en dubblett: en extra kopia blir robot-XP och mynt. Man måste ha minst två.
+  const MELT = {
+    common: { xp: 2, coins: 5 }, rare: { xp: 4, coins: 15 }, epic: { xp: 8, coins: 40 },
+    legendary: { xp: 20, coins: 150 }, divine: { xp: 40, coins: 400 }, boss: { xp: 15, coins: 100 },
+    wildcard: { xp: 8, coins: 40 },
+  };
+  function meltDuplicate(acct, id) {
+    const def = robotById[id];
+    if (!def || def.monster) return { error: 'Den roboten går inte att smälta.' };
+    if (count(acct, id) < 2) return { error: 'Du behöver minst två av den för att smälta en.' };
+    const m = MELT[def.rarity];
+    acct.inv[id] -= 1;
+    addRobotXp(acct, id, m.xp);
+    addCoins(acct, m.coins);
+    return { melted: id, xp: m.xp, coins: m.coins };
+  }
+
+  const SKINS = [
+    { id: 'standard', name: 'Standard', level: 1 },
+    { id: 'natt', name: 'Nattsvart', level: 3, color: '#1c1f2e', accent: '#0a0b12', eye: '#3ee8ff' },
+    { id: 'is', name: 'Isblå', level: 4, color: '#bfe9ff', accent: '#3a7fa8', eye: '#ffffff' },
+    { id: 'lava', name: 'Lava', level: 5, color: '#c2321a', accent: '#3a0a04', eye: '#ffd93d' },
+    { id: 'neon', name: 'Neon', level: 6, color: '#ff3df0', accent: '#2a0a3a', eye: '#7dff3d' },
+    { id: 'guld', name: 'Guld', level: 8, color: '#ffd23d', accent: '#8a5a00', eye: '#ffffff' },
+    { id: 'diamant', name: 'Diamant', level: 10, color: '#e8fbff', accent: '#5ad8ff', eye: '#ff3df0' },
+  ];
+  const skinById = Object.fromEntries(SKINS.map((s) => [s.id, s]));
+  function setSkin(acct, robotId, skinId) {
+    if (count(acct, robotId) < 1) return { error: 'Du äger inte den roboten.' };
+    const skin = skinById[skinId];
+    if (!skin) return { error: 'Okänt skin.' };
+    if (robotLevelInfo(acct, robotId).level < skin.level) return { error: `${skin.name} kräver nivå ${skin.level}.` };
+    acct.skins = acct.skins || {};
+    if (skinId === 'standard') delete acct.skins[robotId];
+    else acct.skins[robotId] = skinId;
+    return { skin: skinId };
+  }
+
+  // ---------- Set ----------
+  // Äger man ALLA föremål i ett set och bär något av dem får man setets bonus ovanpå föremålet.
+  const EQUIPMENT_SETS = [
+    { id: 'vildmark', name: 'Vildmarkssetet', items: ['servoarms', 'turbofeet', 'steelshield', 'fangblade'], stat: { hp: 10, punch: 2, speed: 10 } },
+    { id: 'trask', name: 'Träsksetet', items: ['drakfjallet', 'myggvingarna', 'taggpansaret', 'djuphjalmen'], stat: { hp: 20, speed: 15 } },
+    { id: 'natt', name: 'Nattsetet', items: ['uggleogat', 'lavahjartat', 'lightrig', 'platearmor'], stat: { punch: 3, speed: 20 } },
+    { id: 'kunglig', name: 'Kungliga setet', items: ['drakkronan', 'frostmanteln', 'stenhandskarna', 'drottningdiademet'], stat: { hp: 30, punch: 5, speed: 20 } },
+    { id: 'super', name: 'Supersetet', items: ['megavapen', 'askhammaren', 'drakhjartat', 'spegelskolden', 'livskristallen', 'gravitronen'], stat: { hp: 30, punch: 5, speed: 25 } },
+  ];
+  function activeSet(equipmentInv, equippedItem) {
+    if (!equippedItem) return null;
+    return EQUIPMENT_SETS.find((s) => s.items.includes(equippedItem) && s.items.every((id) => (equipmentInv[id] || 0) > 0)) || null;
   }
 
   // Köper en butiksvara. Mynten finns bara på servern (eller i gästens egen webbläsare).
@@ -886,6 +1072,7 @@
       wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
       wildcardHead: null, wildcardExtra: null,
       equipmentInv: {}, equippedItem: null, superPieces: {}, coins: 0,
+      robotXp: {}, skins: {}, streak: { last: '', days: 0, best: 0 }, hunt: '',
     };
   }
 
@@ -911,6 +1098,7 @@
       wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
       wildcardHead: null, wildcardExtra: null,
       equipmentInv: {}, equippedItem: null, superPieces: {}, coins: 0,
+      robotXp: {}, skins: {}, streak: { last: '', days: 0, best: 0 }, hunt: '',
     };
     if (raw && typeof raw === 'object') {
       const inv = raw.inv && typeof raw.inv === 'object' ? raw.inv : {};
@@ -943,16 +1131,33 @@
         acct.equippedItem = raw.equippedItem;
       }
       acct.coins = Math.max(0, Math.min(MAX_COINS, Math.floor(Number(raw.coins)) || 0));
-      const q = raw.quests;
-      if (q && typeof q === 'object' && typeof q.day === 'string' && q.day.length <= 10) {
-        const ids = new Set(QUEST_POOL.map((x) => x.id));
+      for (const P of Object.values(QUEST_PERIODS)) {
+        const q = raw[P.field];
+        if (!q || typeof q !== 'object' || typeof q.day !== 'string' || q.day.length > 10) continue;
+        const ids = new Set(P.pool.map((x) => x.id));
         const prog = {};
         for (const id of ids) {
           const n = Math.floor(Number(q.prog && q.prog[id]));
           if (n > 0 && n < 1000) prog[id] = n;
         }
-        acct.quests = { day: q.day, prog, done: Array.isArray(q.done) ? q.done.filter((id) => ids.has(id)).slice(0, QUEST_COUNT) : [], bonus: !!q.bonus };
+        acct[P.field] = { day: q.day, prog, done: Array.isArray(q.done) ? q.done.filter((id) => ids.has(id)).slice(0, QUEST_COUNT) : [], bonus: !!q.bonus };
       }
+      const rxp = raw.robotXp && typeof raw.robotXp === 'object' && !Array.isArray(raw.robotXp) ? raw.robotXp : {};
+      for (const r of ROBOTS) {
+        const n = Math.floor(Number(rxp[r.id]));
+        if (n > 0 && n < 1e6) acct.robotXp[r.id] = n;
+      }
+      const skins = raw.skins && typeof raw.skins === 'object' && !Array.isArray(raw.skins) ? raw.skins : {};
+      for (const r of ROBOTS) {
+        const sk = skins[r.id];
+        if (typeof sk === 'string' && skinById[sk] && sk !== 'standard') acct.skins[r.id] = sk;
+      }
+      const st = raw.streak;
+      if (st && typeof st === 'object' && typeof st.last === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(st.last)) {
+        const days = Math.max(0, Math.min(1e5, Math.floor(Number(st.days)) || 0));
+        acct.streak = { last: st.last, days, best: Math.max(days, Math.min(1e5, Math.floor(Number(st.best)) || 0)) };
+      }
+      if (typeof raw.hunt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.hunt)) acct.hunt = raw.hunt;
       const pieces = raw.superPieces && typeof raw.superPieces === 'object' && !Array.isArray(raw.superPieces) ? raw.superPieces : {};
       // Gamla konton hade bara Megavapnets delar, i megaFragments.
       const old = { megavapen: raw.megaFragments, ...pieces };
@@ -1113,10 +1318,14 @@
   // rng behövs bara vid vinst (för ett eventuellt nivåpris/föremål/supervapendel) — vänmatcher
   // anropar aldrig den här funktionen.
   function finishMatch(acct, match, won, rng, today) {
-    // Dagens uppdrag: vad hände i matchen?
+    // Uppdragen: vad hände i matchen?
     const robotDef = robotById[match.robot];
     const oppDef = robotById[match.opp];
+    // Monsterjakt: dagens byte ger extra, men bara första vinsten mot det varje dag.
+    const hunt = !!(won && match.monster && today && match.opp === huntFor(today) && acct.hunt !== today);
+    if (hunt) acct.hunt = today;
     const events = ['play'];
+    if (hunt) events.push('hunt');
     if (won) {
       events.push('win');
       if (match.monster) events.push('monster');
@@ -1127,28 +1336,44 @@
       if (robotDef && robotDef.rarity === 'divine') events.push('divinewin');
     }
     const quest = questEvent(acct, today, events, robotDef ? robotDef.types : []);
-    const result = finishMatchInner(acct, match, won, rng);
+    const result = finishMatchInner(acct, match, won, rng, hunt);
     result.quests = quest.completed;
     result.questBonus = quest.bonus;
+    result.questBonuses = quest.bonuses;
+    result.hunt = hunt;
+    // Roboten man vann med blir erfarnare (kungar och drottningen ger mer).
+    result.robotLevelUp = null;
+    if (won && robotDef) {
+      const before = robotLevelInfo(acct, match.robot).level;
+      addRobotXp(acct, match.robot, oppDef && oppDef.royal ? 3 : 1);
+      const after = robotLevelInfo(acct, match.robot).level;
+      if (after > before) result.robotLevelUp = { robot: match.robot, level: after };
+    }
+    result.streak = touchStreak(acct, today, rng);
     return result;
   }
 
-  function finishMatchInner(acct, match, won, rng) {
+  function finishMatchInner(acct, match, won, rng, hunt) {
     if (match.monster) {
       const result = {
         won, stake: false, gained: null, lost: null, box: false, levelUps: [], bossWon: null,
         itemWon: null, superPiece: null, superPieces: 0, superAssembled: null, coins: 0,
       };
       if (won) {
-        result.coins = addCoins(acct, robotById[match.opp] && robotById[match.opp].royal ? COINS.royalWin : COINS.monsterWin);
+        const base = robotById[match.opp] && robotById[match.opp].royal ? COINS.royalWin : COINS.monsterWin;
+        result.coins = addCoins(acct, hunt ? base * 2 : base);
+        if (hunt) {
+          acct.boxes += 1;
+          result.box = true;
+        }
         const drop = robotById[match.opp] && robotById[match.opp].drop;
         if (drop) {
           addEquipment(acct, drop);
           result.itemWon = drop;
         }
-        // Kungar och drottningen ger alltid en supervapendel, de vanliga monstren bara ibland.
+        // Kungar, drottningen och dagens jaktbyte ger alltid en supervapendel, de andra bara ibland.
         const royal = robotById[match.opp] && robotById[match.opp].royal;
-        if (royal || rng() < SUPER_PIECE_CHANCE) {
+        if (royal || hunt || rng() < SUPER_PIECE_CHANCE) {
           // Delen hör till ett supervapen man inte har än (eller, har man alla, vilket som helst).
           const missing = SUPER_WEAPONS.filter((w) => !(acct.equipmentInv[w.id] > 0));
           const pool = missing.length ? missing : SUPER_WEAPONS;
@@ -1214,12 +1439,13 @@
     return { id: prize.id, n: count(acct, prize.id) };
   }
 
-  function claimDaily(acct, today) {
+  // Returnerar false om dagens låda redan är hämtad, annars { streak } (en ev. nådd milstolpe).
+  function claimDaily(acct, today, rng) {
     if (!(today > acct.daily)) return false;
     acct.boxes += 1;
     addCoins(acct, COINS.daily);
     acct.daily = today;
-    return true;
+    return { streak: touchStreak(acct, today, rng) };
   }
 
   // Det klienten får se: kontot plus om dagens låda finns att hämta.
@@ -1245,6 +1471,12 @@
       superPieces: { ...(acct.superPieces || {}) },
       coins: acct.coins || 0,
       quests: questView(acct, today),
+      questsWeek: questView(acct, today, 'week'),
+      questsMonth: questView(acct, today, 'month'),
+      streak: streakView(acct, today),
+      hunt: { monster: huntFor(today), done: acct.hunt === today },
+      robotXp: { ...(acct.robotXp || {}) },
+      skins: { ...(acct.skins || {}) },
     };
   }
 
@@ -1355,6 +1587,8 @@
     xpNeeded, addXp,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem,
-    QUEST_POOL, questsFor, questEvent,
+    QUEST_POOL, questsFor, questEvent, weekKey, STREAK_MILESTONES, touchStreak, huntFor,
+    ROBOT_LEVEL_XP, ROBOT_MAX_LEVEL, ROBOT_LEVEL_BONUS, robotLevel, robotLevelInfo, MELT, meltDuplicate,
+    SKINS, skinById, setSkin, EQUIPMENT_SETS, activeSet,
   };
 });

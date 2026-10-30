@@ -105,6 +105,20 @@
       return { acct: this.view() };
     }
 
+    async meltDuplicate(robot) {
+      const result = S.meltDuplicate(this.acct, robot);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view(), melted: result };
+    }
+
+    async setSkin(robot, skin) {
+      const result = S.setSkin(this.acct, robot, skin);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
     async trade(give, want) {
       const result = S.trade(this.acct, give, want);
       if (result.error) throw new Error(result.error);
@@ -135,7 +149,7 @@
     }
 
     async claimDaily() {
-      const ok = S.claimDaily(this.acct, todayKey());
+      const ok = S.claimDaily(this.acct, todayKey(), Math.random);
       this.save();
       return { acct: this.view(), ok };
     }
@@ -249,6 +263,8 @@
     chooseWildcardSpecial(type) { return this.api('/api/wildcard/special', { type }); }
     importGuest(inv, boxes) { return this.api('/api/import-guest', { inv, boxes }); }
     equipItem(itemId) { return this.api('/api/equip', { itemId }); }
+    meltDuplicate(robot) { return this.api('/api/melt', { robot }); }
+    setSkin(robot, skin) { return this.api('/api/skin', { robot, skin }); }
     trade(give, want) { return this.api('/api/trade', { give, want }); }
     buyItem(itemId) { return this.api('/api/buy', { itemId }); }
     setCustomWildcardAttack(type, name, desc, dmg, heal, types) { return this.api('/api/wildcard/attack', { type, name, desc, dmg, heal, types }); }
@@ -341,6 +357,20 @@
       return { acct: this.view() };
     }
 
+    async meltDuplicate(robot) {
+      const result = S.meltDuplicate(this.acct, robot);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view(), melted: result };
+    }
+
+    async setSkin(robot, skin) {
+      const result = S.setSkin(this.acct, robot, skin);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
     async trade(give, want) {
       const result = S.trade(this.acct, give, want);
       if (result.error) throw new Error(result.error);
@@ -371,7 +401,7 @@
     }
 
     async claimDaily() {
-      const ok = S.claimDaily(this.acct, todayKey());
+      const ok = S.claimDaily(this.acct, todayKey(), Math.random);
       await this.save();
       return { acct: this.view(), ok };
     }
