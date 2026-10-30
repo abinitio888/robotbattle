@@ -40,6 +40,67 @@ function sparks(x, y, color, n, z = 0) {
   }
 }
 
+// ---------- Utseende: chockvågor, kombos, blixtar och livmätarnas spökstapel ----------
+// Bara för ögat: simuleringen (och därmed vänmatcherna) vet ingenting om det här. Skadan räknas
+// fram ur hur mycket livet sjönk sedan förra steget, så det fungerar likadant i alla matcher.
+const fx = { owner: null, hp: new Map(), rings: [], flash: 0, combo: null, koT: -1, ghost: { player: 1, ai: 1 }, ghostWait: { player: 0, ai: 0 } };
+
+function resetFx() {
+  fx.owner = game.player;
+  fx.hp = new Map();
+  fx.rings = [];
+  fx.flash = 0;
+  fx.combo = null;
+  fx.koT = -1;
+  fx.ghost = { player: 1, ai: 1 };
+  fx.ghostWait = { player: 0, ai: 0 };
+}
+
+function updateFx(dt) {
+  if (fx.owner !== game.player) resetFx(); // en ny match har börjat
+  const { player, ai } = game;
+  for (const f of [player, ai, ...game.allies.map((a) => a.f)]) {
+    const prev = fx.hp.get(f);
+    fx.hp.set(f, f.hp);
+    if (prev === undefined || prev - f.hp < 1) continue;
+    const dmg = prev - f.hp;
+    if (dmg >= 15) {
+      fx.rings.push({ x: f.x, y: f.y - f.h * 0.55, z: f.z, color: dmg >= 30 ? '#ffd93d' : f.def.color, size: dmg >= 30 ? 150 : 95, life: 0.4, max: 0.4 });
+    }
+    if (dmg >= 30) fx.flash = Math.max(fx.flash, 0.18);
+    if (f === ai) {
+      // Träffar i rad på motståndaren, utan att man själv blir träffad emellan.
+      fx.combo = fx.combo && fx.combo.t > 0 ? { n: fx.combo.n + 1, t: 1.6, age: 0 } : { n: 1, t: 1.6, age: 0 };
+    } else if (f === player) {
+      fx.combo = null;
+    }
+  }
+  for (const r of fx.rings) r.life -= dt;
+  fx.rings = fx.rings.filter((r) => r.life > 0);
+  fx.flash = Math.max(0, fx.flash - dt);
+  if (fx.combo) {
+    fx.combo.t -= dt;
+    fx.combo.age += dt;
+    if (fx.combo.t <= -0.4) fx.combo = null;
+  }
+  if (game.phase === 'over') {
+    if (fx.koT < 0) {
+      fx.koT = 0;
+      fx.flash = 0.35;
+      const loser = ai.hp <= 0 ? ai : player;
+      fx.rings.push({ x: loser.x, y: loser.y - loser.h * 0.5, z: loser.z, color: '#ffffff', size: 320, life: 0.8, max: 0.8 });
+    }
+    fx.koT += dt;
+  }
+  // Spökstapeln står kvar en stund där livet var och glider sedan ner till det nya värdet.
+  for (const [key, f] of [['player', player], ['ai', ai]]) {
+    const now = f.hp / f.maxHp;
+    if (now >= fx.ghost[key]) { fx.ghost[key] = now; fx.ghostWait[key] = 0.45; continue; }
+    if (fx.ghostWait[key] > 0) fx.ghostWait[key] -= dt;
+    else fx.ghost[key] = Math.max(now, fx.ghost[key] - dt * 0.6);
+  }
+}
+
 // ---------- Strid ----------
 // Står o i samma fil som z (djupled)? extra = hur bred attacken själv är i djupled.
 const inLane = (o, z, extra = 0) => Math.abs(o.z - z) < o.d / 2 + extra;
@@ -1401,6 +1462,8 @@ const hud = {
   typeAi: document.getElementById('type-ai'),
   hpPlayer: document.getElementById('hp-player'),
   hpAi: document.getElementById('hp-ai'),
+  ghostPlayer: document.getElementById('ghost-player'),
+  ghostAi: document.getElementById('ghost-ai'),
   enPlayer: document.getElementById('en-player'),
   enAi: document.getElementById('en-ai'),
   arena: document.getElementById('arena-label'),
@@ -3986,6 +4049,8 @@ function update(dt) {
     else if (fighting && (lost || ai.hp <= 0)) endMatch();
   }
 
+  updateFx(dt);
+
   if (game.phase === 'over') {
     game.overT -= dt;
     if (game.overT <= 0 && game.result && screens.result.hidden) showResult();
@@ -4487,15 +4552,89 @@ function drawProjectiles() {
   }
 }
 
-function drawBanner(text, size) {
-  ctx.font = `bold ${size}px ui-monospace, Menlo, monospace`;
+// Stor text mitt i bilden. age = hur länge den har synts: den slår ner från stor till rätt
+// storlek, lyser och lutar lite framåt. colors = toppen och botten på färgtoningen.
+function drawBanner(text, size, age = 1, colors = ['#fff6c8', '#ffb31a'], jitter = 0) {
+  const k = clamp(age / 0.18, 0, 1);
+  const scale = 1 + (1 - k) * (1 - k) * 1.6;
+  ctx.save();
+  ctx.translate(W / 2 + rand(-1, 1) * jitter, H / 2 - 40 + rand(-1, 1) * jitter);
+  ctx.transform(1, 0, -0.12, 1, 0, 0);
+  ctx.scale(scale, scale);
+  ctx.globalAlpha = Math.min(1, 0.25 + k);
+  ctx.font = `900 ${size}px ui-monospace, Menlo, monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.lineWidth = 8;
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 12;
   ctx.strokeStyle = '#0b0f1a';
-  ctx.strokeText(text, W / 2, H / 2 - 40);
-  ctx.fillStyle = '#ffd93d';
-  ctx.fillText(text, W / 2, H / 2 - 40);
+  ctx.strokeText(text, 0, 0);
+  const g = ctx.createLinearGradient(0, -size / 2, 0, size / 2);
+  g.addColorStop(0, colors[0]);
+  g.addColorStop(1, colors[1]);
+  ctx.shadowColor = colors[1];
+  ctx.shadowBlur = 28;
+  ctx.fillStyle = g;
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+function drawFx(project) {
+  // Rött sken längs kanterna när ditt liv börjar ta slut, som ett hjärta som slår.
+  const { player } = game;
+  if (player && player.hp > 0 && player.hp < player.maxHp * 0.25 && game.phase === 'fight') {
+    const beat = 0.5 + 0.5 * Math.sin(performance.now() / 160);
+    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.62);
+    g.addColorStop(0, 'rgba(255,40,40,0)');
+    g.addColorStop(1, `rgba(255,40,40,${0.18 + beat * 0.22})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (!r3d) {
+    // I 2D-läget ritas chockvågorna här; i 3D gör render3d.js det.
+    for (const r of fx.rings) {
+      const k = 1 - r.life / r.max;
+      const at = project(r.x, r.y, r.z);
+      ctx.save();
+      ctx.globalAlpha = (1 - k) * 0.9;
+      ctx.strokeStyle = r.color;
+      ctx.lineWidth = 6 * (1 - k) + 1;
+      ctx.beginPath();
+      ctx.arc(at.x, at.y, lerp(8, r.size, 1 - (1 - k) * (1 - k)), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  if (fx.combo && fx.combo.n >= 2) {
+    const c = fx.combo;
+    const pop = 1 + Math.max(0, 0.15 - c.age) * 3;
+    ctx.save();
+    ctx.globalAlpha = clamp(1 + c.t / 0.4, 0, 1);
+    ctx.translate(40, 150);
+    ctx.transform(1, 0, -0.15, 1, 0, 0);
+    ctx.scale(pop, pop);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#0b0f1a';
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = c.n >= 5 ? '#ff3df0' : '#3ee8ff';
+    ctx.font = '900 56px ui-monospace, Menlo, monospace';
+    ctx.fillStyle = c.n >= 5 ? '#ff8af6' : '#bff6ff';
+    ctx.strokeText(String(c.n), 0, 0);
+    ctx.fillText(String(c.n), 0, 0);
+    const w = ctx.measureText(String(c.n)).width;
+    ctx.font = '900 22px ui-monospace, Menlo, monospace';
+    const word = c.n >= 8 ? 'TRÄFFAR! OSTOPPBAR!' : c.n >= 5 ? 'TRÄFFAR! GALET!' : 'TRÄFFAR!';
+    ctx.strokeText(word, w + 10, 6);
+    ctx.fillText(word, w + 10, 6);
+    ctx.restore();
+  }
+  if (fx.flash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${Math.min(0.75, fx.flash * 2.4)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
 }
 
 function draw() {
@@ -4528,7 +4667,7 @@ function draw() {
       holes: fighting ? game.holes : none,
       clocks: fighting ? game.clocks : none, meteors: fighting ? game.meteors : none,
       wolves: fighting ? game.wolves : none, roots: fighting ? game.roots : none, tethers: fighting ? game.tethers : none,
-      tides: fighting ? game.tides : none,
+      tides: fighting ? game.tides : none, rings: fighting ? fx.rings : none,
     });
     ctx.clearRect(0, 0, W, H);
     if (fighting) drawAllyBars((x, y, z) => r3d.project(x, y, z));
@@ -4555,9 +4694,15 @@ function draw() {
     ctx.restore();
   }
 
-  if (game.phase === 'intro') drawBanner(String(Math.ceil(game.introT / 0.8)), 120);
-  else if (game.banner > 0) drawBanner('KÄMPA!', 84);
-  else if (game.phase === 'over') drawBanner('K.O.', 96);
+  if (fighting) drawFx(r3d ? (x, y, z) => r3d.project(x, y, z) : (x, y) => ({ x, y }));
+  if (game.phase === 'intro') {
+    const n = Math.ceil(game.introT / 0.8);
+    drawBanner(String(n), 140, 0.8 * n - game.introT, n === 1 ? ['#ffe0e0', '#ff4d4d'] : ['#e8fbff', '#3ee8ff']);
+  } else if (game.banner > 0) drawBanner('KÄMPA!', 96, 0.7 - game.banner, ['#ffffff', '#ffd93d']);
+  else if (game.phase === 'over') {
+    const won = game.ai && game.ai.hp <= 0;
+    drawBanner('K.O.!', 120, fx.koT, won ? ['#fff6c8', '#ffb31a'] : ['#ffd0d0', '#ff3d3d'], Math.max(0, 0.4 - fx.koT) * 20);
+  }
   if (game.superBanner && game.phase === 'fight') {
     const b = game.superBanner;
     ctx.save();
@@ -4582,6 +4727,10 @@ function draw() {
   if (player) {
     hud.hpPlayer.style.width = `${(player.hp / player.maxHp) * 100}%`;
     hud.hpAi.style.width = `${(ai.hp / ai.maxHp) * 100}%`;
+    hud.ghostPlayer.style.width = `${fx.ghost.player * 100}%`;
+    hud.ghostAi.style.width = `${fx.ghost.ai * 100}%`;
+    hud.hpPlayer.classList.toggle('low', player.hp > 0 && player.hp < player.maxHp * 0.25);
+    hud.hpAi.classList.toggle('low', ai.hp > 0 && ai.hp < ai.maxHp * 0.25);
     hud.enPlayer.style.width = `${player.energy}%`;
     hud.enAi.style.width = `${ai.energy}%`;
     hud.enPlayer.classList.toggle('ready', player.energy >= specialCost(player));

@@ -1121,6 +1121,11 @@
       mine: makePool(scene, () => new THREE.Mesh(cyl(14, 14, 6, 16), new THREE.MeshStandardMaterial({ color: '#888888' }))),
       mineLight: makePool(scene, () => new THREE.Mesh(sphere(4), basic('#ffd93d'))),
       particle: makePool(scene, () => new THREE.Mesh(box(5, 5, 5), basic('#ffffff', 1))),
+      ring: makePool(scene, () => {
+        const m = new THREE.Mesh(new THREE.RingGeometry(0.82, 1, 40), basic('#ffffff', 0.9, true));
+        m.material.side = THREE.DoubleSide;
+        return m;
+      }),
       halo: makePool(scene, () => { const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 8, 64), basic('#fff3b0', 0.9, true)); m.rotation.x = -Math.PI / 2; return m; }),
       haloWall: makePool(scene, () => new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 64, 1, true), fadeUp('#ffe36b'))),
       quake: makePool(scene, () => { const m = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48), basic('#caa968', 0.8, true)); m.rotation.x = -Math.PI / 2; return m; }),
@@ -1741,6 +1746,17 @@
         m.material.opacity = clamp(p.life / p.max, 0, 1);
         m.material.transparent = true;
         m.rotation.set(p.life * 9, p.life * 7, 0);
+      }
+      // Chockvågor vid tunga träffar: en ring som växer ut mot kameran och tonar bort.
+      for (const r of s.rings || []) {
+        const k = 1 - r.life / r.max;
+        const m = pools.ring.get();
+        m.position.set(wx(r.x), wy(r.y), (r.z || 0) + 4);
+        m.rotation.set(0, 0, k * 2);
+        const size = lerp(8, r.size, 1 - (1 - k) * (1 - k));
+        m.scale.set(size, size, 1);
+        m.material.color.set(r.color);
+        m.material.opacity = (1 - k) * 0.9;
       }
     }
 
