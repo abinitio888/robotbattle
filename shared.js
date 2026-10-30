@@ -811,6 +811,50 @@
       gravityMul: 1, speedMul: 0.72, dmgMul: 1.35,
       sky: '#241a0e', ground: '#120c06', line: '#8a5a2a',
     },
+    // Banor med något extra: oändlig energi (infiniteEnergy) och/eller saker som blockerar
+    // (obstacles). Ett hinder är { x, z, w, d, h, kind }: mitt (x i spelets koordinater, z i
+    // djupled), bredd, djup och höjd. Pelare och murar är för höga att hoppa över; lådor kan
+    // man hoppa upp på. Hindren stoppar skott och vågor — använd dem som skydd!
+    {
+      id: 'energy', name: 'Energiverket', hint: 'Oändlig energi — specialattacker hela tiden!',
+      gravityMul: 1, speedMul: 1, dmgMul: 1, infiniteEnergy: true,
+      sky: '#0d1f2a', ground: '#06121a', line: '#ffd93d',
+    },
+    {
+      id: 'ruins', name: 'Ruinerna', hint: 'Pelare och lådor stoppar skott — göm dig bakom dem!',
+      gravityMul: 1, speedMul: 1, dmgMul: 1,
+      sky: '#1d1a26', ground: '#0e0c14', line: '#8a7a9e',
+      obstacles: [
+        { x: 480, z: -125, w: 46, d: 46, h: 220, kind: 'pillar' },
+        { x: 480, z: 125, w: 46, d: 46, h: 220, kind: 'pillar' },
+        { x: 380, z: 20, w: 50, d: 50, h: 55, kind: 'crate' },
+        { x: 590, z: -30, w: 50, d: 50, h: 55, kind: 'crate' },
+        { x: 170, z: -170, w: 46, d: 46, h: 220, kind: 'pillar' },
+        { x: 790, z: 170, w: 46, d: 46, h: 220, kind: 'pillar' },
+      ],
+    },
+    {
+      id: 'fortress', name: 'Fästningen', hint: 'Murar att ta skydd bakom — gå runt dem i djupled!',
+      gravityMul: 1, speedMul: 1, dmgMul: 1,
+      sky: '#141e1a', ground: '#0a120e', line: '#6aa87a',
+      obstacles: [
+        { x: 400, z: -95, w: 28, d: 150, h: 120, kind: 'wall' },
+        { x: 560, z: 95, w: 28, d: 150, h: 120, kind: 'wall' },
+        { x: 480, z: 0, w: 50, d: 50, h: 55, kind: 'crate' },
+      ],
+    },
+    {
+      id: 'chaos', name: 'Kaosfabriken', hint: 'Oändlig energi OCH lådor att gömma sig bakom!',
+      gravityMul: 1, speedMul: 1, dmgMul: 1, infiniteEnergy: true,
+      sky: '#26100e', ground: '#140806', line: '#ff6b3d',
+      obstacles: [
+        { x: 480, z: -150, w: 50, d: 50, h: 55, kind: 'crate' },
+        { x: 480, z: 150, w: 50, d: 50, h: 55, kind: 'crate' },
+        { x: 360, z: 70, w: 50, d: 50, h: 55, kind: 'crate' },
+        { x: 600, z: -70, w: 50, d: 50, h: 55, kind: 'crate' },
+        { x: 480, z: 0, w: 40, d: 40, h: 200, kind: 'pillar' },
+      ],
+    },
     // monster: true → ingår aldrig i den SLUMPADE poolen (pickArena) för vanliga matcher, bara
     // tvingas fram uttryckligen för monsterstrider (se startMatch i game.js) — "en annan värld",
     // inte en bana som kan dyka upp av en slump mitt i en robotmatch.

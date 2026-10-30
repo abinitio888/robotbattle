@@ -665,6 +665,7 @@ class Fighter {
     if (!this.dead) {
       this.facing = opp.x >= this.x ? 1 : -1;
       if (canFight) this.energy = Math.min(MAX_ENERGY, this.energy + 6 * dt * (this.jinxT > 0 ? 0.5 : 1) * (this.passive === 'solar' ? 2 : 1));
+      if (canFight && game.arena.infiniteEnergy) this.energy = MAX_ENERGY; // Energiverket
       if (canFight) this.updatePassive(dt);
       if (canFight && this.def.startShield && !this.startShieldDone) {
         // Sköldgeneratorn: osårbar de första sekunderna när striden väl börjat.
@@ -729,6 +730,7 @@ class Fighter {
       this.onGround = false;
       return;
     }
+    const prevY = this.y;
     this.vy += GRAVITY * game.arena.gravityMul * dt;
     this.y += this.vy * dt;
     if (this.y >= FLOOR) {
@@ -744,6 +746,8 @@ class Fighter {
         hurt(this, dmg, Math.sign(this.x - owner.x) || 1, 200, owner);
       }
     }
+    if (game.arena.obstacles) resolveObstacles(this, prevY);
+    this.blockedT = Math.max(0, (this.blockedT || 0) - dt);
   }
 }
 
@@ -753,6 +757,48 @@ class Fighter {
 function enemyOf(owner) {
   if (owner === game.ai) return game.ai.target || game.player;
   return game.ai;
+}
+
+// ---------- Hinder på banan ----------
+// Banans hinder (arena.obstacles) som rutor i (x, z) med en höjd. hit(): är punkten inne i ett
+// hinder (och lägre än dess topp)?
+const obstacles = () => game.arena.obstacles || [];
+function obstacleAt(x, z, height, pad = 0) {
+  for (const o of obstacles()) {
+    if (Math.abs(x - o.x) < o.w / 2 + pad && Math.abs(z - o.z) < o.d / 2 + pad && height < o.h) return o;
+  }
+  return null;
+}
+
+// Knuffar ut en kämpe ur hindren, och låter den stå på lådor.
+// prevY: var fötterna var förra bildrutan, så en snabb landning på en låda inte missas.
+function resolveObstacles(f, prevY) {
+  let support = 0; // höjden på det man står på (0 = golvet)
+  for (const o of obstacles()) {
+    const ox = o.w / 2 + f.w / 2 * 0.8;
+    const oz = o.d / 2 + f.d / 2;
+    const dx = f.x - o.x;
+    const dz = f.z - o.z;
+    if (Math.abs(dx) >= ox || Math.abs(dz) >= oz) continue;
+    const feet = FLOOR - f.y; // hur högt fötterna är
+    const prevFeet = FLOOR - prevY;
+    if (prevFeet >= o.h - 2 && f.vy >= 0) { support = Math.max(support, o.h); continue; } // landar/står på toppen
+    if (feet >= o.h) continue;
+    // Inne i hindret: ut den kortaste vägen, åt sidan eller i djupled.
+    const px = ox - Math.abs(dx);
+    const pz = oz - Math.abs(dz);
+    if (px < pz) { f.x = o.x + Math.sign(dx || 1) * ox; f.kx = 0; f.blockedT = 0.4; }
+    else f.z = o.z + Math.sign(dz || 1) * oz;
+  }
+  f.x = clamp(f.x, f.w / 2, W - f.w / 2);
+  if (support > 0 && f.y >= FLOOR - support) {
+    f.y = FLOOR - support;
+    f.vy = 0;
+    f.onGround = true;
+    f.doubleUsed = false;
+  } else if (support === 0 && f.y < FLOOR && f.onGround && f.vy === 0) {
+    f.onGround = false; // klev av lådan
+  }
 }
 
 function separate(a, b) {
@@ -783,6 +829,7 @@ function updateProjectiles(dt) {
       p.y += p.vy * dt;
     }
     if (!p.grav && (p.y < -40 || p.y > FLOOR)) { p.dead = true; continue; }
+    if (obstacleAt(p.x, p.z, FLOOR - p.y, p.r * 0.5)) { p.dead = true; sparks(p.x, p.y, '#cfcfcf', 8, p.z); continue; } // stoppas av hinder
     const target = enemyOf(p.owner);
     if (p.x < -60 || p.x > W + 60) { p.dead = true; continue; }
     for (const q of list) {
@@ -835,6 +882,7 @@ function updateWaves(dt) {
     w.travelled += Math.abs(w.vx) * dt;
     const target = enemyOf(w.owner);
     if (w.travelled > 560 || w.x < -30 || w.x > W + 30) { w.dead = true; continue; }
+    if (obstacleAt(w.x, w.z, 10)) { w.dead = true; sparks(w.x, FLOOR - 10, '#cfcfcf', 8, w.z); continue; }
     if (Math.abs(w.x - target.x) < target.w / 2 + 14 && inLane(target, w.z, 18) && target.y >= FLOOR - 26) {
       if (hurt(target, w.dmg, w.dir, 420, w.owner)) w.dead = true;
     }
@@ -1239,6 +1287,11 @@ function aiInput(f, o, brain, dt) {
     brain.depth = Math.abs(dz) > Math.min(f.d, o.d) * 0.35 ? Math.sign(dz) : 0;
     if (brain.retreat > 0 && Math.random() < 0.4) brain.depth = f.z > 0 ? -1 : 1;
 
+    // Fastnat mot ett hinder: gå runt i djupled, eller hoppa upp om det är en låda.
+    if (f.blockedT > 0) {
+      brain.depth = f.z > 0 ? -1 : 1;
+      if (f.onGround && Math.random() < 0.5) brain.jump = true;
+    }
     if (incomingThreat(f, o) && Math.random() < k.dodge) {
       if (Math.random() < 0.5 && f.onGround) brain.jump = true;
       else brain.depth = f.z > 0 ? -1 : 1;

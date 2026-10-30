@@ -924,6 +924,31 @@
     back.position.set(midX, 1.5, -260);
     g.add(back);
 
+    // Banans hinder: stenpelare, murar och lådor (se ARENAS i shared.js).
+    for (const o of arena.obstacles || []) {
+      const mat = o.kind === 'crate'
+        ? new THREE.MeshStandardMaterial({ color: '#8a5a2a', roughness: 0.8, emissive: arena.line, emissiveIntensity: 0.08 })
+        : new THREE.MeshStandardMaterial({ color: o.kind === 'wall' ? '#4a5a52' : '#6a6478', roughness: 0.7, metalness: 0.1 });
+      const geo = o.kind === 'pillar' ? new THREE.CylinderGeometry(o.w / 2, o.w / 2 + 4, o.h, 16) : box(o.w, o.h, o.d);
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(o.x - W / 2, o.h / 2, o.z);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      g.add(m);
+      // En lysande kant upptill så man ser hindren tydligt.
+      const rim = new THREE.Mesh(o.kind === 'pillar' ? new THREE.TorusGeometry(o.w / 2 + 1, 2, 6, 24) : box(o.w + 2, 3, o.d + 2), new THREE.MeshBasicMaterial({ color: arena.line }));
+      if (o.kind === 'pillar') rim.rotation.x = Math.PI / 2;
+      rim.position.set(o.x - W / 2, o.h, o.z);
+      g.add(rim);
+      if (o.kind === 'crate') {
+        for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          const post = new THREE.Mesh(box(4, o.h, 4), new THREE.MeshStandardMaterial({ color: '#5a3a18' }));
+          post.position.set(o.x - W / 2 + sx * (o.w / 2 - 2), o.h / 2, o.z + sz * (o.d / 2 - 2));
+          g.add(post);
+        }
+      }
+    }
+
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     for (const row of [{ z: -700, n: 22, base: 0.55 }, { z: -1100, n: 26, base: 0.35 }]) {
