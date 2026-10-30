@@ -656,6 +656,90 @@
     };
   }
 
+  // ---------- Utrustningen syns på roboten ----------
+  // def.gear = { look, color, set } (se gearLook i game.js). Allt läggs ovanpå den vanliga
+  // modellen; set: true (hela setet ägs) ger en extra gnistrande ring runt fötterna.
+  const CROWN_Y = { box: 123, dome: 115, round: 126, cyclops: 123, horn: 121, crown: 140 };
+  function buildGear(gear, rig) {
+    const { upper, inner, legs, front, back } = rig;
+    const metal = new THREE.MeshStandardMaterial({ color: gear.color, metalness: 0.8, roughness: 0.25, emissive: gear.color, emissiveIntensity: 0.15 });
+    const glow = glowMat(gear.color, 0.55);
+    const parts = { mats: [metal, glow], spin: [], pulse: [] };
+    switch (gear.look) {
+      case 'crown': {
+        const g = new THREE.Group();
+        g.position.set(0, CROWN_Y[rig.def.head] || 132, 0);
+        g.add(mesh(cyl(11, 11, 5), metal));
+        for (let k = 0; k < 5; k++) {
+          const a = (k / 5) * Math.PI * 2;
+          g.add(mesh(cone(3, 10, 6), metal, Math.cos(a) * 9, 7, Math.sin(a) * 9));
+          g.add(mesh(sphere(1.8), glow, Math.cos(a) * 9, 13, Math.sin(a) * 9));
+        }
+        upper.add(g);
+        break;
+      }
+      case 'aura': {
+        for (const [y, r] of [[60, 40], [95, 32]]) {
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 1.6, 6, 40), glow);
+          ring.position.y = y;
+          ring.rotation.x = Math.PI / 2;
+          inner.add(ring);
+          parts.spin.push(ring);
+        }
+        break;
+      }
+      case 'armor': {
+        upper.add(mesh(box(10, 40, 30), metal, 22.5, 67, 0)); // bröstplåt
+        for (const z of [-22, 22]) upper.add(mesh(box(20, 8, 16), metal, 0, 99, z)); // axlar
+        break;
+      }
+      case 'fists': {
+        for (const arm of [front, back]) {
+          const f = new THREE.Mesh(sphere(10), glow);
+          arm.fist.add(f);
+          parts.pulse.push(f);
+        }
+        break;
+      }
+      case 'boots': {
+        for (const leg of legs) {
+          leg.pivot.add(mesh(box(24, 8, 18), metal, 3, -37, 0));
+          const flame = new THREE.Mesh(cone(5, 12, 8), glow);
+          flame.position.set(-8, -38, 0);
+          flame.rotation.z = Math.PI / 2;
+          leg.pivot.add(flame);
+          parts.pulse.push(flame);
+        }
+        break;
+      }
+      default: { // chip: en lysande ring runt bröstkärnan
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(9, 2, 8, 24), glow);
+        ring.position.set(25, 77, 0);
+        ring.rotation.y = Math.PI / 2;
+        upper.add(ring);
+        parts.pulse.push(ring);
+      }
+    }
+    if (gear.set) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(30, 1.2, 6, 40), glowMat('#ffd93d', 0.7));
+      ring.position.y = 3;
+      ring.rotation.x = Math.PI / 2;
+      inner.add(ring);
+      parts.spin.push(ring);
+    }
+    return parts;
+  }
+
+  function poseGear(parts, t, sil, alpha) {
+    for (const m of parts.mats) {
+      m.visible = !sil;
+      m.opacity = m.blending === THREE.AdditiveBlending ? 0.55 * alpha : alpha;
+      m.transparent = true;
+    }
+    parts.spin.forEach((r, i) => { r.rotation.z = t * (i % 2 ? -1.6 : 1.2); });
+    for (const p of parts.pulse) p.scale.setScalar(1 + Math.sin(t * 8) * 0.15);
+  }
+
   // Bygger en robot. Returnerar en "rigg" med alla delar som poseRobot() rör på.
   function buildRobot(def) {
     const M = makeMaterials(def);
@@ -768,9 +852,12 @@
     // Gudomliga robotar och Monstervärldens kungar/drottning får extra prakt (se buildDivine).
     const divine = def.rarity === 'divine' || def.royal ? buildDivine(def, upper, inner, [front.fist, back.fist]) : null;
 
+    const rig = { def, root, inner, upper, legs, back, front, core, cape, flame, glow, divine, M, gear: null };
+    if (def.gear) rig.gear = buildGear(def.gear, rig);
+
     root.traverse((o) => { if (o.isMesh) o.castShadow = o.material.blending !== THREE.AdditiveBlending; });
     glow.castShadow = false;
-    return { def, root, inner, upper, legs, back, front, core, cape, flame, glow, divine, M };
+    return rig;
   }
 
   const SIL_BODY = new THREE.Color('#232c4a');
@@ -839,6 +926,7 @@
     if (rig.flame) rig.flame.scale.y = 1 + Math.sin(t * 30) * 0.3;
 
     if (rig.divine) rig.divine.update(t, glow, sil, alpha);
+    if (rig.gear) poseGear(rig.gear, t, sil, alpha);
     rig.glow.visible = glow > 0;
     if (glow > 0) {
       rig.glow.position.set(2 + 50, 88, 24);
@@ -848,7 +936,8 @@
   }
 
   // Roboten byggs om bara när något som syns i modellen ändras (t.ex. jokerns huvud).
-  const rigKey = (def) => [def.id, def.head, def.extra, def.color, def.accent, def.eye, def.scale].join('|');
+  const rigKey = (def) => [def.id, def.head, def.extra, def.color, def.accent, def.eye, def.scale,
+    def.gear ? `${def.gear.look}${def.gear.set ? '+set' : ''}` : ''].join('|');
 
   // ---------- Arenan ----------
   function gradientTexture(top, bottom) {

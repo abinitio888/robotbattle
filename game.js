@@ -1366,6 +1366,8 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyQ' || e.code === 'KeyI') triggerSuper();
     const onButton = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT');
     if (e.code === 'Enter' && !onButton) onEnter();
+    const digit = /^Digit([1-4])$/.exec(e.code);
+    if (digit && game.phase === 'hub') fastTravel(Number(digit[1]) - 1);
     const locked = (game.stake || game.online) && (game.phase === 'intro' || game.phase === 'fight');
     if (e.code === 'Escape' && game.phase !== 'menu' && game.phase !== 'hub' && !locked) showHub();
   }
@@ -1463,6 +1465,8 @@ const game = {
   explore: null,           // {player, monsters, near, attackHeld} medan man går runt i Monstervärlden
   arena: arenaById.classic, // banan som pågående/senaste match spelades på, se pickArena()
   matchToken: null,       // matchen som pågår mot AI, från net.startMatch()
+  raidPicks: [],          // robotarna man valt till kungastriden (se openRaidPicker)
+  raidTarget: null,
   result: null,
   opening: false,
   online: null,   // {isHost, oppName, ended, frame, lastGuestInput} medan en vänmatch pågår — se startFriendMatch()
@@ -1512,13 +1516,24 @@ function dailyCountdown() {
 }
 
 async function claimDaily() {
+  let note = '';
   try {
     const r = await net.claimDaily();
     applyAcct(r.acct);
+    note = streakNotice(r.ok);
   } catch (e) {
     // Ingen låda att hämta ännu — inget att göra.
   }
   showSelect();
+  if (note) byId('daily-info').textContent = note;
+}
+
+// Text om den dagliga lådan råkade nå en streak-milstolpe (se Shared.touchStreak).
+function streakNotice(ok) {
+  const st = ok && ok.streak;
+  if (!st) return '';
+  const robot = st.robot ? ` och roboten ${robotById[st.robot].name}` : '';
+  return `🔥 ${st.days} dagar i rad! Du fick ${st.coins} mynt, ${st.boxes} ${st.boxes === 1 ? 'låda' : 'lådor'}${robot}.`;
 }
 
 function showScreen(name) {
@@ -1561,7 +1576,7 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.arena = game.monster ? arenaById.direworld : Shared.pickArena(Math.random);
   showArenaLabel(game.arena);
 
-  const pDef = applyEquipment(myDef(robotById[started.match.robot]));
+  const pDef = fighterDef(started.match.robot);
   const aDef = robotById[started.match.opp]; // en eventuell AI-joker är alltid namnlös, får förvalet
   game.bossTier = game.boss ? bossTier(aDef) : aDef.royal ? ROYAL_TIERS[aDef.royal] : null;
   game.online = null;
@@ -1614,7 +1629,7 @@ function startTraining(moving) {
   game.fighters = null;
   game.arena = arenaById.classic;
   showArenaLabel(game.arena);
-  const pDef = applyEquipment(myDef(robotById[game.selectedId]));
+  const pDef = fighterDef(game.selectedId);
   game.player = new Fighter(pDef, W * 0.3, 1);
   game.ai = new Fighter(DUMMY, W * 0.65, -1);
   game.brain = makeBrain(SKILL_EASY);
@@ -1625,6 +1640,7 @@ function startTraining(moving) {
   hud.nameAi.textContent = moving ? 'Träningsdocka · RÖRLIG' : 'Träningsdocka · STILLA';
   setHudType(hud.typePlayer, pDef);
   setHudType(hud.typeAi, DUMMY);
+  byId('travel-bar').hidden = true;
   byId('explore-bar').hidden = false;
   byId('btn-explore-back').hidden = false;
   byId('explore-hint').textContent = 'Träning — prova dina attacker. Dockan slår aldrig tillbaka.';
@@ -1682,12 +1698,15 @@ function drawTrainingStats() {
 }
 
 // ---------- Kungastrid: du och fyra robotar mot en kung eller drottningen ----------
+// Lagkamraterna väljer man själv ur sin samling (se openRaidPicker); tomma platser fylls med
+// slumpade robotar. Ens egna kompisar slåss med sin nivå och sitt skin, men utan utrustning.
 const RAID_ALLIES = 4;
 function makeAllies() {
   const pool = ROBOTS.filter((r) => !r.monster && !r.boss && r.rarity !== 'divine' && r.id !== 'wildcard');
   const allies = [];
   for (let i = 0; i < RAID_ALLIES; i++) {
-    const def = pool[Math.floor(Math.random() * pool.length)];
+    const picked = game.raidPicks[i];
+    const def = picked && invCount(picked) > 0 ? applyRobotLevel(myDef(robotById[picked])) : pool[Math.floor(Math.random() * pool.length)];
     // Lagkamraterna tål lite mer än vanligt, annars hinner kungen slå ut dem direkt.
     const f = new Fighter({ ...def, hp: Math.round(def.hp * 1.5) }, W * (0.08 + i * 0.07), 1);
     f.z = [-0.75, -0.3, 0.3, 0.75][i] * DEPTH;
@@ -1758,16 +1777,51 @@ function displayName(def, mine) {
 // av robotens egen färg, se sparks()-anropen i SPECIALS). Elementet (typerna) följer alltid
 // vilken attack som råkar vara aktiv just nu — special.types, se WILDCARD_SPECIALS/
 // customWildcardSpecial i shared.js — så byter man attack byter man automatiskt element också.
-// En motståndares namnlösa joker förblir förvalet som det är.
+// En motståndares namnlösa joker förblir förvalet som det är. Ett valt skin (se Shared.SKINS)
+// byter färgerna på vilken av ens egna robotar som helst.
 function myDef(def) {
+  const skinId = game.acct && game.acct.skins && game.acct.skins[def.id];
+  const skin = skinId && Shared.skinById[skinId];
+  if (skin && def.id !== 'wildcard') return { ...def, color: skin.color, accent: skin.accent, eye: skin.eye };
   if (def.id !== 'wildcard') return def;
   const acct = game.acct;
   const special = Shared.wildcardSpecialFor(acct && acct.wildcardName, acct && acct.wildcardSpecialType, acct && acct.wildcardCustomSpecial);
-  const color = (acct && acct.wildcardColor) || def.color;
+  const color = (skin && skin.color) || (acct && acct.wildcardColor) || def.color;
   const head = (acct && acct.wildcardHead) || def.head;
   const extra = (acct && acct.wildcardExtra) || def.extra;
   const types = special.types || def.types;
-  return { ...def, special, color, head, extra, types };
+  const accent = (skin && skin.accent) || def.accent;
+  const eye = (skin && skin.eye) || def.eye;
+  return { ...def, special, color, accent, eye, head, extra, types };
+}
+
+// Den egna roboten som den slåss: skin, robotens nivå (+3 % HP och slag per nivå) och
+// utrustningen. Allt som skickas till en vän i en vänmatch, så båda ser samma robot.
+function fighterDef(id) {
+  return applyEquipment(applyRobotLevel(myDef(robotById[id])));
+}
+
+function robotLevelOf(id) {
+  return Shared.robotLevelInfo(game.acct || {}, id);
+}
+
+function applyRobotLevel(def) {
+  const info = robotLevelOf(def.id);
+  if (info.level <= 1) return def;
+  const mul = 1 + info.bonus;
+  return { ...def, hp: Math.round(def.hp * mul), punch: Math.round(def.punch * mul * 10) / 10, robotLevel: info.level };
+}
+
+// Hur ett föremål syns på roboten (se buildGear i render3d.js): kungligt blir en krona,
+// supervapen en aura, effekt-varor ett lysande chip, annars efter vad det mest ger.
+function gearLook(item) {
+  if (item.royal) return { look: 'crown', color: '#ffd93d' };
+  if (item.power) return { look: 'aura', color: '#b388ff' };
+  const st = item.stat || {};
+  const score = { armor: (st.hp || 0) / 25, fists: (st.punch || 0) / 4, boots: (st.speed || 0) / 35 };
+  const best = Object.keys(score).sort((a, b) => score[b] - score[a])[0];
+  if (!score[best]) return { look: 'chip', color: '#7dff3d' };
+  return { look: best, color: { armor: '#c0c8d8', fists: '#ff6b3d', boots: '#3ee8ff' }[best] };
 }
 
 // Lägger på bonusen från det utrustningsföremål man bär (om något) — gäller alltid, oavsett
@@ -1778,11 +1832,16 @@ function applyEquipment(def) {
   if (!itemId) return def;
   const item = Shared.EQUIPMENT.find((e) => e.id === itemId);
   if (!item) return def;
-  const out = { ...def };
+  const out = { ...def, gear: gearLook(item) };
   for (const [stat, amount] of Object.entries(item.stat)) out[stat] = (out[stat] || 0) + amount;
   if (item.power) out.superPower = item.power;
   if (item.effect) Object.assign(out, item.effect); // butiksvarornas egna effekter, t.ex. startEnergy
-
+  // Äger man hela setet som föremålet hör till får man setets bonus ovanpå.
+  const set = Shared.activeSet(game.acct.equipmentInv || {}, itemId);
+  if (set) {
+    for (const [stat, amount] of Object.entries(set.stat)) out[stat] = (out[stat] || 0) + amount;
+    out.gear = { ...out.gear, set: true };
+  }
   return out;
 }
 
@@ -1808,11 +1867,14 @@ function setHudType(el, def) {
   el.style.color = Shared.TYPES[def.types[0]].color;
 }
 
-function detailText(def) {
-  return `${displayName(def, true)} (${RARITY[def.rarity].label} · ${typesText(def)}) · HP ${def.hp} · Fart ${def.speed} · Slag ${def.punch} · ${def.special.name}: ${def.special.desc}${def.passive ? ` · ✦ ${def.passive.name}: ${def.passive.desc}` : ''}`;
+function detailText(base) {
+  const owned = invCount(base.id) > 0;
+  const def = owned ? applyRobotLevel(base) : base; // siffrorna med robotens nivå inräknad
+  const lvl = owned ? ` · Nivå ${robotLevelOf(def.id).level}` : '';
+  return `${displayName(def, true)}${lvl} (${RARITY[def.rarity].label} · ${typesText(def)}) · HP ${def.hp} · Fart ${def.speed} · Slag ${def.punch} · ${def.special.name}: ${def.special.desc}${def.passive ? ` · ✦ ${def.passive.name}: ${def.passive.desc}` : ''}`;
 }
 
-function createCard(def, { locked = false, selected = false, isNew = false, reveal = false, compact = false, n = null } = {}) {
+function createCard(def, { locked = false, selected = false, isNew = false, reveal = false, compact = false, n = null, level = 0 } = {}) {
   const card = document.createElement('div');
   card.className = `card ${def.rarity}${locked ? ' locked' : ''}${selected ? ' selected' : ''}`
     + `${isNew ? ' new' : ''}${reveal ? ' reveal' : ''}${compact ? ' compact' : ''}`;
@@ -1831,7 +1893,7 @@ function createCard(def, { locked = false, selected = false, isNew = false, reve
     card.appendChild(line);
     return line;
   };
-  add('name', locked ? '???' : `${displayName(def, true)}${n !== null ? ` ×${n}` : ''}`);
+  add('name', locked ? '???' : `${displayName(def, true)}${n !== null ? ` ×${n}` : ''}${level > 1 ? ` ⭐${level}` : ''}`);
   add('rarity', locked ? 'Låst' : RARITY[def.rarity].label);
   if (!locked && !compact) {
     add('element', typesText(def)).style.color = Shared.TYPES[def.types[0]].color;
@@ -1888,7 +1950,7 @@ function showSelect() {
   // Monstervärlden (se showMonsters), så de ska inte synas som ett permanent olåst "???"-kort.
   for (const def of ROBOTS.filter((r) => !r.monster)) {
     const n = invCount(def.id);
-    const card = createCard(myDef(def), { locked: n === 0, selected: n > 0 && def.id === game.selectedId, compact: true, n });
+    const card = createCard(myDef(def), { locked: n === 0, selected: n > 0 && def.id === game.selectedId, compact: true, n, level: n > 0 ? robotLevelOf(def.id).level : 0 });
     if (n > 0) {
       card.classList.add('pickable');
       card.addEventListener('mouseenter', () => { byId('detail').textContent = detailText(myDef(def)); });
@@ -1946,10 +2008,81 @@ function showSelect() {
     : '';
 
   byId('select-error').textContent = '';
+  renderRobotPanel();
   renderQuests();
   renderOnlineInfo();
   renderAccountBar();
   showScreen('select');
+}
+
+// ---------- Robotens nivå, dubbletter och skins (i Garaget) ----------
+// Gäller den valda roboten. Nivån växer med varje vinst med den och när man smälter en
+// dubblett av den; varje nivå ger lite mer HP och slag, och högre nivåer låser upp skins.
+function renderRobotPanel(message) {
+  const box = byId('robot-panel');
+  box.replaceChildren();
+  const id = game.selectedId;
+  const def = robotById[id];
+  if (!def) return;
+  const info = robotLevelOf(id);
+  const pct = Math.round(info.bonus * 100);
+  box.append(el('p', 'quests-title', `⭐ ${displayName(myDef(def), true)} · Nivå ${info.level}${info.level >= Shared.ROBOT_MAX_LEVEL ? ' (max)' : ''}`));
+  box.append(el('p', 'hint', info.to === null
+    ? `Högsta nivån! +${pct} % HP och slag.`
+    : `${info.xp - info.from}/${info.to - info.from} XP till nivå ${info.level + 1}${pct ? ` · just nu +${pct} % HP och slag` : ''}. Vinn med roboten eller smält dubbletter för XP.`));
+  const bar = el('div', 'bar xp');
+  const fill = el('div', 'fill xp');
+  fill.style.width = info.to === null ? '100%' : `${(100 * (info.xp - info.from)) / (info.to - info.from)}%`;
+  bar.append(fill);
+  box.append(bar);
+
+  const n = invCount(id);
+  const melt = Shared.MELT[def.rarity];
+  if (melt) {
+    box.append(worldButton(
+      n >= 2 ? `♻ Smält en dubblett (+${melt.xp} XP, +${melt.coins} 🪙) · du har ${n} st` : '♻ Smält en dubblett (du behöver minst 2)',
+      () => meltDuplicate(id), { secondary: true, disabled: n < 2 },
+    ));
+  }
+
+  const skins = el('div', 'skin-row');
+  const current = (game.acct.skins && game.acct.skins[id]) || 'standard';
+  for (const skin of Shared.SKINS) {
+    const locked = info.level < skin.level;
+    const b = worldButton(locked ? `🔒 ${skin.name} (nivå ${skin.level})` : skin.name, () => chooseSkin(id, skin.id), { secondary: skin.id !== current, disabled: locked });
+    b.classList.add('skin-btn');
+    if (skin.color) b.style.setProperty('--skin', skin.color);
+    if (skin.id === current) b.classList.add('active');
+    skins.append(b);
+  }
+  box.append(el('p', 'hint', 'Skins:'), skins);
+  if (message) box.append(el('p', 'hint', message));
+}
+
+async function meltDuplicate(id) {
+  let r;
+  try {
+    r = await net.meltDuplicate(id);
+  } catch (e) {
+    renderRobotPanel(e.message);
+    return;
+  }
+  const before = robotLevelOf(id).level;
+  applyAcct(r.acct);
+  const after = robotLevelOf(id).level;
+  showSelect();
+  renderRobotPanel(`Smält! +${r.melted.xp} XP och +${r.melted.coins} 🪙.${after > before ? ` ${robotById[id].name} nådde nivå ${after}!` : ''}`);
+}
+
+async function chooseSkin(id, skinId) {
+  try {
+    const r = await net.setSkin(id, skinId);
+    applyAcct(r.acct);
+  } catch (e) {
+    renderRobotPanel(e.message);
+    return;
+  }
+  showSelect();
 }
 
 // ---------- Butiken ----------
@@ -2127,24 +2260,57 @@ byId('btn-trade-back').addEventListener('click', () => (game.fromHub ? showHub()
 byId('btn-trade-auto').addEventListener('click', autoFillTrade);
 byId('btn-trade-do').addEventListener('click', doTrade);
 
-// ---------- Dagliga uppdrag ----------
+// ---------- Uppdrag: dagens, veckans och månadens, plus streaken ----------
 function showQuestBoard() {
   game.phase = 'questboard';
-  renderQuests(byId('quests-board'));
+  renderQuests(byId('quests-board'), true);
   showScreen('questboard');
 }
 
-function renderQuests(box = byId('quests')) {
-  box.replaceChildren();
-  const q = game.acct.quests;
-  if (!q) return;
-  box.append(el('p', 'quests-title', '📜 Dagens uppdrag'));
+function renderQuestList(box, title, q, doneText, todoText) {
+  box.append(el('p', 'quests-title', title));
   for (const it of q.list) {
     const row = el('div', `quest${it.done ? ' done' : ''}`);
     row.append(el('span', 'qname', `${it.done ? '✅' : '◻️'} ${it.name}`), el('span', 'qprog', `${it.prog}/${it.goal} · +${it.coins} 🪙`));
     box.append(row);
   }
-  box.append(el('p', 'hint', q.bonus ? 'Alla klara idag — du fick bonuslådan! Nya uppdrag i morgon.' : 'Klara alla tre för en bonuslåda. Nya uppdrag varje dag.'));
+  box.append(el('p', 'hint', q.bonus ? doneText : todoText));
+}
+
+// all: hela tavlan (Uppdragstavlan i staden); annars bara dagens (i Garaget).
+function renderQuests(box = byId('quests'), all = false) {
+  box.replaceChildren();
+  const a = game.acct;
+  if (!a.quests) return;
+  renderQuestList(box, '📜 Dagens uppdrag', a.quests,
+    'Alla klara idag — du fick bonuslådan! Nya uppdrag i morgon.', 'Klara alla tre för en bonuslåda. Nya uppdrag varje dag.');
+  if (!all) return;
+  if (a.questsWeek) {
+    renderQuestList(box, '🗓 Veckans uppdrag', a.questsWeek,
+      `Alla klara den här veckan — du fick ${a.questsWeek.bonusBoxes} lådor! Nya på måndag.`,
+      `Klara alla tre för ${a.questsWeek.bonusBoxes} lådor. Nya uppdrag varje måndag.`);
+  }
+  if (a.questsMonth) {
+    renderQuestList(box, '🌙 Månadens uppdrag', a.questsMonth,
+      `Alla klara den här månaden — du fick ${a.questsMonth.bonusBoxes} lådor och ${a.questsMonth.bonusCoins} mynt!`,
+      `Klara alla tre för ${a.questsMonth.bonusBoxes} lådor och ${a.questsMonth.bonusCoins} 🪙. Nya uppdrag varje månad.`);
+  }
+  if (a.streak) renderStreak(box, a.streak);
+}
+
+// Årsstreaken: dagar i rad man spelat, och milstolparna ända upp till 365.
+function renderStreak(box, st) {
+  box.append(el('p', 'quests-title', `🔥 Streak: ${st.days} ${st.days === 1 ? 'dag' : 'dagar'} i rad`));
+  box.append(el('p', 'hint', `${st.playedToday ? 'Du har redan spelat i dag — kom tillbaka i morgon!' : 'Spela en match eller hämta dagens låda för att hålla streaken vid liv.'} Bästa: ${st.best} dagar.`));
+  const bar = el('div', 'streak-bar');
+  for (const m of Shared.STREAK_MILESTONES) {
+    const reached = st.days >= m.days;
+    const robot = m.robot ? ` + ${Shared.RARITY[m.robot].label.toLowerCase()} robot` : '';
+    const step = el('div', `streak-step${reached ? ' done' : ''}${st.next && st.next.days === m.days ? ' next' : ''}`);
+    step.append(el('span', 'qname', `${reached ? '✅' : '🔥'} ${m.days === 365 ? 'Ett helt år' : `${m.days} dagar`}`), el('span', 'qprog', `${m.coins} 🪙 · ${m.boxes} ${m.boxes === 1 ? 'låda' : 'lådor'}${robot}`));
+    bar.append(step);
+  }
+  box.append(bar);
 }
 
 // ---------- Klaner ----------
@@ -2255,7 +2421,28 @@ const STATION_HINT = {
   clan: 'gå med i en klan',
   training: 'öva på en träningsdocka',
 };
-const HUB_HINT = 'Gå med WASD eller piltangenterna. Gå fram till en portal och tryck MELLANSLAG/J.';
+const HUB_HINT = 'Gå med WASD eller piltangenterna. Gå fram till en portal och tryck MELLANSLAG/J. Snabbresa: 1–4.';
+
+// Snabbresa: hoppa direkt till ett av kvarteren (tangent 1–4 eller knapparna i listen).
+function fastTravel(i) {
+  const hub = game.hub;
+  const d = DISTRICTS[i];
+  if (game.phase !== 'hub' || !hub || !d) return;
+  hub.player.x = d.x;
+  hub.player.z = 0;
+  hub.warpT = 0.45;
+  byId('explore-hint').textContent = `✨ Snabbresa till ${d.name}!`;
+  hub.near = null;
+}
+
+for (const [i, d] of DISTRICTS.entries()) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'secondary travel-btn';
+  b.textContent = `${i + 1} ${d.name}`;
+  b.addEventListener('click', (e) => { e.currentTarget.blur(); fastTravel(i); });
+  byId('travel-bar').append(b);
+}
 
 function showHub() {
   if (!game.acct) return;
@@ -2267,7 +2454,7 @@ function showHub() {
   game.arena = arenaById.hub;
   showArenaLabel(game.arena);
   const prev = game.hub;
-  const player = new Fighter(applyEquipment(myDef(robotById[game.selectedId])), prev ? prev.player.x : 610, 1);
+  const player = new Fighter(fighterDef(game.selectedId), prev ? prev.player.x : 610, 1);
   player.z = prev ? prev.player.z : 0;
   const pool = ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard');
   const walkers = prev ? prev.walkers : [];
@@ -2278,7 +2465,9 @@ function showHub() {
       walkers.push({ f, dir: 0, depth: 0, t: 0 });
     }
   }
-  game.hub = { player, walkers, near: null, attackHeld: true };
+  game.hub = { player, walkers, near: null, attackHeld: true, warpT: 0 };
+  byId('raid-prompt').hidden = true;
+  byId('travel-bar').hidden = false;
   byId('explore-bar').hidden = false;
   byId('btn-explore-back').hidden = true; // staden är "hemma" — inget att gå tillbaka till
   byId('explore-hint').textContent = HUB_HINT;
@@ -2298,6 +2487,7 @@ function updateHub(dt) {
   if (input.dir) p.facing = input.dir;
   p.x = clamp(p.x + walk * dt, p.w / 2, HUB_W - p.w / 2);
   p.z = clamp(p.z + walkZ * dt, -DEPTH, DEPTH);
+  hub.warpT = Math.max(0, hub.warpT - dt);
 
   // De vandrande robotarna byter riktning då och då.
   for (const w of hub.walkers) {
@@ -2352,8 +2542,16 @@ function enterStation(id) {
     case 'boxes':
       // Den dagliga lådan hämtas automatiskt när man går in i Lådor.
       game.fromHub = true;
-      if (game.acct.dailyAvailable) net.claimDaily().then((r) => { applyAcct(r.acct); showBox(); }).catch(() => showBox());
-      else showBox();
+      if (game.acct.dailyAvailable) {
+        net.claimDaily().then((r) => {
+          applyAcct(r.acct);
+          showBox();
+          const note = streakNotice(r.ok);
+          if (note) byId('box-text').textContent = note;
+        }).catch(() => showBox());
+      } else {
+        showBox();
+      }
       break;
     case 'quests': showQuestBoard(); break;
     case 'equipment':
@@ -2363,6 +2561,16 @@ function enterStation(id) {
       break;
     default:
   }
+}
+
+// Ett kort vitt sken när man snabbreser.
+function drawWarpFlash(hub) {
+  if (!(hub.warpT > 0)) return;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, hub.warpT / 0.45) * 0.8;
+  ctx.fillStyle = '#e8fbff';
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
 }
 
 function drawHub() {
@@ -2396,6 +2604,7 @@ function drawHub() {
       ctx.strokeText(`${st.emoji} ${st.name}`, at.x, at.y);
       ctx.fillText(`${st.emoji} ${st.name}`, at.x, at.y);
     }
+    drawWarpFlash(hub);
     return;
   }
   // Utan 3D: en enkel karta ovanifrån.
@@ -2445,6 +2654,7 @@ const EXPLORE_RANGE = 70; // hur nära man måste gå för att kunna utmana ett 
 function showMonsters() {
   if (!game.acct) return;
   byId('btn-explore-back').hidden = false;
+  byId('travel-bar').hidden = true;
   game.phase = 'monsters';
   game.arena = arenaById.direworld;
   showArenaLabel(game.arena);
@@ -2455,7 +2665,7 @@ function showMonsters() {
   const royalMonsters = [kings[0], ...queen, ...kings.slice(1)].filter(Boolean);
   const margin = 90;
   game.explore = {
-    player: new Fighter(applyEquipment(myDef(robotById[game.selectedId])), 60, 1),
+    player: new Fighter(fighterDef(game.selectedId), 60, 1),
     monsters: [
       ...commonMonsters.map((def, i) => {
         const m = new Fighter(def, margin + (i * (W - 2 * margin)) / Math.max(1, commonMonsters.length - 1), -1);
@@ -2475,13 +2685,13 @@ function showMonsters() {
     attackHeld: true,
   };
   byId('explore-bar').hidden = false;
-  byId('explore-hint').textContent = 'Gå med WASD eller piltangenterna.';
+  byId('explore-hint').textContent = exploreIdleHint();
   showScreen(null);
 }
 
 function updateExplore(dt) {
   const ex = game.explore;
-  if (!ex) return;
+  if (!ex || ex.paused) return;
   const input = playerInput();
   const p = ex.player;
   p.time += dt;
@@ -2501,15 +2711,69 @@ function updateExplore(dt) {
   }
   ex.near = near;
 
-  if (near && input.attack && !ex.attackHeld) startMatch('monster', near.def.id);
+  if (near && input.attack && !ex.attackHeld) {
+    if (near.def.royal) openRaidPicker(near.def);
+    else startMatch('monster', near.def.id);
+  }
   ex.attackHeld = input.attack;
 
+  const hunt = game.acct.hunt;
+  const isPrey = near && hunt && near.def.id === hunt.monster && !hunt.done;
   byId('explore-hint').textContent = near
     ? near.def.royal
-      ? `👑 ${near.def.royal === 'queen' ? 'DROTTNING' : 'KUNG'} — du och 4 robotar mot ${near.def.name}! MELLANSLAG/J: Utmana (ger: ${dropName(near.def)} + en supervapendel)`
-      : `MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)})`
-    : 'Gå med WASD eller piltangenterna.';
+      ? `👑 ${near.def.royal === 'queen' ? 'DROTTNING' : 'KUNG'} — du och 4 robotar mot ${near.def.name}! MELLANSLAG/J: Välj lag och utmana (ger: ${dropName(near.def)} + en supervapendel)`
+      : `MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)})${isPrey ? ' · 🎯 DAGENS JAKT: dubbla mynt, en låda och en supervapendel!' : ''}`
+    : exploreIdleHint();
 }
+
+function exploreIdleHint() {
+  const hunt = game.acct && game.acct.hunt;
+  if (!hunt) return 'Gå med WASD eller piltangenterna.';
+  return hunt.done
+    ? 'Gå med WASD eller piltangenterna. Dagens jakt är klar — nytt byte i morgon!'
+    : `Gå med WASD eller piltangenterna. 🎯 Dagens jakt: ${robotById[hunt.monster].name}!`;
+}
+
+// ---- Kungastrid: välj dina fyra kompisar ur samlingen ----
+function openRaidPicker(royalDef) {
+  game.explore.paused = true;
+  game.raidTarget = royalDef.id;
+  game.raidPicks = game.raidPicks.filter((id) => invCount(id) > 0).slice(0, RAID_ALLIES);
+  byId('raid-title').textContent = `👑 DITT LAG MOT ${royalDef.name.toUpperCase()}`;
+  renderRaidPicker();
+  byId('raid-prompt').hidden = false;
+}
+
+function renderRaidPicker() {
+  const list = byId('raid-list');
+  list.replaceChildren();
+  byId('raid-info').textContent = `Välj upp till ${RAID_ALLIES} robotar som slåss med dig (${game.raidPicks.length}/${RAID_ALLIES}). Tomma platser fylls med slumpade robotar.`;
+  for (const def of ROBOTS.filter((r) => !r.monster && invCount(r.id) > 0)) {
+    const picked = game.raidPicks.includes(def.id);
+    const card = createCard(myDef(def), { compact: true, selected: picked, level: robotLevelOf(def.id).level });
+    card.classList.add('pickable');
+    card.addEventListener('click', () => {
+      if (picked) game.raidPicks = game.raidPicks.filter((id) => id !== def.id);
+      else if (game.raidPicks.length < RAID_ALLIES) game.raidPicks.push(def.id);
+      renderRaidPicker();
+    });
+    list.append(card);
+  }
+}
+
+function closeRaidPicker() {
+  byId('raid-prompt').hidden = true;
+  if (game.explore) {
+    game.explore.paused = false;
+    game.explore.attackHeld = true;
+  }
+}
+
+byId('btn-raid-go').addEventListener('click', () => {
+  closeRaidPicker();
+  startMatch('monster', game.raidTarget);
+});
+byId('btn-raid-cancel').addEventListener('click', closeRaidPicker);
 
 // Man ska veta exakt vad ett monster ger INNAN man utmanar det — ingen slump i VILKET
 // föremål, se finishMatch() i shared.js. Namnet på den bestämda biten, för hint-texter.
@@ -2527,12 +2791,14 @@ function drawExplore() {
     r3d.render({ arena: game.arena, shake: 0, fighters });
     ctx.clearRect(0, 0, W, H);
     ctx.textAlign = 'center';
+    const hunt = game.acct.hunt;
     for (const m of ex.monsters) {
-      if (!m.def.royal && ex.near !== m) continue;
+      const prey = hunt && !hunt.done && m.def.id === hunt.monster;
+      if (!m.def.royal && !prey && ex.near !== m) continue;
       const at = r3d.project(m.x, m.y - m.h - 14, m.z);
       ctx.font = `bold ${m.def.royal ? 15 : 16}px ui-monospace, Menlo, monospace`;
-      ctx.fillStyle = m.def.royal ? (ex.near === m ? '#fff3b0' : '#ffd93d') : '#ffd93d';
-      ctx.fillText(m.def.royal ? `👑 ${m.def.name}` : m.def.name, at.x, at.y);
+      ctx.fillStyle = prey ? '#ff6b3d' : m.def.royal ? (ex.near === m ? '#fff3b0' : '#ffd93d') : '#ffd93d';
+      ctx.fillText(prey ? `🎯 ${m.def.name}` : m.def.royal ? `👑 ${m.def.name}` : m.def.name, at.x, at.y);
     }
     return;
   }
@@ -2556,7 +2822,8 @@ function renderEquipmentModal() {
   const current = byId('equipment-current');
   if (game.acct.equippedItem) {
     const item = Shared.EQUIPMENT.find((e) => e.id === game.acct.equippedItem);
-    current.textContent = item ? `Du bär: ${item.name} — ${item.desc}${item.power ? ` Superkraft (Q): ${item.power.name}.` : ''}` : '';
+    const set = Shared.activeSet(game.acct.equipmentInv, game.acct.equippedItem);
+    current.textContent = item ? `Du bär: ${item.name} — ${item.desc}${item.power ? ` Superkraft (Q): ${item.power.name}.` : ''}${set ? ` ✨ ${set.name} är komplett: ${statText(set.stat)} extra!` : ''}` : '';
   } else {
     current.textContent = 'Du bär ingen utrustning just nu.';
   }
@@ -2585,6 +2852,21 @@ function renderEquipmentModal() {
     desc.className = 'stats';
     desc.textContent = `${w.power.name}: ${w.power.desc}`;
     row.append(name, desc);
+    superBox.append(row);
+  }
+
+  // Set: äger man alla delar och bär en av dem får man setets bonus ovanpå.
+  const setHead = el('p', 'boss-title', 'SET');
+  superBox.append(setHead, el('p', 'hint', 'Samla ALLA föremål i ett set och bär ett av dem, så får du setets bonus ovanpå.'));
+  for (const set of Shared.EQUIPMENT_SETS) {
+    const have = set.items.filter((id) => (game.acct.equipmentInv[id] || 0) > 0).length;
+    const complete = have === set.items.length;
+    const active = Shared.activeSet(game.acct.equipmentInv, game.acct.equippedItem) === set;
+    const row = el('div', `super-row${complete ? ' owned' : ''}`);
+    row.append(
+      el('div', 'name', `${active ? '✨ ' : ''}${set.name} — ${have}/${set.items.length}${active ? ' (aktivt!)' : ''}`),
+      el('div', 'stats', `${set.items.map((id) => { const it = Shared.EQUIPMENT.find((e) => e.id === id); return `${(game.acct.equipmentInv[id] || 0) > 0 ? '✓' : '·'} ${it.name}`; }).join(', ')} · Bonus: ${statText(set.stat)}`),
+    );
     superBox.append(row);
   }
 
@@ -2619,6 +2901,11 @@ function renderEquipmentModal() {
   }
 }
 
+function statText(stat) {
+  const names = { hp: 'HP', punch: 'i slagstyrka', speed: 'i fart' };
+  return Object.entries(stat).map(([k, v]) => `+${v} ${names[k]}`).join(', ');
+}
+
 // Byter utrustning och, om man råkar stå mitt i Monstervärlden just då, uppdaterar den egna
 // robotens fart/liv där på en gång (annars skulle man behöva lämna och gå in igen).
 async function reequip(id) {
@@ -2629,7 +2916,7 @@ async function reequip(id) {
     // Inget att göra — kontot hann ändras. Rita bara om med det som faktiskt gäller nu.
   }
   renderEquipmentModal();
-  if (game.explore) game.explore.player.def = applyEquipment(myDef(robotById[game.selectedId]));
+  if (game.explore) game.explore.player.def = fighterDef(game.selectedId);
 }
 
 byId('btn-explore-equipment').addEventListener('click', () => {
@@ -2759,12 +3046,21 @@ function showResult() {
   }
   if (r.coins) text += ` +${r.coins} 🪙 mynt.`;
   if (r.clanPoints) text += ` Klanen fick ${r.clanPoints} poäng.`;
-  for (const q of r.quests || []) text += ` 📜 Uppdrag klart: ${q.name}! +${q.coins} mynt.`;
-  if (r.questBonus) text += ' Alla dagens uppdrag klara — du fick en bonuslåda!';
+  if (r.hunt) text += ' 🎯 Dagens jakt klar: dubbla mynt, en extra låda och en supervapendel!';
+  for (const q of r.quests || []) text += ` 📜 ${q.period === 'week' ? 'Veckouppdrag' : q.period === 'month' ? 'Månadsuppdrag' : 'Uppdrag'} klart: ${q.name}! +${q.coins} mynt.`;
+  for (const b of r.questBonuses || []) {
+    const what = { day: 'dagens', week: 'veckans', month: 'månadens' }[b.period];
+    text += ` Alla ${what} uppdrag klara — +${b.boxes} ${b.boxes === 1 ? 'låda' : 'lådor'}${b.coins ? ` och ${b.coins} mynt` : ''}!`;
+  }
+  if (r.robotLevelUp) text += ` ⭐ ${robotById[r.robotLevelUp.robot].name} nådde nivå ${r.robotLevelUp.level}!`;
+  if (r.streak) {
+    text += ` 🔥 ${r.streak.days} dagar i rad! +${r.streak.coins} mynt och ${r.streak.boxes} ${r.streak.boxes === 1 ? 'låda' : 'lådor'}.`;
+    if (r.streak.robot) rewardItem(`🔥 ${r.streak.days} DAGAR I RAD!`, robotById[r.streak.robot], { isNew: invCount(r.streak.robot) === 1, n: invCount(r.streak.robot) });
+  }
   for (const up of r.levelUps || []) {
     rewardItem(`NIVÅ ${up.level}!`, robotById[up.prize], { isNew: true, n: invCount(up.prize) });
   }
-  const gainedIds = [r.bossWon, r.gained, ...(r.levelUps || []).map((u) => u.prize)].filter(Boolean);
+  const gainedIds = [r.bossWon, r.gained, r.streak && r.streak.robot, ...(r.levelUps || []).map((u) => u.prize)].filter(Boolean);
   if (gainedIds.includes('wildcard')) maybePromptWildcardName('wildcard');
   byId('result-text').textContent = text;
   byId('btn-again').hidden = friend;
@@ -2783,7 +3079,7 @@ function renderBox(revealed) {
   const reveal = byId('box-reveal');
   const open = byId('btn-open');
   art.hidden = !!revealed;
-  art.classList.remove('shake');
+  art.className = 'crate';
   reveal.replaceChildren();
   if (revealed) {
     const head = document.createElement('div');
@@ -2791,8 +3087,14 @@ function renderBox(revealed) {
     head.textContent = revealed.def.id === 'wildcard' ? 'JOKERN!'
       : revealed.def.rarity === 'divine' ? 'GUDOMLIG ROBOT!'
       : revealed.def.rarity === 'legendary' ? 'LEGENDARISK ROBOT!'
-      : revealed.n === 1 ? 'NY ROBOT!' : `EXTRA KOPIA! Du har nu ${revealed.n} st.`;
-    reveal.append(head, createCard(myDef(revealed.def), { isNew: revealed.n === 1, reveal: true, n: revealed.n }));
+      : revealed.n === 1 ? 'NY ROBOT!' : `DUBBLETT! Du har nu ${revealed.n} st.`;
+    const stage = el('div', `box-prize rar-${revealed.def.rarity}`);
+    stage.append(el('div', 'box-rays'), createCard(myDef(revealed.def), { isNew: revealed.n === 1, reveal: true, n: revealed.n }));
+    reveal.append(head, stage);
+    if (revealed.n > 1 && Shared.MELT[revealed.def.rarity]) {
+      const m = Shared.MELT[revealed.def.rarity];
+      reveal.append(el('p', 'hint', `♻ Smält dubbletten i Garaget för +${m.xp} robot-XP och +${m.coins} 🪙 — eller spara den till en insatsmatch eller ett byte.`));
+    }
   }
   open.hidden = game.acct.boxes === 0;
   open.textContent = revealed ? `Öppna nästa (${game.acct.boxes} kvar)` : `Öppna låda (${game.acct.boxes} kvar)`;
@@ -2820,16 +3122,24 @@ async function openBox() {
   }
   applyAcct(result.acct);
 
+  // Lådan laddar upp i vinstens färg — ju sällsyntare, desto längre och vildare — sedan
+  // flyger locket av i en blixt och kortet kommer fram med strålar bakom.
+  const def = robotById[result.prize.id];
+  const charge = BOX_CHARGE_MS[def.rarity] || 900;
+  const art = byId('box-art');
   byId('box-reveal').replaceChildren();
-  byId('box-art').hidden = false;
-  byId('box-art').classList.add('shake');
+  art.hidden = false;
+  art.className = `crate opening rar-${def.rarity}`;
+  art.style.setProperty('--charge', `${charge}ms`);
   byId('btn-open').hidden = true;
+  setTimeout(() => { art.classList.add('burst'); }, charge);
   setTimeout(() => {
     game.opening = false;
-    renderBox({ def: robotById[result.prize.id], n: result.prize.n });
+    renderBox({ def, n: result.prize.n });
     maybePromptWildcardName(result.prize.id);
-  }, 900);
+  }, charge + 380);
 }
+const BOX_CHARGE_MS = { common: 900, rare: 1100, epic: 1400, legendary: 1900, divine: 2400, wildcard: 1900 };
 
 // isRename: true när man själv öppnar rutan igen för att byta namn (och därmed attack, se
 // Shared.wildcardSpecialFor) på en joker man redan äger — false för förstagångs-prompten.
@@ -3175,7 +3485,7 @@ function randomRoomCode() {
 // Robotens FAKTISKA utseende/attack/utrustning, precis som i en match mot AI — så
 // att en jokerägares egen attack/färg/utrustning syns korrekt för motståndaren också,
 // utan att behöva räknas ut på nytt av någon server.
-function myFriendDef() { return applyEquipment(myDef(robotById[game.selectedId])); }
+function myFriendDef() { return fighterDef(game.selectedId); }
 function myFriendName() { return net.username || 'Gäst'; }
 
 function stopFriendListening() {

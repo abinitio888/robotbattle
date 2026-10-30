@@ -303,6 +303,57 @@ button:disabled {
   85% { transform: translate(0, 0) rotate(0) scale(1.12); filter: brightness(2.2); }
 }
 
+/* Lådöppning: laddar upp i vinstens färg (--rar), sedan flyger locket av i en blixt. */
+.crate.rar-common { --rar: var(--common); }
+.crate.rar-rare, .box-prize.rar-rare { --rar: var(--rare); }
+.crate.rar-epic, .box-prize.rar-epic { --rar: var(--epic); }
+.crate.rar-legendary, .box-prize.rar-legendary { --rar: var(--legendary); }
+.crate.rar-divine, .box-prize.rar-divine { --rar: var(--divine); }
+.crate.rar-wildcard, .box-prize.rar-wildcard { --rar: #ff3df0; }
+.box-prize.rar-common { --rar: var(--common); }
+.crate.opening { animation: charge var(--charge, 900ms) ease-in forwards; }
+@keyframes charge {
+  0% { transform: none; filter: drop-shadow(0 0 10px rgba(53, 208, 255, 0.5)); }
+  15% { transform: translate(-2px, 0) rotate(-1.5deg); }
+  30% { transform: translate(3px, -1px) rotate(2deg); }
+  45% { transform: translate(-4px, 1px) rotate(-3deg); filter: drop-shadow(0 0 16px var(--rar)); }
+  60% { transform: translate(6px, -2px) rotate(4deg) scale(1.03); }
+  72% { transform: translate(-7px, 2px) rotate(-5deg) scale(1.05); filter: drop-shadow(0 0 26px var(--rar)); }
+  84% { transform: translate(8px, -3px) rotate(6deg) scale(1.08); }
+  92% { transform: translate(-9px, 3px) rotate(-7deg) scale(1.1); }
+  100% { transform: translate(0, -4px) rotate(0) scale(1.14); filter: drop-shadow(0 0 40px var(--rar)) brightness(1.6); }
+}
+.crate.opening .crate-body::after { color: var(--rar, var(--energy)); text-shadow: 0 0 16px var(--rar, var(--energy)); }
+.crate.burst { animation: burst 0.38s ease-out forwards; }
+.crate.burst .lid { animation: lid-fly 0.38s ease-out forwards; }
+@keyframes burst {
+  0% { transform: scale(1.14); filter: drop-shadow(0 0 40px var(--rar)) brightness(1.6); }
+  50% { transform: scale(1.25); filter: drop-shadow(0 0 70px var(--rar)) brightness(3); }
+  100% { transform: scale(1.4); opacity: 0; filter: drop-shadow(0 0 90px var(--rar)) brightness(4); }
+}
+@keyframes lid-fly { to { transform: translateY(-140px) rotate(-35deg); opacity: 0; } }
+.box-prize { position: relative; display: grid; place-items: center; }
+.box-prize .box-rays {
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, var(--rar) 0deg 8deg, transparent 8deg 24deg);
+  -webkit-mask: radial-gradient(circle, #000 20%, transparent 70%);
+  mask: radial-gradient(circle, #000 20%, transparent 70%);
+  opacity: 0.55;
+  animation: rays 6s linear infinite, rays-in 0.5s ease-out;
+  pointer-events: none;
+}
+.box-prize .card { position: relative; }
+.box-prize.rar-common .box-rays { opacity: 0.25; }
+.box-prize.rar-legendary .box-rays, .box-prize.rar-divine .box-rays, .box-prize.rar-wildcard .box-rays { opacity: 0.85; animation-duration: 3s, 0.5s; }
+@keyframes rays { to { transform: rotate(360deg); } }
+@keyframes rays-in { from { transform: scale(0.2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .crate.opening, .crate.burst, .crate.burst .lid, .box-prize .box-rays { animation-duration: 0.01ms; animation-iteration-count: 1; }
+}
+
 .card.reveal { animation: pop 0.45s ease-out; }
 .card.reveal.common { border-color: var(--common); box-shadow: 0 0 18px rgba(154, 167, 199, 0.5); }
 .card.reveal.rare { border-color: var(--rare); box-shadow: 0 0 22px rgba(77, 163, 255, 0.7); }
@@ -427,7 +478,7 @@ button.boss-btn.tier-medium { background: #ff1744; box-shadow: 0 0 14px rgba(255
 button.boss-btn.tier-hard { background: #7a1fff; box-shadow: 0 0 14px rgba(122, 31, 255, 0.6); }
 
 /* ---- Jokerroboten ---- */
-#wildcard-prompt, #wildcard-attack-prompt, #equipment-prompt, #challenge-prompt {
+#wildcard-prompt, #wildcard-attack-prompt, #equipment-prompt, #challenge-prompt, #raid-prompt {
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -445,11 +496,12 @@ button.boss-btn.tier-hard { background: #7a1fff; box-shadow: 0 0 14px rgba(122, 
 
 /* En ID-regel med display:flex vinner annars över webbläsarens inbyggda [hidden]{display:none}
    — utan de här raderna visas rutorna permanent, även med hidden-attributet satt. */
-#wildcard-prompt[hidden], #wildcard-attack-prompt[hidden], #equipment-prompt[hidden], #challenge-prompt[hidden] { display: none; }
+#wildcard-prompt[hidden], #wildcard-attack-prompt[hidden], #equipment-prompt[hidden], #challenge-prompt[hidden], #raid-prompt[hidden] { display: none; }
 
 /* ---- Monstervärlden ---- */
 #explore-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -772,3 +824,19 @@ button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-sha
   animation: title-shimmer 4s linear infinite, title-glow 2.6s ease-in-out infinite;
 }
 #screen-menu #btn-play { font-size: 20px; padding: 14px 40px; animation: portal-glow 2.4s ease-in-out infinite; }
+
+/* ---- Robotnivå och skins (Garaget) ---- */
+.skin-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.skin-btn { font-size: 12px; padding: 5px 10px; border-left: 6px solid var(--skin, #5b6bd6); }
+.skin-btn.active { outline: 2px solid var(--legendary); }
+
+/* ---- Streak ---- */
+.streak-bar { display: flex; flex-direction: column; gap: 3px; }
+.streak-step { display: flex; justify-content: space-between; gap: 8px; padding: 4px 10px; border-radius: 8px; background: #1c2440; border: 1px solid #2a3556; font-size: 12px; text-align: left; }
+.streak-step.done { border-color: #ff8a3d; color: #ffc59a; }
+.streak-step.next { border-color: var(--legendary); }
+.streak-step .qprog { color: var(--legendary); white-space: nowrap; }
+
+/* ---- Snabbresa ---- */
+#travel-bar .travel-btn { font-size: 12px; padding: 5px 9px; }
+#travel-bar[hidden] { display: none; }

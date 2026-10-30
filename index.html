@@ -91,8 +91,21 @@
     </div>
   </div>
 
+  <div id="raid-prompt" hidden>
+    <div class="wildcard-box">
+      <p id="raid-title" class="boss-title"></p>
+      <p id="raid-info" class="hint"></p>
+      <div id="raid-list" class="cards"></div>
+      <div class="buttons">
+        <button id="btn-raid-go" type="button">Till strid!</button>
+        <button id="btn-raid-cancel" type="button" class="secondary">Avbryt</button>
+      </div>
+    </div>
+  </div>
+
   <div id="explore-bar" hidden>
     <span id="explore-hint"></span>
+    <div id="travel-bar" class="buttons" hidden></div>
     <div class="buttons">
       <button id="btn-explore-equipment" type="button" class="secondary">Utrustning</button>
       <button id="btn-explore-back" type="button" class="secondary">Tillbaka</button>
@@ -164,6 +177,7 @@
         <p class="hint">Klicka på en robot för att spela med den, och gå sedan ut i staden igen.</p>
         <div id="cards"></div>
         <p id="detail" class="hint"></p>
+        <div id="robot-panel" class="quests"></div>
         <button id="btn-rename-wildcard" type="button" class="linklike" hidden>Döp om jokern</button>
         <button id="btn-choose-wildcard-attack" type="button" class="linklike" hidden>Beskriv jokerns attack</button>
         <p id="select-error" class="error"></p>
