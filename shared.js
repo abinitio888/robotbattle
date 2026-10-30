@@ -647,6 +647,7 @@
     { id: 'type', on: 'typewin', goal: 2, step: 1, coins: 50, param: 'type', name: (n, p) => `Vinn ${plural(n, 'en match', 'matcher')} med en ${TYPES[p].label}-robot` },
     { id: 'rarity', on: 'raritywin', goal: 2, step: 1, coins: 50, param: 'rarity', name: (n, p) => `Vinn ${plural(n, 'en match', 'matcher')} med en ${RARITY[p].label.toLowerCase()} robot` },
     { id: 'divine', on: 'divinewin', goal: 1, step: 1, coins: 60, name: (n) => `Vinn ${plural(n, 'en match', 'matcher')} med en gudomlig robot` },
+    { id: 'street', on: 'street', goal: 1, step: 1, coins: 50, name: (n) => `Vinn ${plural(n, 'en robot', 'robotar')} som går omkring i staden` },
   ];
   const questById = Object.fromEntries(QUEST_POOL.map((q) => [q.id, q]));
   const QUEST_SLOTS = 4;
@@ -1218,6 +1219,9 @@
         acct.streak = { last: raw.streak.last, count: n(raw.streak.count), best: n(raw.streak.best) };
       }
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
+      if (Array.isArray(raw.streetBeaten)) {
+        acct.streetBeaten = raw.streetBeaten.filter((k) => typeof k === 'string' && /^\d+:[\w-]+$/.test(k)).slice(-STREET_COUNT * 2);
+      }
       if (raw.robotLv && typeof raw.robotLv === 'object') {
         acct.robotLv = {};
         for (const id of Object.keys(robotById)) {
@@ -1379,12 +1383,53 @@
     return pool[Math.floor(rng() * pool.length)];
   }
 
+  // ---------- Robotarna som går omkring i Robotstaden ----------
+  // Var tionde minut kommer ett nytt gäng. Vilka de är räknas fram ur tiden (lottade som ur en
+  // låda), så servern vet exakt vilka som går där och bara de går att utmana. Vinner man får man
+  // roboten — men varje robot går bara att vinna en gång innan nästa gäng kommer.
+  const STREET_SLOT_MS = 10 * 60 * 1000;
+  const STREET_COUNT = 4;
+  const streetSlot = (now) => Math.floor(now / STREET_SLOT_MS);
+
+  function streetRobots(slot) {
+    let s = hashName(`gata-${slot}`) >>> 0;
+    const rng = () => { // mulberry32
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const out = [];
+    while (out.length < STREET_COUNT) {
+      const r = rollBox(rng);
+      if (r.id !== 'wildcard' && !out.includes(r.id)) out.push(r.id);
+    }
+    return out;
+  }
+
+  // Stadsrobotarna man kan utmana just nu: nuvarande gäng, minus dem man redan vunnit.
+  function streetChallengers(acct, now) {
+    const slot = streetSlot(now);
+    const beaten = acct.streetBeaten || [];
+    return streetRobots(slot).filter((id) => !beaten.includes(`${slot}:${id}`));
+  }
+
   // Startar en match. Insatsen dras direkt, så det går inte att smita undan en förlust. Alla
   // bossar går att utmana när som helst, oavsett nivå, och om och om igen — vilken av dem
   // man möter slumpas. Ingen insats sätts på spel mot en boss. Monster fungerar likadant
   // (monsterId väljer vilket) — helt skild meny, egen ekonomi (se finishMatch), ingen insats.
-  function startMatch(acct, robotId, mode, rng, monsterId) {
+  // En stadsrobot (mode 'street', target = vilken) går att utmana en stund efter att gänget
+  // bytts, så att den man just gått fram till inte försvinner mitt i utmaningen.
+  function startMatch(acct, robotId, mode, rng, target, now = Date.now()) {
     if (!robotById[robotId] || count(acct, robotId) < 1) return { error: 'Du äger inte den roboten.' };
+    if (mode === 'street') {
+      const slot = [now, now - 60 * 1000].map(streetSlot).find((s) => streetRobots(s).includes(target)
+        && !(acct.streetBeaten || []).includes(`${s}:${target}`));
+      if (slot === undefined) return { error: 'Den roboten har gått vidare.' };
+      acct.selected = robotId;
+      return { robot: robotId, stake: false, opp: target, street: slot };
+    }
+    const monsterId = target;
     acct.selected = robotId;
     if (mode === 'boss') {
       return { robot: robotId, stake: false, opp: BOSS_IDS[Math.floor(rng() * BOSS_IDS.length)], boss: true };
@@ -1421,6 +1466,7 @@
       if (match.monster && oppDef && oppDef.royal) events.push('royal');
       if (match.boss) events.push('boss');
       if (match.stake) events.push('stake');
+      if (match.street !== undefined) events.push('street');
       events.push('typewin', 'raritywin');
       if (robotDef && robotDef.rarity === 'divine') events.push('divinewin');
     }
@@ -1490,6 +1536,11 @@
       if (match.boss) {
         addRobot(acct, match.opp);
         result.bossWon = match.opp;
+      } else if (match.street !== undefined) {
+        addRobot(acct, match.opp);
+        result.gained = match.opp;
+        result.street = true;
+        acct.streetBeaten = [...(acct.streetBeaten || []), `${match.street}:${match.opp}`].slice(-STREET_COUNT * 2);
       } else if (match.stake) {
         addRobot(acct, match.robot);
         addRobot(acct, match.opp);
@@ -1575,6 +1626,7 @@
       equippedItem: acct.equippedItem || null,
       superPieces: { ...(acct.superPieces || {}) },
       coins: acct.coins || 0,
+      streetBeaten: [...(acct.streetBeaten || [])],
       quests: questView(acct),
       weekQuests: periodView(acct, today, 'week'),
       monthQuests: periodView(acct, today, 'month'),
@@ -1695,6 +1747,7 @@
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem,
     QUEST_POOL, questEvent, questView,
+    STREET_SLOT_MS, streetSlot, streetRobots, streetChallengers,
     ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
     SKINS, skinById, buySkin, setSkin,
     ITEM_LOOK, SETS, setsStatus, huntFor, HUNT_COINS, STREAK_MILESTONES,

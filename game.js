@@ -1550,6 +1550,11 @@ async function startMatch(modeOverride, monsterId, forceAi) {
     started = await net.startMatch(game.selectedId, modeOverride || (wantStake ? 'stake' : 'normal'), monsterId);
   } catch (e) {
     byId('select-error').textContent = e.message;
+    if (game.phase === 'hub') { // en stadsrobot som hann gå vidare: stanna kvar i staden
+      byId('explore-bar').hidden = false;
+      byId('explore-hint').textContent = e.message;
+      if (game.hub) game.hub.near = null;
+    }
     return;
   }
   applyAcct(started.acct);
@@ -2382,16 +2387,8 @@ function showHub() {
   const prev = game.hub;
   const player = new Fighter(applyEquipment(myDef(robotById[game.selectedId])), prev ? prev.player.x : 610, 1);
   player.z = prev ? prev.player.z : 0;
-  const pool = ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard');
-  const walkers = prev ? prev.walkers : [];
-  if (!prev) {
-    for (let i = 0; i < 4; i++) {
-      const f = new Fighter(pool[Math.floor(Math.random() * pool.length)], rand(100, HUB_W - 100), 1);
-      f.z = rand(-DEPTH, DEPTH);
-      walkers.push({ f, dir: 0, depth: 0, t: 0 });
-    }
-  }
-  game.hub = { player, walkers, near: null, attackHeld: true };
+  game.hub = { player, walkers: prev ? prev.walkers : [], near: null, attackHeld: true, syncT: 0 };
+  syncWalkers(game.hub);
   byId('explore-bar').hidden = false;
   byId('btn-explore-back').hidden = true; // staden är "hemma" — inget att gå tillbaka till
   byId('btn-travel').hidden = false;
@@ -2399,9 +2396,27 @@ function showHub() {
   showScreen(null);
 }
 
+// Robotarna som går omkring är stadens utmanare (Shared.streetChallengers): de man redan vunnit
+// går hem, och var tionde minut kommer ett nytt gäng. De som redan går kvar står kvar där de är.
+function syncWalkers(hub) {
+  const ids = Shared.streetChallengers(game.acct, Date.now());
+  hub.walkers = hub.walkers.filter((w) => ids.includes(w.f.def.id));
+  for (const id of ids) {
+    if (hub.walkers.some((w) => w.f.def.id === id)) continue;
+    const f = new Fighter(robotById[id], rand(100, HUB_W - 100), 1);
+    f.z = rand(-50, 50);
+    hub.walkers.push({ f, dir: 0, depth: 0, t: 0 });
+  }
+}
+
 function updateHub(dt) {
   const hub = game.hub;
   if (!hub) return;
+  hub.syncT -= dt;
+  if (hub.syncT <= 0) {
+    hub.syncT = 2;
+    syncWalkers(hub);
+  }
   const input = playerInput();
   const p = hub.player;
   p.time += dt;
@@ -2413,12 +2428,18 @@ function updateHub(dt) {
   p.x = clamp(p.x + walk * dt, p.w / 2, HUB_W - p.w / 2);
   p.z = clamp(p.z + walkZ * dt, -DEPTH, DEPTH);
 
-  // De vandrande robotarna byter riktning då och då.
+  // De vandrande robotarna byter riktning då och då — men stannar och tittar på dig när du
+  // kommer fram, redo att bli utmanade.
   for (const w of hub.walkers) {
     const f = w.f;
     f.time += dt;
     w.t -= dt;
-    if (w.t <= 0) {
+    if (Math.hypot(f.x - p.x, f.z - p.z) < HUB_RANGE) {
+      w.dir = 0;
+      w.depth = 0;
+      w.t = 0.5;
+      f.facing = p.x < f.x ? -1 : 1;
+    } else if (w.t <= 0) {
       w.t = rand(1, 3);
       w.dir = Math.random() < 0.3 ? 0 : Math.random() < 0.5 ? -1 : 1;
       w.depth = Math.random() < 0.5 ? 0 : Math.random() < 0.5 ? -1 : 1;
@@ -2432,17 +2453,28 @@ function updateHub(dt) {
     if (w.dir) f.facing = w.dir;
   }
 
+  // Det närmaste av en portal och en vandrande robot.
   let near = null;
   let best = HUB_RANGE;
   for (const st of STATIONS) {
     const d = Math.hypot(st.x - p.x, st.z - p.z);
     if (d < best) { best = d; near = st; }
   }
+  for (const w of hub.walkers) {
+    const d = Math.hypot(w.f.x - p.x, w.f.z - p.z);
+    if (d < best) { best = d; near = w; }
+  }
   if (near !== hub.near) {
-    byId('explore-hint').textContent = near ? `${near.emoji} ${near.name} — ${STATION_HINT[near.id]}. MELLANSLAG/J: Gå in` : HUB_HINT;
+    const def = near && near.f && near.f.def;
+    byId('explore-hint').textContent = def
+      ? `⚔️ ${def.name} (${RARITY[def.rarity].label}) — MELLANSLAG/J: Utmana till match! Vinner du får du roboten.`
+      : near ? `${near.emoji} ${near.name} — ${STATION_HINT[near.id]}. MELLANSLAG/J: Gå in` : HUB_HINT;
   }
   hub.near = near;
-  if (near && input.attack && !hub.attackHeld) enterStation(near.id);
+  if (near && input.attack && !hub.attackHeld) {
+    if (near.f) startMatch('street', near.f.def.id);
+    else enterStation(near.id);
+  }
   hub.attackHeld = input.attack;
 }
 
@@ -2936,7 +2968,8 @@ function showResult() {
         : 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
     }
   } else if (r.won) {
-    text = r.gained ? 'Du vann motståndarens robot och fick en låda!' : 'Du fick en låda!';
+    text = r.street ? `${robotById[r.gained].name} från staden är din nu — och du fick en låda!`
+      : r.gained ? 'Du vann motståndarens robot och fick en låda!' : 'Du fick en låda!';
     if (r.gained) rewardItem('DU VANN ROBOTEN!', robotById[r.gained], { isNew: true, n: invCount(r.gained) });
   } else if (r.lost) {
     text = 'Du tappade din insats.';

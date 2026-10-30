@@ -90,8 +90,8 @@
       return { acct: this.view() };
     }
 
-    async startMatch(robot, mode, monsterId) {
-      const match = S.startMatch(this.acct, robot, mode, Math.random, monsterId);
+    async startMatch(robot, mode, target) {
+      const match = S.startMatch(this.acct, robot, mode, Math.random, target);
       if (match.error) throw new Error(match.error);
       this.match = match;
       this.save();
@@ -262,7 +262,7 @@
     }
 
     select(robot) { return this.api('/api/select', { robot }); }
-    startMatch(robot, mode, monsterId) { return this.api('/api/match/start', { robot, mode, monsterId }); }
+    startMatch(robot, mode, target) { return this.api('/api/match/start', { robot, mode, target }); }
     finishMatch(match, won) { return this.api('/api/match/finish', { token: match.token, won }); }
     openBox() { return this.api('/api/box-open', {}); }
     claimDaily() { return this.api('/api/daily-claim', {}); }
@@ -350,8 +350,8 @@
       return { acct: this.view() };
     }
 
-    async startMatch(robot, mode, monsterId) {
-      const match = S.startMatch(this.acct, robot, mode, Math.random, monsterId);
+    async startMatch(robot, mode, target) {
+      const match = S.startMatch(this.acct, robot, mode, Math.random, target);
       if (match.error) throw new Error(match.error);
       this.match = match;
       await this.save();
