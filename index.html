@@ -154,14 +154,14 @@
       </section>
 
       <section id="screen-select" hidden>
-        <h2>Välj din robot</h2>
+        <h2>🤖 Garaget</h2>
         <p id="collection" class="hint"></p>
         <p id="level-info" class="hint"></p>
         <div class="bar xp"><div id="xp-fill" class="fill xp"></div></div>
         <div class="buttons">
-          <button id="btn-teleport" type="button" class="teleport-btn">🚶 Gå ut i Robotstaden (Enter)</button>
+          <button id="btn-teleport" type="button" class="teleport-btn">🚶 Tillbaka ut i staden (Enter)</button>
         </div>
-        <p class="hint">Välj robot nedan och gå sedan ut i staden — där hittar du Arenan, Monstervärlden, Butiken och allt annat.</p>
+        <p class="hint">Klicka på en robot för att spela med den, och gå sedan ut i staden igen.</p>
         <div id="cards"></div>
         <p id="detail" class="hint"></p>
         <button id="btn-rename-wildcard" type="button" class="linklike" hidden>Döp om jokern</button>
@@ -260,6 +260,12 @@
         <button id="btn-world-back" type="button" class="linklike">Tillbaka</button>
       </section>
 
+      <section id="screen-questboard" hidden>
+        <h2>📜 Uppdragstavlan</h2>
+        <div id="quests-board" class="quests"></div>
+        <button id="btn-questboard-back" type="button" class="linklike">Tillbaka till staden</button>
+      </section>
+
       <section id="screen-clan" hidden>
         <h2>🛡 Klaner</h2>
         <p class="hint">Gå ihop med dina kompisar i en klan och klättra på topplistan tillsammans.</p>
@@ -302,7 +308,7 @@
         <div class="buttons">
           <button id="btn-again" type="button">Kämpa igen (Enter)</button>
           <button id="btn-open-result" type="button" class="secondary">Öppna låda</button>
-          <button id="btn-change" type="button" class="secondary">Byt robot</button>
+          <button id="btn-change" type="button" class="secondary">Tillbaka till staden</button>
           <button id="btn-rematch" type="button" hidden>Revansch</button>
           <button id="btn-leave-friend" type="button" class="secondary" hidden>Lämna</button>
         </div>

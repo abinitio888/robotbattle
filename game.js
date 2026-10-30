@@ -1283,7 +1283,7 @@ window.addEventListener('keydown', (e) => {
     const onButton = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT');
     if (e.code === 'Enter' && !onButton) onEnter();
     const locked = (game.stake || game.online) && (game.phase === 'intro' || game.phase === 'fight');
-    if (e.code === 'Escape' && game.phase !== 'menu' && !locked) showSelect();
+    if (e.code === 'Escape' && game.phase !== 'menu' && game.phase !== 'hub' && !locked) showHub();
   }
   keys[e.code] = true;
 });
@@ -1337,6 +1337,7 @@ const screens = {
   world: document.getElementById('screen-world'),
   teleport: document.getElementById('screen-teleport'),
   clan: document.getElementById('screen-clan'),
+  questboard: document.getElementById('screen-questboard'),
   shop: document.getElementById('screen-shop'),
   trade: document.getElementById('screen-trade'),
 };
@@ -1541,6 +1542,7 @@ function startTraining(moving) {
   setHudType(hud.typePlayer, pDef);
   setHudType(hud.typeAi, DUMMY);
   byId('explore-bar').hidden = false;
+  byId('btn-explore-back').hidden = false;
   byId('explore-hint').textContent = 'Träning — prova dina attacker. Dockan slår aldrig tillbaka.';
   showScreen(null);
 }
@@ -1646,7 +1648,7 @@ function endMatch() {
 }
 
 function onEnter() {
-  if (game.phase === 'menu') showSelect();
+  if (game.phase === 'menu') showHub();
   else if (game.phase === 'select') showHub();
   else if (game.phase === 'teleport') startMatch();
   else if (game.phase === 'over' && !screens.result.hidden && !game.online) startMatch();
@@ -2041,8 +2043,13 @@ byId('btn-trade-auto').addEventListener('click', autoFillTrade);
 byId('btn-trade-do').addEventListener('click', doTrade);
 
 // ---------- Dagliga uppdrag ----------
-function renderQuests() {
-  const box = byId('quests');
+function showQuestBoard() {
+  game.phase = 'questboard';
+  renderQuests(byId('quests-board'));
+  showScreen('questboard');
+}
+
+function renderQuests(box = byId('quests')) {
   box.replaceChildren();
   const q = game.acct.quests;
   if (!q) return;
@@ -2121,20 +2128,32 @@ byId('btn-train-moving').addEventListener('click', () => startTraining(true));
 // mellanslag/J för att gå in. Några AI-robotar vandrar omkring för att det ska kännas levande.
 const HUB_RANGE = 80;
 const STATIONS = [
-  { id: 'monsters', name: 'Monstervärlden', emoji: '👾', color: '#ff7a1a', x: 160, z: -170 },
-  { id: 'boss', name: 'Mystiska robotar', emoji: '❓', color: '#ff1744', x: 480, z: -170 },
-  { id: 'world', name: 'Världskartan', emoji: '🌍', color: '#3ddc84', x: 800, z: -170 },
-  { id: 'arena', name: 'Arenan', emoji: '⚔', color: '#35d0ff', x: 250, z: -10 },
-  { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 480, z: -10 },
-  { id: 'stake', name: 'Insatsarenan', emoji: '💰', color: '#ffd93d', x: 710, z: -10 },
-  { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 130, z: 170 },
-  { id: 'trade', name: 'Handlaren', emoji: '🔁', color: '#ff9a2a', x: 360, z: 170 },
-  { id: 'clan', name: 'Klanhuset', emoji: '🛡', color: '#a07bff', x: 600, z: 170 },
-  { id: 'training', name: 'Träningsarenan', emoji: '🎯', color: '#c9a36b', x: 830, z: 170 },
+  // Längst in: äventyr
+  { id: 'monsters', name: 'Monstervärlden', emoji: '👾', color: '#ff7a1a', x: 130, z: -190 },
+  { id: 'boss', name: 'Mystiska robotar', emoji: '❓', color: '#ff1744', x: 370, z: -190 },
+  { id: 'world', name: 'Världskartan', emoji: '🌍', color: '#3ddc84', x: 610, z: -190 },
+  { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 850, z: -190 },
+  // Matcher
+  { id: 'arena', name: 'Vanlig match', emoji: '⚔', color: '#35d0ff', x: 130, z: -65 },
+  { id: 'stake', name: 'Insatsmatch', emoji: '💰', color: '#ffd93d', x: 370, z: -65 },
+  { id: 'training', name: 'Träningsarenan', emoji: '🎯', color: '#c9a36b', x: 610, z: -65 },
+  { id: 'clan', name: 'Klanhuset', emoji: '🛡', color: '#a07bff', x: 850, z: -65 },
+  // Ditt eget
+  { id: 'garage', name: 'Garaget', emoji: '🤖', color: '#9fd8ff', x: 130, z: 65 },
+  { id: 'boxes', name: 'Lådor', emoji: '🎁', color: '#ff8ac0', x: 370, z: 65 },
+  { id: 'quests', name: 'Uppdragstavlan', emoji: '📜', color: '#e8d27a', x: 610, z: 65 },
+  { id: 'equipment', name: 'Utrustning', emoji: '🎒', color: '#5fd0ff', x: 850, z: 65 },
+  // Handel
+  { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 250, z: 190 },
+  { id: 'trade', name: 'Handlaren', emoji: '🔁', color: '#ff9a2a', x: 710, z: 190 },
 ];
 const STATION_HINT = {
-  arena: 'vanlig match — vinn en låda',
-  stake: 'sätt en robot på spel',
+  arena: 'vanlig match mot AI — vinn en låda',
+  stake: 'sätt en robot på spel — vinn motståndarens',
+  garage: 'välj vilken robot du spelar med',
+  boxes: 'öppna lådor och hämta den dagliga',
+  quests: 'dagens uppdrag',
+  equipment: 'välj vad din robot bär',
   boss: 'möt en mystisk robot',
   monsters: 'res till Monstervärlden',
   world: 'världsdelarna och deras beskyddare',
@@ -2157,7 +2176,7 @@ function showHub() {
   showArenaLabel(game.arena);
   const prev = game.hub;
   const player = new Fighter(applyEquipment(myDef(robotById[game.selectedId])), prev ? prev.player.x : W / 2, 1);
-  player.z = prev ? prev.player.z : 90;
+  player.z = prev ? prev.player.z : 0;
   const pool = ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard');
   const walkers = prev ? prev.walkers : [];
   if (!prev) {
@@ -2169,6 +2188,7 @@ function showHub() {
   }
   game.hub = { player, walkers, near: null, attackHeld: true };
   byId('explore-bar').hidden = false;
+  byId('btn-explore-back').hidden = true; // staden är "hemma" — inget att gå tillbaka till
   byId('explore-hint').textContent = HUB_HINT;
   showScreen(null);
 }
@@ -2235,6 +2255,19 @@ function enterStation(id) {
     case 'trade': showTrade(); break;
     case 'clan': showClan(); break;
     case 'training': startTraining(true); break;
+    case 'garage': game.fromHub = true; showSelect(); break;
+    case 'boxes':
+      // Den dagliga lådan hämtas automatiskt när man går in i Lådor.
+      game.fromHub = true;
+      if (game.acct.dailyAvailable) net.claimDaily().then((r) => { applyAcct(r.acct); showBox(); }).catch(() => showBox());
+      else showBox();
+      break;
+    case 'quests': showQuestBoard(); break;
+    case 'equipment':
+      byId('explore-bar').hidden = false;
+      renderEquipmentModal();
+      byId('equipment-prompt').hidden = false;
+      break;
     default:
   }
 }
@@ -2305,6 +2338,7 @@ const EXPLORE_RANGE = 70; // hur nära man måste gå för att kunna utmana ett 
 
 function showMonsters() {
   if (!game.acct) return;
+  byId('btn-explore-back').hidden = false;
   game.phase = 'monsters';
   game.arena = arenaById.direworld;
   showArenaLabel(game.arena);
@@ -2494,7 +2528,10 @@ byId('btn-explore-equipment').addEventListener('click', () => {
   renderEquipmentModal();
   byId('equipment-prompt').hidden = false;
 });
-byId('btn-equipment-close').addEventListener('click', () => { byId('equipment-prompt').hidden = true; });
+byId('btn-equipment-close').addEventListener('click', () => {
+  byId('equipment-prompt').hidden = true;
+  if (game.phase === 'hub') showHub(); // roboten i staden ska bära det man just valt
+});
 byId('btn-unequip').addEventListener('click', () => reequip(null));
 byId('btn-explore-back').addEventListener('click', () => {
   byId('explore-bar').hidden = true;
@@ -2503,6 +2540,7 @@ byId('btn-explore-back').addEventListener('click', () => {
   game.training = null;
   if (wasHub) showSelect(); else showHub();
 });
+byId('btn-questboard-back').addEventListener('click', showHub);
 
 async function importGuestCollection() {
   const guest = Backend.readGuestSave();
@@ -3777,15 +3815,15 @@ byId('btn-leave-friend').addEventListener('click', () => {
   if (fromChallenge) showWorld(); else backToTeleport();
 });
 
-byId('btn-play').addEventListener('click', showSelect);
+byId('btn-play').addEventListener('click', showHub);
 byId('btn-fight').addEventListener('click', () => startMatch());
 byId('btn-again').addEventListener('click', () => startMatch());
-byId('btn-change').addEventListener('click', showSelect);
+byId('btn-change').addEventListener('click', showHub);
 byId('btn-boxes').addEventListener('click', showBox);
 byId('btn-daily').addEventListener('click', claimDaily);
 byId('btn-open-result').addEventListener('click', showBox);
 byId('btn-open').addEventListener('click', openBox);
-byId('btn-box-back').addEventListener('click', showSelect);
+byId('btn-box-back').addEventListener('click', showHub);
 byId('btn-friend').addEventListener('click', showFriend);
 byId('btn-monsters').addEventListener('click', showMonsters);
 byId('btn-world').addEventListener('click', () => showWorld());
@@ -3821,7 +3859,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard') return;
 
   if (game.online) {
     updateFriendMatch(dt);
