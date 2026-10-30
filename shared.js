@@ -688,7 +688,9 @@
   }
 
   function questState(acct) {
-    if (!acct.quests) acct.quests = { seq: 0, done: 0, streak: 0, active: [] };
+    // Servern läser konton direkt ur databasen, utan sanitize(), så gamla konton kan fortfarande
+    // ha de dagliga uppdragen ({ day, prog, ... }) — de får en ny tavla.
+    if (!acct.quests || !Array.isArray(acct.quests.active)) acct.quests = { seq: 0, done: 0, streak: 0, active: [] };
     const st = acct.quests;
     while (st.active.length < QUEST_SLOTS) st.active.push(nextQuest(acct, st));
     return st;
