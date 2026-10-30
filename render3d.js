@@ -18,11 +18,15 @@
   // Byggs ur samma def som 2D-roboten: färger, huvudform, extra. Framåt är +X lokalt, upp är +Y,
   // fötterna står på Y = 0. Måtten är samma "pixlar" som i 2D-ritningen.
   function makeMaterials(def) {
-    const std = (color) => new THREE.MeshStandardMaterial({ color, metalness: 0.45, roughness: 0.38 });
+    // Ett skin (se SKINS i shared.js) ändrar hur ytan ser ut: blank metall, neonkanter, kristall.
+    const sk = (def.skin && def.skin.mat) || {};
+    const std = (color) => new THREE.MeshStandardMaterial({
+      color, metalness: sk.metalness !== undefined ? sk.metalness : 0.45, roughness: sk.roughness !== undefined ? sk.roughness : 0.38,
+    });
     const additive = (opacity) => new THREE.MeshBasicMaterial({
       color: def.eye, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending,
     });
-    return {
+    const M = {
       body: std(def.color),
       dark: std(def.accent),
       eye: new THREE.MeshBasicMaterial({ color: def.eye }),
@@ -31,6 +35,96 @@
       line: additive(0.9), // energilinjerna på kroppen
       thrust: additive(0.8), // jetflammorna under fötterna
     };
+    if (sk.tint) { // guld: lyser svagt i sin egen färg, annars blir blank metall mörk utan något att spegla
+      M.body.emissive.set(def.color); M.body.emissiveIntensity = sk.tint;
+      M.dark.emissive.set(def.accent); M.dark.emissiveIntensity = sk.tint;
+    }
+    if (sk.neon) { M.dark.emissive.set(def.accent); M.dark.emissiveIntensity = 1.3; }
+    if (sk.crystal) {
+      for (const k of ['body', 'dark']) {
+        M[k].metalness = 0.1;
+        M[k].roughness = 0.05;
+        M[k].emissive.set('#7fd8ff');
+        M[k].emissiveIntensity = 0.25;
+        M[k].userData.baseOpacity = 0.6;
+      }
+    }
+    return M;
+  }
+
+  // Det föremål roboten bär syns på den: skor, rustning, handskar, hjälm, krona, vingar,
+  // en svävande kärna, en axelkanon eller en hammare (se ITEM_LOOK i shared.js).
+  function buildGear(gear, inner, upper, legs, fists, head) {
+    const mat = new THREE.MeshStandardMaterial({ color: gear.color, metalness: 0.6, roughness: 0.3, emissive: gear.color, emissiveIntensity: 0.25 });
+    const glow = new THREE.MeshBasicMaterial({ color: gear.color, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
+    const out = { mat, glow, orb: null };
+    switch (gear.look) {
+      case 'boots':
+        for (const leg of legs) {
+          leg.pivot.add(mesh(box(25, 14, 19), mat, 3, -33, 0));
+          leg.pivot.add(mesh(box(26, 2.5, 20), glow, 3, -41, 0)); // lysande sula
+        }
+        break;
+      case 'armor':
+        upper.add(mesh(box(47, 30, 37), mat, 0, 78, 0));
+        upper.add(mesh(box(48, 3, 38), glow, 0, 93, 0));
+        for (const z of [-22, 22]) upper.add(mesh(sphere(10), mat, 0, 92, z)); // axelskydd
+        break;
+      case 'gloves':
+        for (const fist of fists) {
+          fist.add(mesh(sphere(10), mat));
+          const cuff = mesh(new THREE.TorusGeometry(9, 1.6, 6, 16), glow, 0, 6, 0);
+          cuff.rotation.x = Math.PI / 2;
+          fist.add(cuff);
+        }
+        break;
+      case 'helmet': {
+        const cap = mesh(new THREE.SphereGeometry(19, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat, 0, 112, 0);
+        head.add(cap);
+        head.add(mesh(box(6, 5, 22), glow, 15, 112, 0));
+        break;
+      }
+      case 'crown': {
+        head.add(mesh(cyl(13, 13, 6), mat, 0, 128, 0));
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2;
+          head.add(mesh(cone(3, 11, 6), mat, Math.cos(a) * 11, 136, Math.sin(a) * 11));
+          head.add(mesh(sphere(1.8), glow, Math.cos(a) * 13, 128, Math.sin(a) * 13));
+        }
+        break;
+      }
+      case 'wings':
+        for (const side of [-1, 1]) {
+          const w = mesh(box(2, 40, 22), glow, -22, 100, side * 18);
+          w.rotation.x = side * 0.6;
+          w.rotation.z = 0.4;
+          upper.add(w);
+        }
+        break;
+      case 'cannon': {
+        const g = new THREE.Group();
+        g.position.set(-10, 100, -20);
+        g.rotation.z = 0.6;
+        g.add(mesh(cyl(6, 6, 30), mat, 0, 12, 0), mesh(cyl(4, 4, 4), glow, 0, 28, 0));
+        upper.add(g);
+        break;
+      }
+      case 'hammer': {
+        const g = new THREE.Group();
+        g.position.set(-24, 75, 0);
+        g.rotation.z = -0.5;
+        g.add(mesh(cyl(2, 2, 60, 8), mat, 0, 0, 0), mesh(box(14, 24, 14), mat, 0, 32, 0), mesh(box(15, 3, 15), glow, 0, 32, 0));
+        upper.add(g);
+        break;
+      }
+      default: { // orb: en lysande kärna som svävar runt roboten
+        const orb = new THREE.Group();
+        orb.add(mesh(sphere(5), glow), mesh(new THREE.TorusGeometry(8, 1, 6, 20), mat));
+        inner.add(orb);
+        out.orb = orb;
+      }
+    }
+    return out;
   }
 
   function mesh(geo, mat, x = 0, y = 0, z = 0) {
@@ -810,10 +904,11 @@
     upper.add(glow);
     // Gudomliga robotar och Monstervärldens kungar/drottning får extra prakt (se buildDivine).
     const divine = def.rarity === 'divine' || def.royal ? buildDivine(def, upper, inner, [front.fist, back.fist]) : null;
+    const gear = def.gear ? buildGear(def.gear, inner, upper, legs, [front.fist, back.fist], head) : null;
 
     root.traverse((o) => { if (o.isMesh) o.castShadow = o.material.blending !== THREE.AdditiveBlending; });
     glow.castShadow = false;
-    return { def, root, inner, upper, legs, back, front, core, cape, flame, glow, divine, neck, M };
+    return { def, root, inner, upper, legs, back, front, core, cape, flame, glow, divine, gear, neck, M };
   }
 
   const SIL_BODY = new THREE.Color('#232c4a');
@@ -833,8 +928,9 @@
     M.glow.color.set(def.eye);
     const alpha = p.alpha === undefined ? 1 : p.alpha;
     for (const k of ['body', 'dark', 'eye', 'gold']) {
-      M[k].transparent = alpha < 1;
-      M[k].opacity = alpha;
+      const op = alpha * (M[k].userData.baseOpacity || 1); // kristallskinnet är alltid lite genomskinligt
+      M[k].transparent = op < 1;
+      M[k].opacity = op;
     }
 
     const t = p.time || 0;
@@ -900,6 +996,15 @@
     if (rig.flame) rig.flame.scale.y = 1 + Math.sin(t * 30) * 0.3;
 
     if (rig.divine) rig.divine.update(t, glow, sil, alpha);
+    // Regnbågsskinnet byter färg hela tiden.
+    if (def.skin && def.skin.mat.rainbow && !sil && !flash) {
+      M.body.color.setHSL((t * 0.15) % 1, 0.85, 0.55);
+      M.dark.color.setHSL((t * 0.15 + 0.5) % 1, 0.85, 0.5);
+    }
+    if (rig.gear) {
+      rig.gear.mat.visible = rig.gear.glow.visible = !sil;
+      if (rig.gear.orb) rig.gear.orb.position.set(Math.cos(t * 2.4) * 34, 110 + Math.sin(t * 3) * 6, Math.sin(t * 2.4) * 34);
+    }
     rig.glow.visible = glow > 0;
     if (glow > 0) {
       rig.glow.position.set(2 + 50, 88, 24);
@@ -909,7 +1014,7 @@
   }
 
   // Roboten byggs om bara när något som syns i modellen ändras (t.ex. jokerns huvud).
-  const rigKey = (def) => [def.id, def.head, def.extra, def.color, def.accent, def.eye, def.scale].join('|');
+  const rigKey = (def) => [def.id, def.head, def.extra, def.color, def.accent, def.eye, def.scale, def.skin && def.skin.id, def.gear && def.gear.look, def.gear && def.gear.color].join('|');
 
   // ---------- Arenan ----------
   function gradientTexture(top, bottom) {

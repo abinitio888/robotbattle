@@ -34,7 +34,7 @@ module.exports = dispatch({
       if (!entry || entry.key !== session.key) throw new HttpError(400, 'Ingen match pågår.');
       if (Date.now() - entry.startedAt < MIN_MATCH_MS) throw new HttpError(400, 'Matchen var för kort.');
       await redis.del(`match:${token}`);
-      const result = S.finishMatch(session.user.acct, entry.match, won === true, randomFloat);
+      const result = S.finishMatch(session.user.acct, entry.match, won === true, randomFloat, clock().today);
       // Klan: varje vinst ger klanpoäng (mer för svårare motståndare) och lite extra mynt.
       if (result.won && session.user.clan) {
         const opp = S.robotById[entry.match.opp];

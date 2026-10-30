@@ -85,6 +85,20 @@ module.exports = dispatch({
     handler: acctAction((acct, body) => S.equipItem(acct, typeof body.itemId === 'string' ? body.itemId : null)),
   },
 
+  // Robotnivåer och skins — se upgradeRobot(), buySkin() och setSkin() i shared.js.
+  upgrade: {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.upgradeRobot(acct, typeof body.robot === 'string' ? body.robot : null)),
+  },
+  'buy-skin': {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.buySkin(acct, typeof body.skin === 'string' ? body.skin : null)),
+  },
+  'set-skin': {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.setSkin(acct, typeof body.robot === 'string' ? body.robot : null, typeof body.skin === 'string' ? body.skin : null)),
+  },
+
   // Butiken — se buyItem() i shared.js. Mynten finns bara på servern.
   buy: {
     method: 'POST',
@@ -101,7 +115,7 @@ module.exports = dispatch({
     method: 'POST',
     async handler(req) {
       const session = await requireSession(req);
-      const prize = S.openBox(session.user.acct, randomFloat);
+      const prize = S.openBox(session.user.acct, randomFloat, clock().today);
       if (!prize) throw new HttpError(400, 'Du har inga lådor.');
       await saveUser(session.key, session.user);
       return { acct: acctView(session.user), prize };

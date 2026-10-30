@@ -119,16 +119,37 @@
       return { acct: this.view() };
     }
 
+    async upgradeRobot(robot) {
+      const result = S.upgradeRobot(this.acct, robot);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
+    async buySkin(skin) {
+      const result = S.buySkin(this.acct, skin);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
+    async setSkin(robot, skin) {
+      const result = S.setSkin(this.acct, robot, skin);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
     async finishMatch(match, won) {
       if (!this.match) throw new Error('Ingen match pågår.');
-      const result = S.finishMatch(this.acct, this.match, won, Math.random);
+      const result = S.finishMatch(this.acct, this.match, won, Math.random, todayKey());
       this.match = null;
       this.save();
       return { acct: this.view(), result };
     }
 
     async openBox() {
-      const prize = S.openBox(this.acct, Math.random);
+      const prize = S.openBox(this.acct, Math.random, todayKey());
       if (!prize) throw new Error('Du har inga lådor.');
       this.save();
       return { acct: this.view(), prize };
@@ -251,6 +272,9 @@
     equipItem(itemId) { return this.api('/api/equip', { itemId }); }
     trade(give, want) { return this.api('/api/trade', { give, want }); }
     buyItem(itemId) { return this.api('/api/buy', { itemId }); }
+    upgradeRobot(robot) { return this.api('/api/upgrade', { robot }); }
+    buySkin(skin) { return this.api('/api/buy-skin', { skin }); }
+    setSkin(robot, skin) { return this.api('/api/set-skin', { robot, skin }); }
     setCustomWildcardAttack(type, name, desc, dmg, heal, types) { return this.api('/api/wildcard/attack', { type, name, desc, dmg, heal, types }); }
     setWildcardColor(hex) { return this.api('/api/wildcard/color', { hex }); }
     setWildcardHead(head) { return this.api('/api/wildcard/head', { head }); }
@@ -355,16 +379,37 @@
       return { acct: this.view() };
     }
 
+    async upgradeRobot(robot) {
+      const result = S.upgradeRobot(this.acct, robot);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async buySkin(skin) {
+      const result = S.buySkin(this.acct, skin);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async setSkin(robot, skin) {
+      const result = S.setSkin(this.acct, robot, skin);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
     async finishMatch(match, won) {
       if (!this.match) throw new Error('Ingen match pågår.');
-      const result = S.finishMatch(this.acct, this.match, won, Math.random);
+      const result = S.finishMatch(this.acct, this.match, won, Math.random, todayKey());
       this.match = null;
       await this.save();
       return { acct: this.view(), result };
     }
 
     async openBox() {
-      const prize = S.openBox(this.acct, Math.random);
+      const prize = S.openBox(this.acct, Math.random, todayKey());
       if (!prize) throw new Error('Du har inga lådor.');
       await this.save();
       return { acct: this.view(), prize };

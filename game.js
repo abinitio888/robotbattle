@@ -1367,6 +1367,8 @@ window.addEventListener('keydown', (e) => {
     const onButton = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT');
     if (e.code === 'Enter' && !onButton) onEnter();
     const locked = (game.stake || game.online) && (game.phase === 'intro' || game.phase === 'fight');
+    if (e.code === 'KeyT' && game.phase === 'hub') showTravel();
+    else if ((e.code === 'KeyT' || e.code === 'Escape') && game.phase === 'travel') { closeTravel(); return; }
     if (e.code === 'Escape' && game.phase !== 'menu' && game.phase !== 'hub' && !locked) showHub();
   }
   keys[e.code] = true;
@@ -1422,6 +1424,8 @@ const screens = {
   teleport: document.getElementById('screen-teleport'),
   clan: document.getElementById('screen-clan'),
   questboard: document.getElementById('screen-questboard'),
+  travel: document.getElementById('screen-travel'),
+  royals: document.getElementById('screen-royals'),
   shop: document.getElementById('screen-shop'),
   trade: document.getElementById('screen-trade'),
 };
@@ -1627,6 +1631,7 @@ function startTraining(moving) {
   setHudType(hud.typeAi, DUMMY);
   byId('explore-bar').hidden = false;
   byId('btn-explore-back').hidden = false;
+  byId('btn-travel').hidden = true;
   byId('explore-hint').textContent = 'Träning — prova dina attacker. Dockan slår aldrig tillbaka.';
   showScreen(null);
 }
@@ -1760,25 +1765,39 @@ function displayName(def, mine) {
 // customWildcardSpecial i shared.js — så byter man attack byter man automatiskt element också.
 // En motståndares namnlösa joker förblir förvalet som det är.
 function myDef(def) {
-  if (def.id !== 'wildcard') return def;
   const acct = game.acct;
-  const special = Shared.wildcardSpecialFor(acct && acct.wildcardName, acct && acct.wildcardSpecialType, acct && acct.wildcardCustomSpecial);
-  const color = (acct && acct.wildcardColor) || def.color;
-  const head = (acct && acct.wildcardHead) || def.head;
-  const extra = (acct && acct.wildcardExtra) || def.extra;
-  const types = special.types || def.types;
-  return { ...def, special, color, head, extra, types };
+  let out = def;
+  if (def.id === 'wildcard') {
+    const special = Shared.wildcardSpecialFor(acct && acct.wildcardName, acct && acct.wildcardSpecialType, acct && acct.wildcardCustomSpecial);
+    const color = (acct && acct.wildcardColor) || def.color;
+    const head = (acct && acct.wildcardHead) || def.head;
+    const extra = (acct && acct.wildcardExtra) || def.extra;
+    const types = special.types || def.types;
+    out = { ...def, special, color, head, extra, types };
+  }
+  // Robotens nivå (uppgraderad med dubbletter) och skin (valt i Garaget).
+  const lv = acct && acct.robotLv ? acct.robotLv[def.id] || 1 : 1;
+  out = Shared.levelUpDef(out, lv);
+  const skin = acct && acct.robotSkin && Shared.skinById[acct.robotSkin[def.id]];
+  if (skin) out = { ...out, color: skin.color, accent: skin.accent, eye: skin.eye, skin: { id: skin.id, mat: skin.mat } };
+  return out;
 }
 
 // Lägger på bonusen från det utrustningsföremål man bär (om något) — gäller alltid, oavsett
 // vilken robot man valt eller vilken sorts match det är (vanlig, insats, boss, monster). Man
 // kan bara bära ETT i taget, se equipItem().
 function applyEquipment(def) {
-  const itemId = game.acct && game.acct.equippedItem;
-  if (!itemId) return def;
-  const item = Shared.EQUIPMENT.find((e) => e.id === itemId);
-  if (!item) return def;
   const out = { ...def };
+  // Setbonus: äger man alla föremål i ett set gäller bonusen hela tiden.
+  for (const set of (game.acct && game.acct.sets) || []) {
+    if (set.done) for (const [stat, amount] of Object.entries(set.bonus)) out[stat] = (out[stat] || 0) + amount;
+  }
+  const itemId = game.acct && game.acct.equippedItem;
+  const item = itemId && Shared.EQUIPMENT.find((e) => e.id === itemId);
+  if (!item) return out;
+  // Föremålet syns på roboten (se ITEM_LOOK i shared.js och buildGear i render3d.js).
+  const look = Shared.ITEM_LOOK[item.id];
+  if (look) out.gear = { look: look[0], color: look[1] };
   for (const [stat, amount] of Object.entries(item.stat)) out[stat] = (out[stat] || 0) + amount;
   if (item.power) out.superPower = item.power;
   if (item.effect) Object.assign(out, item.effect); // butiksvarornas egna effekter, t.ex. startEnergy
@@ -1832,6 +1851,7 @@ function createCard(def, { locked = false, selected = false, isNew = false, reve
     return line;
   };
   add('name', locked ? '???' : `${displayName(def, true)}${n !== null ? ` ×${n}` : ''}`);
+  if (!locked && def.level > 1) add('stars', '★'.repeat(def.level));
   add('rarity', locked ? 'Låst' : RARITY[def.rarity].label);
   if (!locked && !compact) {
     add('element', typesText(def)).style.color = Shared.TYPES[def.types[0]].color;
@@ -1903,6 +1923,7 @@ function showSelect() {
   }
 
   byId('detail').textContent = detailText(myDef(robotById[game.selectedId]));
+  renderGaragePanel();
   byId('btn-rename-wildcard').hidden = invCount('wildcard') < 1;
   byId('btn-choose-wildcard-attack').hidden = invCount('wildcard') < 1;
   byId('collection').textContent = `Robotar: ${totalRobots()} st · Lådor: ${game.acct.boxes} · 🪙 ${game.acct.coins || 0} mynt`;
@@ -1952,6 +1973,46 @@ function showSelect() {
   showScreen('select');
 }
 
+// ---------- Garaget: uppgradera med dubbletter och välj skin ----------
+function renderGaragePanel() {
+  const box = byId('garage-panel');
+  box.replaceChildren();
+  const id = game.selectedId;
+  const def = robotById[id];
+  const lv = (game.acct.robotLv || {})[id] || 1;
+  const spare = invCount(id) - 1;
+  const lvRow = el('div', 'garage-row');
+  lvRow.append(el('span', 'garage-stars', `${'★'.repeat(lv)}${'☆'.repeat(Shared.ROBOT_MAX_LV - lv)}`), el('span', '', ` Nivå ${lv} · ${spare} ${spare === 1 ? 'dubblett' : 'dubbletter'}`));
+  if (lv < Shared.ROBOT_MAX_LV) {
+    const cost = Shared.upgradeCost(lv);
+    lvRow.append(worldButton(`⬆ Uppgradera (${cost} ${cost === 1 ? 'dubblett' : 'dubbletter'})`, async () => {
+      try { const r = await net.upgradeRobot(id); applyAcct(r.acct); } catch (e) { byId('select-error').textContent = e.message; return; }
+      showSelect();
+    }, { disabled: spare < cost }));
+  } else {
+    lvRow.append(el('span', 'garage-max', ' Högsta nivån!'));
+  }
+  box.append(lvRow, el('p', 'hint', 'Varje nivå ger +6 % HP och slag och +3 % fart. Dubbletter får du ur lådor.'));
+  // Skins
+  const owned = game.acct.skins || [];
+  const current = (game.acct.robotSkin || {})[id] || null;
+  const skinRow = el('div', 'buttons');
+  const pick = (skinId) => async () => {
+    try { const r = await net.setSkin(id, skinId); applyAcct(r.acct); } catch (e) { byId('select-error').textContent = e.message; return; }
+    showSelect();
+  };
+  skinRow.append(worldButton(current ? 'Utan skin' : '✓ Utan skin', pick(null), { secondary: true, disabled: !current }));
+  for (const sid of owned) {
+    const skin = Shared.skinById[sid];
+    if (!skin) continue;
+    const b = worldButton(`${current === sid ? '✓ ' : ''}🎨 ${skin.name}`, pick(sid), { secondary: current !== sid, disabled: current === sid });
+    b.style.borderColor = skin.accent;
+    skinRow.append(b);
+  }
+  box.append(skinRow);
+  if (!owned.length) box.append(el('p', 'hint', `Skins köper du i Butiken och sätter sedan på ${def.name} här.`));
+}
+
 // ---------- Butiken ----------
 // Varor som BARA går att köpa för mynt (se SHOP_ITEMS i shared.js), aldrig vinna i en strid.
 // Mynt tjänar man i matcher och på den dagliga lådan.
@@ -1972,6 +2033,27 @@ function showShop(message) {
     row.append(info, btn);
     list.append(row);
   }
+  // Skins: ändrar hur en robot ser ut. Sätts på i Garaget.
+  const skins = byId('shop-skins');
+  skins.replaceChildren(el('p', 'quests-title', '🎨 Skins — sätt på vilken robot du vill i Garaget'));
+  const grid = el('div', 'shop-list');
+  for (const skin of Shared.SKINS) {
+    const owned = (game.acct.skins || []).includes(skin.id);
+    const row = el('div', `shop-item${owned ? ' owned' : ''}`);
+    const swatch = el('span', 'swatch');
+    swatch.style.background = skin.mat.rainbow ? 'linear-gradient(90deg,#ff3b3b,#ffd93d,#3ddc84,#3ee8ff,#b46bff)' : `linear-gradient(135deg, ${skin.color}, ${skin.accent})`;
+    const info = el('div', 'shop-info');
+    info.append(el('div', 'name', skin.name), el('div', 'stats', skin.desc || (skin.mat.neon ? 'Lysande neonkanter.' : skin.mat.crystal ? 'Genomskinlig kristall.' : skin.mat.rainbow ? 'Byter färg hela tiden!' : 'En helt ny färg och yta.')));
+    const btn = skin.price === null
+      ? worldButton(owned ? 'Din ✓' : '🔥 365 dagar', () => {}, { disabled: true })
+      : worldButton(owned ? 'Köpt ✓' : `Köp · ${skin.price} 🪙`, async () => {
+        try { const r = await net.buySkin(skin.id); applyAcct(r.acct); } catch (e) { showShop(e.message); return; }
+        showShop(`Du köpte skinnet ${skin.name}! Sätt på det i Garaget.`);
+      }, { disabled: owned || (game.acct.coins || 0) < skin.price });
+    row.append(swatch, info, btn);
+    grid.append(row);
+  }
+  skins.append(grid);
   showScreen('shop');
 }
 
@@ -2131,7 +2213,27 @@ byId('btn-trade-do').addEventListener('click', doTrade);
 // Uppdragen tar aldrig slut: så fort ett blir klart kommer ett nytt (se questEvent i shared.js).
 function showQuestBoard() {
   game.phase = 'questboard';
-  renderQuests(byId('quests-board'));
+  const box = byId('quests-board');
+  renderQuests(box);
+  for (const pq of [game.acct.weekQuests, game.acct.monthQuests]) {
+    if (!pq) continue;
+    box.append(el('p', 'quests-title', `📅 ${pq.label} uppdrag`));
+    for (const it of pq.list) {
+      const row = el('div', `quest${it.done ? ' done' : ''}`);
+      row.append(el('span', 'qname', `${it.done ? '✅' : '◻️'} ${it.name}`), el('span', 'qprog', `${it.prog}/${it.goal} · +${it.coins} 🪙`));
+      box.append(row);
+    }
+    box.append(el('p', 'hint', pq.bonus ? `Alla klara — du fick ${pq.bonusBoxes} bonuslådor!` : `Klara alla för ${pq.bonusBoxes} bonuslådor.`));
+  }
+  const st = game.acct.streak || { count: 0, best: 0 };
+  const next = Object.keys(Shared.STREAK_MILESTONES).map(Number).find((d) => d > st.count);
+  box.append(el('p', 'quests-title', `🔥 Streak: ${st.count} ${st.count === 1 ? 'dag' : 'dagar'} i rad`),
+    el('p', 'hint', `Hämta den dagliga lådan varje dag för att hålla streaken vid liv (bäst hittills: ${st.best}).${next ? ` Nästa belöning vid ${next} dagar${next === 365 ? ' — en hel årsstreak ger skinnet Årsguld!' : '.'}` : ' Du har nått en hel årsstreak!'}`));
+  const hunt = game.acct.hunt;
+  if (hunt && robotById[hunt.id]) {
+    box.append(el('p', 'quests-title', '🎯 Dagens monsterjakt'),
+      el('p', 'hint', hunt.done ? `Du har redan fällt dagens jaktbyte, ${robotById[hunt.id].name}. Nytt byte i morgon!` : `Jaga ${robotById[hunt.id].name} i Monstervärlden: +${hunt.coins} mynt och en supervapendel!`));
+  }
   showScreen('questboard');
 }
 
@@ -2246,7 +2348,8 @@ const STATIONS = [
 
   { id: 'monsters', name: 'Monstervärlden', emoji: '👾', color: '#ff7a1a', x: 2000, z: -120 },
   { id: 'boss', name: 'Mystiska robotar', emoji: '❓', color: '#ff1744', x: 2000, z: 120 },
-  { id: 'world', name: 'Världskartan', emoji: '🌍', color: '#3ddc84', x: 2220, z: 0 },
+  { id: 'royals', name: 'Kungastrider', emoji: '👑', color: '#ffd93d', x: 2220, z: -120 },
+  { id: 'world', name: 'Världskartan', emoji: '🌍', color: '#3ddc84', x: 2220, z: 120 },
 ];
 const STATION_HINT = {
   arena: 'vanlig match mot AI — vinn en låda',
@@ -2262,6 +2365,7 @@ const STATION_HINT = {
   shop: 'köp varor för mynt',
   trade: 'byt robotar med Handlaren',
   clan: 'gå med i en klan',
+  royals: 'du och 4 robotar mot en kung eller drottningen',
   training: 'öva på en träningsdocka',
 };
 const HUB_HINT = 'Gå med WASD eller piltangenterna. Gå fram till en portal och tryck MELLANSLAG/J.';
@@ -2290,6 +2394,7 @@ function showHub() {
   game.hub = { player, walkers, near: null, attackHeld: true };
   byId('explore-bar').hidden = false;
   byId('btn-explore-back').hidden = true; // staden är "hemma" — inget att gå tillbaka till
+  byId('btn-travel').hidden = false;
   byId('explore-hint').textContent = HUB_HINT;
   showScreen(null);
 }
@@ -2365,6 +2470,7 @@ function enterStation(id) {
       else showBox();
       break;
     case 'quests': showQuestBoard(); break;
+    case 'royals': showRoyals(); break;
     case 'equipment':
       byId('explore-bar').hidden = false;
       renderEquipmentModal();
@@ -2372,6 +2478,63 @@ function enterStation(id) {
       break;
     default:
   }
+}
+
+// ---------- Snabbresor ----------
+// Tryck T (eller 🚀-knappen) i staden och välj vart du vill — du teleporteras dit direkt.
+function showTravel() {
+  if (game.phase !== 'hub') return;
+  game.phase = 'travel';
+  byId('explore-bar').hidden = true;
+  const box = byId('travel-list');
+  box.replaceChildren();
+  DISTRICTS.forEach((d, i) => {
+    const group = el('div', 'travel-group');
+    group.append(el('p', 'quests-title', d.name));
+    const lo = i === 0 ? -Infinity : (DISTRICTS[i - 1].x + d.x) / 2;
+    const hi = i === DISTRICTS.length - 1 ? Infinity : (DISTRICTS[i + 1].x + d.x) / 2;
+    const buttons = el('div', 'buttons');
+    for (const st of STATIONS.filter((x) => x.x >= lo && x.x < hi)) {
+      const b = worldButton(`${st.emoji} ${st.name}`, () => travelTo(st), { secondary: true });
+      b.style.borderColor = st.color;
+      buttons.append(b);
+    }
+    group.append(buttons);
+    box.append(group);
+  });
+  showScreen('travel');
+}
+
+function closeTravel() {
+  game.phase = 'hub';
+  byId('explore-bar').hidden = false;
+  showScreen(null);
+}
+
+function travelTo(st) {
+  const p = game.hub.player;
+  sparks(p.x, p.y - p.h / 2, '#3ee8ff', 22, p.z);
+  p.x = st.x;
+  p.z = st.z + (st.z > 0 ? -55 : 55); // precis framför portalen
+  sparks(p.x, p.y - p.h / 2, '#3ee8ff', 30, p.z);
+  game.phase = 'hub';
+  byId('explore-bar').hidden = false;
+  showScreen(null);
+}
+
+// ---------- Kungastrider ----------
+function showRoyals() {
+  game.phase = 'royals';
+  const box = byId('royals-list');
+  box.replaceChildren();
+  for (const def of ROBOTS.filter((r) => r.royal)) {
+    const card = createCard(def, {});
+    const item = Shared.EQUIPMENT.find((e) => e.id === def.drop);
+    card.append(el('div', 'stats', `Ger: ${item ? item.name : '?'} + en supervapendel + ${Shared.COINS.royalWin} mynt`));
+    card.append(worldButton(`⚔ Utmana ${def.royal === 'queen' ? 'drottningen' : 'kungen'}`, () => startMatch('monster', def.id)));
+    box.append(card);
+  }
+  showScreen('royals');
 }
 
 function drawHub() {
@@ -2454,6 +2617,7 @@ const EXPLORE_RANGE = 70; // hur nära man måste gå för att kunna utmana ett 
 function showMonsters() {
   if (!game.acct) return;
   byId('btn-explore-back').hidden = false;
+  byId('btn-travel').hidden = true;
   game.phase = 'monsters';
   game.arena = arenaById.direworld;
   showArenaLabel(game.arena);
@@ -2514,9 +2678,14 @@ function updateExplore(dt) {
   byId('explore-hint').textContent = near
     ? near.def.royal
       ? `👑 ${near.def.royal === 'queen' ? 'DROTTNING' : 'KUNG'} — du och 4 robotar mot ${near.def.name}! MELLANSLAG/J: Utmana (ger: ${dropName(near.def)} + en supervapendel)`
-      : `MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)})`
+      : isHuntTarget(near.def)
+        ? `🎯 DAGENS JAKTBYTE: ${near.def.name}! MELLANSLAG/J: Utmana (ger: ${dropName(near.def)} + ${game.acct.hunt.coins} mynt + en supervapendel)`
+        : `MELLANSLAG/J: Utmana ${near.def.name} (ger: ${dropName(near.def)})`
     : 'Gå med WASD eller piltangenterna.';
 }
+
+// Dagens jaktbyte (se huntFor i shared.js) — bara tills man fällt det idag.
+const isHuntTarget = (def) => !!(game.acct && game.acct.hunt && !game.acct.hunt.done && game.acct.hunt.id === def.id);
 
 // Man ska veta exakt vad ett monster ger INNAN man utmanar det — ingen slump i VILKET
 // föremål, se finishMatch() i shared.js. Namnet på den bestämda biten, för hint-texter.
@@ -2535,11 +2704,12 @@ function drawExplore() {
     ctx.clearRect(0, 0, W, H);
     ctx.textAlign = 'center';
     for (const m of ex.monsters) {
-      if (!m.def.royal && ex.near !== m) continue;
+      const hunted = isHuntTarget(m.def);
+      if (!m.def.royal && !hunted && ex.near !== m) continue;
       const at = r3d.project(m.x, m.y - m.h - 14, m.z);
-      ctx.font = `bold ${m.def.royal ? 15 : 16}px ui-monospace, Menlo, monospace`;
-      ctx.fillStyle = m.def.royal ? (ex.near === m ? '#fff3b0' : '#ffd93d') : '#ffd93d';
-      ctx.fillText(m.def.royal ? `👑 ${m.def.name}` : m.def.name, at.x, at.y);
+      ctx.font = `bold ${m.def.royal || hunted ? 15 : 16}px ui-monospace, Menlo, monospace`;
+      ctx.fillStyle = hunted ? '#ff5a5a' : m.def.royal ? (ex.near === m ? '#fff3b0' : '#ffd93d') : '#ffd93d';
+      ctx.fillText(hunted ? `🎯 ${m.def.name} — jaktbyte!` : m.def.royal ? `👑 ${m.def.name}` : m.def.name, at.x, at.y);
     }
     return;
   }
@@ -2592,6 +2762,13 @@ function renderEquipmentModal() {
     desc.className = 'stats';
     desc.textContent = `${w.power.name}: ${w.power.desc}`;
     row.append(name, desc);
+    superBox.append(row);
+  }
+  // Set: äger man allt i ett set får man bonusen hela tiden.
+  superBox.append(el('p', 'boss-title', 'SET'));
+  for (const set of game.acct.sets || []) {
+    const row = el('div', `super-row${set.done ? ' owned' : ''}`);
+    row.append(el('div', 'name', `${set.done ? '✅' : '◻️'} ${set.name} — ${set.have}/${set.total}`), el('div', 'stats', `Bonus när du har alla: ${set.desc}`));
     superBox.append(row);
   }
 
@@ -2656,6 +2833,9 @@ byId('btn-explore-back').addEventListener('click', () => {
   if (wasHub) showSelect(); else showHub();
 });
 byId('btn-questboard-back').addEventListener('click', showHub);
+byId('btn-travel').addEventListener('click', showTravel);
+byId('btn-travel-back').addEventListener('click', closeTravel);
+byId('btn-royals-back').addEventListener('click', showHub);
 
 async function importGuestCollection() {
   const guest = Backend.readGuestSave();
@@ -2769,6 +2949,8 @@ function showResult() {
   for (const q of r.quests || []) text += ` 📜 Uppdrag klart: ${q.name}! +${q.coins} mynt.`;
   if (r.questBonus) text += ` Var tredje uppdrag ger en bonuslåda — du fick ${r.questBonus === 1 ? 'en' : r.questBonus}!`;
   for (const name of r.newQuests || []) text += ` ✨ Nytt uppdrag: ${name}.`;
+  if (r.periodBonus) text += ` Alla vecko-/månadsuppdrag klara — ${r.periodBonus} bonuslådor!`;
+  if (r.hunt) text += ` 🎯 Du fällde dagens jaktbyte! +${r.hunt} mynt.`;
   for (const up of r.levelUps || []) {
     rewardItem(`NIVÅ ${up.level}!`, robotById[up.prize], { isNew: true, n: invCount(up.prize) });
   }
@@ -2793,22 +2975,29 @@ function renderBox(revealed) {
   const reveal = byId('box-reveal');
   const open = byId('btn-open');
   art.hidden = !!revealed;
-  art.classList.remove('shake');
+  art.classList.remove('shake', 'burst');
   reveal.replaceChildren();
   if (revealed) {
+    const rays = el('div', 'rays');
+    rays.style.setProperty('--rc', rarityColor(revealed.def));
+    reveal.append(rays);
     const head = document.createElement('div');
     head.className = 'reward-title';
     head.textContent = revealed.def.id === 'wildcard' ? 'JOKERN!'
       : revealed.def.rarity === 'divine' ? 'GUDOMLIG ROBOT!'
       : revealed.def.rarity === 'legendary' ? 'LEGENDARISK ROBOT!'
-      : revealed.n === 1 ? 'NY ROBOT!' : `EXTRA KOPIA! Du har nu ${revealed.n} st.`;
+      : revealed.n === 1 ? 'NY ROBOT!' : `DUBBLETT! Du har nu ${revealed.n} st — uppgradera den i Garaget.`;
     reveal.append(head, createCard(myDef(revealed.def), { isNew: revealed.n === 1, reveal: true, n: revealed.n }));
   }
   open.hidden = game.acct.boxes === 0;
   open.textContent = revealed ? `Öppna nästa (${game.acct.boxes} kvar)` : `Öppna låda (${game.acct.boxes} kvar)`;
-  byId('box-text').textContent = game.acct.boxes === 0 && !revealed
-    ? 'Du har inga lådor. Vinn matcher för att få fler.'
+  const st = game.acct.streak;
+  const streakText = st && st.reward
+    ? `🔥 Streak: ${st.count} ${st.count === 1 ? 'dag' : 'dagar'} i rad! +${st.reward.coins} mynt${st.reward.milestone ? ` — och en extra belöning för ${st.reward.milestone} dagar!` : ''}`
     : '';
+  byId('box-text').textContent = game.acct.boxes === 0 && !revealed
+    ? `Du har inga lådor. Vinn matcher för att få fler. ${streakText}`
+    : streakText;
 }
 
 function showBox() {
@@ -2830,16 +3019,33 @@ async function openBox() {
   }
   applyAcct(result.acct);
 
+  // Animationen: lådan skakar allt hårdare och lyser i sällsynthetens färg, locket flyger av,
+  // ljusstrålar snurrar och kortet snurrar fram. Legendariskt och gudomligt blinkar hela skärmen.
+  const def = robotById[result.prize.id];
+  const color = rarityColor(def);
+  const art = byId('box-art');
   byId('box-reveal').replaceChildren();
-  byId('box-art').hidden = false;
-  byId('box-art').classList.add('shake');
+  art.hidden = false;
+  art.style.setProperty('--rc', color);
+  art.classList.remove('burst');
+  art.classList.add('shake');
   byId('btn-open').hidden = true;
+  setTimeout(() => art.classList.add('burst'), 1150);
   setTimeout(() => {
     game.opening = false;
-    renderBox({ def: robotById[result.prize.id], n: result.prize.n });
+    if (['legendary', 'divine', 'wildcard'].includes(def.rarity)) {
+      const flash = el('div', 'box-flash');
+      flash.style.setProperty('--rc', color);
+      document.body.append(flash);
+      setTimeout(() => flash.remove(), 700);
+    }
+    renderBox({ def, n: result.prize.n });
     maybePromptWildcardName(result.prize.id);
-  }, 900);
+  }, 1450);
 }
+
+const RARITY_COLOR = { common: '#9aa7c7', rare: '#4da3ff', epic: '#b46bff', legendary: '#ffd93d', divine: '#3ee8ff', wildcard: '#ff5fd2', boss: '#ff1744', monster: '#ff7a1a' };
+const rarityColor = (def) => RARITY_COLOR[def.rarity] || '#5b6bd6';
 
 // isRename: true när man själv öppnar rutan igen för att byta namn (och därmed attack, se
 // Shared.wildcardSpecialFor) på en joker man redan äger — false för förstagångs-prompten.
@@ -3980,7 +4186,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);

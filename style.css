@@ -289,7 +289,37 @@ button:disabled {
   text-shadow: 0 0 12px var(--energy);
 }
 
-.crate.shake { animation: shake 0.9s ease-in-out; }
+.crate { --rc: #5b6bd6; }
+.crate.shake { animation: shake-build 1.2s ease-in forwards; }
+.crate.shake .lid, .crate.shake .crate-body { border-color: var(--rc); transition: border-color 0.8s; }
+.crate.burst .lid { animation: lid-fly 0.35s ease-out forwards; }
+/* Skakningen växer, och lådan lyser allt starkare i sällsynthetens färg. */
+@keyframes shake-build {
+  0% { transform: none; filter: drop-shadow(0 0 6px var(--rc)); }
+  20% { transform: translate(-3px, 1px) rotate(-2deg); }
+  35% { transform: translate(4px, -1px) rotate(3deg); }
+  50% { transform: translate(-6px, 2px) rotate(-5deg); filter: drop-shadow(0 0 16px var(--rc)); }
+  65% { transform: translate(7px, -2px) rotate(6deg); }
+  80% { transform: translate(-9px, 3px) rotate(-8deg) scale(1.08); filter: drop-shadow(0 0 30px var(--rc)); }
+  100% { transform: translate(0, 0) scale(1.15); filter: drop-shadow(0 0 50px var(--rc)) brightness(1.8); }
+}
+@keyframes lid-fly { to { transform: translateY(-140px) rotate(-40deg); opacity: 0; } }
+#box-stage, #box-reveal { position: relative; }
+#box-reveal > :not(.rays) { position: relative; z-index: 1; }
+.rays {
+  position: absolute; left: 50%; top: 50%; width: 440px; height: 440px; margin: -220px 0 0 -220px;
+  border-radius: 50%; pointer-events: none; z-index: 0; opacity: 0.55;
+  background: repeating-conic-gradient(from 0deg, var(--rc) 0deg 7deg, transparent 7deg 20deg);
+  -webkit-mask: radial-gradient(circle, #000 15%, transparent 68%);
+  mask: radial-gradient(circle, #000 15%, transparent 68%);
+  animation: rays-spin 7s linear infinite, rays-in 0.5s ease-out;
+}
+@keyframes rays-spin { to { transform: rotate(360deg); } }
+@keyframes rays-in { from { transform: scale(0.2); opacity: 0; } }
+.box-flash { position: fixed; inset: 0; z-index: 60; pointer-events: none; background: var(--rc); animation: box-flash 0.7s ease-out forwards; }
+@keyframes box-flash { from { opacity: 0.75; } to { opacity: 0; } }
+#box-reveal .card.reveal { animation: flip-in 0.75s cubic-bezier(0.2, 1.4, 0.4, 1); }
+@keyframes flip-in { 0% { transform: perspective(600px) rotateY(180deg) scale(0.4); opacity: 0; } 50% { opacity: 1; } 100% { transform: perspective(600px) rotateY(0) scale(1); } }
 
 @keyframes shake {
   0%, 100% { transform: translate(0, 0) rotate(0); }
@@ -779,3 +809,19 @@ button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-sha
   animation: title-shimmer 4s linear infinite, title-glow 2.6s ease-in-out infinite;
 }
 #screen-menu #btn-play { font-size: 20px; padding: 14px 40px; animation: portal-glow 2.4s ease-in-out infinite; }
+
+/* ---- Garaget, skins och nivåer ---- */
+.card .stars { color: var(--legendary); font-size: 12px; letter-spacing: 1px; text-shadow: 0 0 6px rgba(255, 217, 61, 0.7); }
+.garage-panel { width: min(620px, 100%); display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; border-radius: 10px; background: #161d33; border: 1px solid #33406a; }
+.garage-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.garage-stars { color: var(--legendary); font-size: 20px; letter-spacing: 2px; text-shadow: 0 0 8px rgba(255, 217, 61, 0.7); }
+.garage-max { color: var(--legendary); font-weight: 700; }
+.shop-skins { width: min(820px, 100%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.swatch { width: 34px; height: 34px; border-radius: 8px; flex: none; border: 2px solid rgba(255, 255, 255, 0.25); }
+
+/* ---- Snabbresor och kungastrider ---- */
+.travel-list { width: min(760px, 100%); display: flex; flex-direction: column; gap: 8px; }
+.travel-group { padding: 6px; border-radius: 10px; background: #161d33; border: 1px solid #33406a; }
+.royals-list { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.royals-list .card { width: 190px; }
+.royals-list .card button { margin-top: 6px; }

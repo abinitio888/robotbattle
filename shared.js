@@ -747,6 +747,171 @@
     };
   }
 
+  // ---------- Vecko- och månadsuppdrag ----------
+  // Större mål med större belöningar. Samma för alla under veckan (måndag–söndag) respektive
+  // månaden. Klarar man alla får man flera bonuslådor.
+  const PERIOD_QUESTS = {
+    week: {
+      label: 'Veckans', count: 3, bonusBoxes: 3,
+      pool: [
+        { id: 'w_win15', name: 'Vinn 15 matcher', goal: 15, coins: 150, on: 'win' },
+        { id: 'w_play25', name: 'Spela 25 matcher', goal: 25, coins: 120, on: 'play' },
+        { id: 'w_monster10', name: 'Besegra 10 monster', goal: 10, coins: 200, on: 'monster' },
+        { id: 'w_boss3', name: 'Besegra 3 mystiska robotar', goal: 3, coins: 200, on: 'boss' },
+        { id: 'w_royal2', name: 'Besegra 2 kungar eller drottningen', goal: 2, coins: 300, on: 'royal' },
+        { id: 'w_box10', name: 'Öppna 10 lådor', goal: 10, coins: 150, on: 'box' },
+        { id: 'w_divine5', name: 'Vinn 5 matcher med en gudomlig robot', goal: 5, coins: 250, on: 'divinewin' },
+      ],
+    },
+    month: {
+      label: 'Månadens', count: 2, bonusBoxes: 6,
+      pool: [
+        { id: 'm_win60', name: 'Vinn 60 matcher', goal: 60, coins: 700, on: 'win' },
+        { id: 'm_monster40', name: 'Besegra 40 monster', goal: 40, coins: 800, on: 'monster' },
+        { id: 'm_royal8', name: 'Besegra 8 kungar eller drottningen', goal: 8, coins: 1000, on: 'royal' },
+        { id: 'm_boss10', name: 'Besegra 10 mystiska robotar', goal: 10, coins: 800, on: 'boss' },
+        { id: 'm_box30', name: 'Öppna 30 lådor', goal: 30, coins: 600, on: 'box' },
+      ],
+    },
+  };
+  const PERIOD_IDS = new Set(Object.values(PERIOD_QUESTS).flatMap((p) => p.pool.map((q) => q.id)));
+
+  // ISO-vecka, t.ex. "2026-v44".
+  function weekKey(today) {
+    const [y, m, d] = today.split('-').map(Number);
+    const t = new Date(Date.UTC(y, m - 1, d));
+    t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3); // torsdagen samma vecka
+    const jan4 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+    const week = 1 + Math.round(((t - jan4) / 86400000 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
+    return `${t.getUTCFullYear()}-v${week}`;
+  }
+  const periodKey = (period, today) => (period === 'week' ? weekKey(today) : today.slice(0, 7));
+
+  function periodQuestsFor(period, key) {
+    const cfg = PERIOD_QUESTS[period];
+    let h = hashName(`${period}-${key}`);
+    const next = () => { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; h = (h ^ (h >>> 13)) >>> 0; return h; };
+    const pool = [...cfg.pool];
+    const picked = [];
+    while (picked.length < cfg.count && pool.length) picked.push(pool.splice(next() % pool.length, 1)[0]);
+    return picked;
+  }
+
+  const periodField = (period) => (period === 'week' ? 'wquests' : 'mquests');
+
+  function periodEvent(acct, today, period, events) {
+    const out = { completed: [], bonusBoxes: 0 };
+    const key = periodKey(period, today);
+    const field = periodField(period);
+    if (!acct[field] || acct[field].key !== key) acct[field] = { key, prog: {}, done: [], bonus: false };
+    const st = acct[field];
+    const cfg = PERIOD_QUESTS[period];
+    for (const q of periodQuestsFor(period, key)) {
+      if (st.done.includes(q.id) || !events.includes(q.on)) continue;
+      st.prog[q.id] = (st.prog[q.id] || 0) + 1;
+      if (st.prog[q.id] >= q.goal) {
+        st.done.push(q.id);
+        addCoins(acct, q.coins);
+        out.completed.push({ name: `${cfg.label}: ${q.name}`, coins: q.coins });
+      }
+    }
+    if (!st.bonus && st.done.length >= cfg.count) {
+      st.bonus = true;
+      acct.boxes += cfg.bonusBoxes;
+      out.bonusBoxes = cfg.bonusBoxes;
+    }
+    return out;
+  }
+
+  function periodView(acct, today, period) {
+    const key = periodKey(period, today);
+    const field = periodField(period);
+    const st = acct[field] && acct[field].key === key ? acct[field] : { prog: {}, done: [], bonus: false };
+    return {
+      label: PERIOD_QUESTS[period].label,
+      bonusBoxes: PERIOD_QUESTS[period].bonusBoxes,
+      list: periodQuestsFor(period, key).map((q) => ({ id: q.id, name: q.name, goal: q.goal, coins: q.coins, prog: Math.min(q.goal, st.prog[q.id] || 0), done: st.done.includes(q.id) })),
+      bonus: !!st.bonus,
+    };
+  }
+
+  // ---------- Daglig streak ----------
+  // Varje dag i rad man hämtar den dagliga lådan växer streaken. Mer mynt ju längre den är,
+  // och extra belöningar vid 7, 30, 100 och 365 dagar (en hel årsstreak ger ett eget skin).
+  const STREAK_MILESTONES = {
+    7: { boxes: 1, coins: 100 },
+    30: { boxes: 3, coins: 300 },
+    100: { boxes: 5, coins: 1000 },
+    365: { boxes: 10, coins: 3000, skin: 'arsguld' },
+  };
+  function prevDay(today) {
+    const [y, m, d] = today.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+  }
+
+  // ---------- Robotnivåer ----------
+  // Dubbletter uppgraderar en robot: från nivå N till N+1 kostar N dubbletter (en kopia blir
+  // alltid kvar). Varje nivå ger +6 % HP och slag och +3 % fart.
+  const ROBOT_MAX_LV = 5;
+  const upgradeCost = (lv) => lv;
+  const robotLevel = (acct, id) => (acct.robotLv && acct.robotLv[id]) || 1;
+  function levelUpDef(def, lv) {
+    if (!(lv > 1)) return def;
+    const k = lv - 1;
+    return {
+      ...def, level: lv,
+      hp: Math.round(def.hp * (1 + 0.06 * k)),
+      punch: Math.round(def.punch * (1 + 0.06 * k) * 10) / 10,
+      speed: Math.round(def.speed * (1 + 0.03 * k)),
+    };
+  }
+
+  // ---------- Skins ----------
+  // Köps i Butiken och sätts på vilken egen robot man vill i Garaget. mat styr hur ytan ser ut.
+  const SKINS = [
+    { id: 'guld', name: 'Guld', price: 400, color: '#ffcf3a', accent: '#b8860b', eye: '#ffffff', mat: { metalness: 0.6, roughness: 0.25, tint: 0.3 } },
+    { id: 'skugga', name: 'Skugga', price: 550, color: '#17131f', accent: '#3a2a5a', eye: '#ff3b3b', mat: { metalness: 0.1, roughness: 0.95 } },
+    { id: 'neon', name: 'Neon', price: 600, color: '#10102a', accent: '#ff2bd6', eye: '#3ee8ff', mat: { neon: true } },
+    { id: 'kristall', name: 'Kristall', price: 750, color: '#bfefff', accent: '#7fd8ff', eye: '#ffffff', mat: { crystal: true } },
+    { id: 'regnbage', name: 'Regnbåge', price: 1000, color: '#ff3b3b', accent: '#3ee8ff', eye: '#ffffff', mat: { rainbow: true } },
+    { id: 'arsguld', name: 'Årsguld', price: null, color: '#fff3b0', accent: '#ffd93d', eye: '#ff5fd2', mat: { metalness: 0.6, roughness: 0.2, tint: 0.35, neon: true }, desc: 'Bara för den som har en årsstreak på 365 dagar.' },
+  ];
+  const skinById = Object.fromEntries(SKINS.map((k) => [k.id, k]));
+
+  function buySkin(acct, id) {
+    const skin = skinById[id];
+    if (!skin || skin.price === null) return { error: 'Det skinnet går inte att köpa.' };
+    acct.skins = acct.skins || [];
+    if (acct.skins.includes(id)) return { error: 'Du har redan det skinnet.' };
+    if ((acct.coins || 0) < skin.price) return { error: `Du behöver ${skin.price - (acct.coins || 0)} mynt till.` };
+    acct.coins -= skin.price;
+    acct.skins.push(id);
+    return { bought: id };
+  }
+
+  // skinId === null tar av skinnet.
+  function setSkin(acct, robotId, skinId) {
+    if (count(acct, robotId) < 1) return { error: 'Du äger inte den roboten.' };
+    acct.robotSkin = acct.robotSkin || {};
+    if (skinId === null) { delete acct.robotSkin[robotId]; return { skin: null }; }
+    if (!(acct.skins || []).includes(skinId)) return { error: 'Du äger inte det skinnet.' };
+    acct.robotSkin[robotId] = skinId;
+    return { skin: skinId };
+  }
+
+  function upgradeRobot(acct, id) {
+    if (!robotById[id] || count(acct, id) < 1) return { error: 'Du äger inte den roboten.' };
+    const lv = robotLevel(acct, id);
+    if (lv >= ROBOT_MAX_LV) return { error: 'Roboten har redan högsta nivån.' };
+    const cost = upgradeCost(lv);
+    const spare = count(acct, id) - 1;
+    if (spare < cost) return { error: `Du behöver ${cost} dubbletter (du har ${spare}).` };
+    for (let i = 0; i < cost; i++) removeRobot(acct, id);
+    acct.robotLv = acct.robotLv || {};
+    acct.robotLv[id] = lv + 1;
+    return { level: lv + 1 };
+  }
+
   // Köper en butiksvara. Mynten finns bara på servern (eller i gästens egen webbläsare).
   function buyItem(acct, id) {
     const item = SHOP_ITEMS.find((e) => e.id === id);
@@ -759,6 +924,48 @@
   }
 
   const robotById = Object.fromEntries(ROBOTS.map((r) => [r.id, r]));
+
+  // Hur ett föremål syns på roboten: [form, färg]. Formerna ritas i render3d.js.
+  const ITEM_LOOK = {
+    turbofeet: ['boots', '#35d0ff'], lightrig: ['boots', '#9be15d'], raketskorna: ['boots', '#ff7a1a'],
+    fjaderskorna: ['boots', '#ffffff'], magnetstovlarna: ['boots', '#ff3b3b'],
+    myggvingarna: ['wings', '#9be15d'],
+    steelshield: ['armor', '#9aa7c7'], platearmor: ['armor', '#6a7084'], titanplattan: ['armor', '#cfd8e6'],
+    guldrustningen: ['armor', '#ffd93d'], taggrustningen: ['armor', '#8a5a2a'], taggpansaret: ['armor', '#5a7a3a'],
+    drakfjallet: ['armor', '#2fae5a'], frostmanteln: ['armor', '#bfe8ff'],
+    djuphjalmen: ['helmet', '#1f6fb2'], uggleogat: ['helmet', '#ffe066'],
+    servoarms: ['gloves', '#9aa7c7'], fangblade: ['gloves', '#ffffff'], plasmanavarna: ['gloves', '#ff2bd6'],
+    stenhandskarna: ['gloves', '#7a6a58'], vampyrtanden: ['gloves', '#b3261e'], lavahjartat: ['orb', '#ff5a1a'],
+    drakkronan: ['crown', '#ff5a1a'], drottningdiademet: ['crown', '#ff5fd2'],
+    energikarnan: ['orb', '#ffd93d'], turchippet: ['orb', '#3ddc84'], skoldgeneratorn: ['orb', '#3ee8ff'],
+    balansringen: ['orb', '#b46bff'], snabbchippet: ['orb', '#35d0ff'], livsbatteriet: ['orb', '#7dffb0'],
+    megavapen: ['cannon', '#3ee8ff'], askhammaren: ['hammer', '#ffe066'], drakhjartat: ['orb', '#ff6a1a'],
+    spegelskolden: ['armor', '#e8f6ff'], livskristallen: ['orb', '#a6ffcb'], gravitronen: ['orb', '#c47bff'],
+  };
+
+  // ---------- Set ----------
+  // Äger man ALLA föremål i ett set får man en bonus hela tiden, vad man än bär.
+  const SETS = [
+    { id: 'monster', name: 'Monsterjägaren', items: [...new Set(ROBOTS.filter((r) => r.monster && !r.royal).map((r) => r.drop))], bonus: { hp: 15, speed: 10 }, desc: '+15 HP och +10 fart' },
+    { id: 'royal', name: 'Kungligt blod', items: ROBOTS.filter((r) => r.royal).map((r) => r.drop), bonus: { hp: 10, punch: 4 }, desc: '+10 HP och +4 slag' },
+    { id: 'super', name: 'Vapenmästaren', items: SUPER_WEAPONS.map((w) => w.id), bonus: { hp: 20, punch: 3, speed: 15 }, desc: '+20 HP, +3 slag och +15 fart' },
+    { id: 'shop', name: 'Storkunden', items: SHOP_ITEMS.map((e) => e.id), bonus: { hp: 10, speed: 20 }, desc: '+10 HP och +20 fart' },
+  ];
+  function setsStatus(acct) {
+    return SETS.map((set) => {
+      const have = set.items.filter((id) => (acct.equipmentInv[id] || 0) > 0).length;
+      return { id: set.id, name: set.name, desc: set.desc, have, total: set.items.length, done: have === set.items.length, bonus: set.bonus };
+    });
+  }
+
+  // ---------- Monsterjakt ----------
+  // Varje dag är ett av de vanliga monstren dagens jaktbyte: första vinsten mot det ger
+  // 100 extra mynt och alltid en supervapendel.
+  const HUNT_COINS = 100;
+  function huntFor(today) {
+    const regular = ROBOTS.filter((r) => r.monster && !r.royal);
+    return regular[hashName(`jakt-${today || ''}`) % regular.length].id;
+  }
   const BOSS_IDS = ROBOTS.filter((r) => r.boss).map((r) => r.id);
   const MONSTER_IDS = ROBOTS.filter((r) => r.monster).map((r) => r.id);
   const rankOf = (def) => RARITY[def.rarity].rank;
@@ -995,6 +1202,36 @@
         acct.equippedItem = raw.equippedItem;
       }
       acct.coins = Math.max(0, Math.min(MAX_COINS, Math.floor(Number(raw.coins)) || 0));
+      for (const period of ['week', 'month']) {
+        const pq = raw[periodField(period)];
+        if (pq && typeof pq === 'object' && typeof pq.key === 'string' && pq.key.length <= 10) {
+          const prog = {};
+          for (const id of PERIOD_IDS) {
+            const n = Math.floor(Number(pq.prog && pq.prog[id]));
+            if (n > 0 && n < 100000) prog[id] = n;
+          }
+          acct[periodField(period)] = { key: pq.key, prog, done: Array.isArray(pq.done) ? pq.done.filter((id) => PERIOD_IDS.has(id)).slice(0, 5) : [], bonus: !!pq.bonus };
+        }
+      }
+      if (raw.streak && typeof raw.streak === 'object' && typeof raw.streak.last === 'string' && raw.streak.last.length <= 10) {
+        const n = (v) => Math.max(0, Math.min(100000, Math.floor(Number(v)) || 0));
+        acct.streak = { last: raw.streak.last, count: n(raw.streak.count), best: n(raw.streak.best) };
+      }
+      if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
+      if (raw.robotLv && typeof raw.robotLv === 'object') {
+        acct.robotLv = {};
+        for (const id of Object.keys(robotById)) {
+          const lv = Math.floor(Number(raw.robotLv[id]));
+          if (lv > 1) acct.robotLv[id] = Math.min(ROBOT_MAX_LV, lv);
+        }
+      }
+      if (Array.isArray(raw.skins)) acct.skins = [...new Set(raw.skins.filter((id) => skinById[id]))];
+      if (raw.robotSkin && typeof raw.robotSkin === 'object') {
+        acct.robotSkin = {};
+        for (const [rid, sid] of Object.entries(raw.robotSkin)) {
+          if (robotById[rid] && (acct.skins || []).includes(sid)) acct.robotSkin[rid] = sid;
+        }
+      }
       // Gamla konton hade tre dagliga uppdrag ({ day, prog, ... }) — de får bara nya uppdrag.
       const q = raw.quests;
       if (q && typeof q === 'object' && Array.isArray(q.active)) {
@@ -1173,7 +1410,7 @@
   // inget, precis som mot en boss.
   // rng behövs bara vid vinst (för ett eventuellt nivåpris/föremål/supervapendel) — vänmatcher
   // anropar aldrig den här funktionen.
-  function finishMatch(acct, match, won, rng) {
+  function finishMatch(acct, match, won, rng, today) {
     // Uppdragen: vad hände i matchen?
     const robotDef = robotById[match.robot];
     const oppDef = robotById[match.opp];
@@ -1188,14 +1425,21 @@
       if (robotDef && robotDef.rarity === 'divine') events.push('divinewin');
     }
     const quest = questEvent(acct, events, robotDef);
-    const result = finishMatchInner(acct, match, won, rng);
+    const result = finishMatchInner(acct, match, won, rng, today);
+    // Vecko- och månadsuppdragen (bara när dagens datum är känt).
+    for (const period of ['week', 'month']) {
+      if (!today) break;
+      const r = periodEvent(acct, today, period, events);
+      quest.completed.push(...r.completed);
+      if (r.bonusBoxes) result.periodBonus = (result.periodBonus || 0) + r.bonusBoxes;
+    }
     result.quests = quest.completed;
     result.newQuests = quest.added;
     result.questBonus = quest.bonus;
     return result;
   }
 
-  function finishMatchInner(acct, match, won, rng) {
+  function finishMatchInner(acct, match, won, rng, today) {
     if (match.monster) {
       const result = {
         won, stake: false, gained: null, lost: null, box: false, levelUps: [], bossWon: null,
@@ -1208,9 +1452,16 @@
           addEquipment(acct, drop);
           result.itemWon = drop;
         }
-        // Kungar och drottningen ger alltid en supervapendel, de vanliga monstren bara ibland.
+        // Kungar, drottningen och dagens jaktbyte ger alltid en supervapendel, de vanliga
+        // monstren bara ibland.
         const royal = robotById[match.opp] && robotById[match.opp].royal;
-        if (royal || rng() < SUPER_PIECE_CHANCE) {
+        const hunt = today && match.opp === huntFor(today) && acct.huntDay !== today;
+        if (hunt) {
+          acct.huntDay = today;
+          result.coins += addCoins(acct, HUNT_COINS);
+          result.hunt = HUNT_COINS;
+        }
+        if (royal || hunt || rng() < SUPER_PIECE_CHANCE) {
           // Delen hör till ett supervapen man inte har än (eller, har man alla, vilket som helst).
           const missing = SUPER_WEAPONS.filter((w) => !(acct.equipmentInv[w.id] > 0));
           const pool = missing.length ? missing : SUPER_WEAPONS;
@@ -1267,10 +1518,11 @@
     return { equipped: itemId };
   }
 
-  function openBox(acct, rng) {
+  function openBox(acct, rng, today) {
     if (acct.boxes <= 0) return null;
     acct.boxes -= 1;
     questEvent(acct, ['box']);
+    if (today) for (const period of ['week', 'month']) periodEvent(acct, today, period, ['box']);
     const prize = rollBox(rng);
     addRobot(acct, prize.id);
     return { id: prize.id, n: count(acct, prize.id) };
@@ -1281,6 +1533,23 @@
     acct.boxes += 1;
     addCoins(acct, COINS.daily);
     acct.daily = today;
+    // Streak: en dag till i rad, eller börja om.
+    const st = acct.streak || { last: '', count: 0, best: 0 };
+    st.count = st.last === prevDay(today) ? st.count + 1 : 1;
+    st.last = today;
+    st.best = Math.max(st.best || 0, st.count);
+    const coins = addCoins(acct, Math.min(50, 5 * st.count));
+    const milestone = STREAK_MILESTONES[st.count] || null;
+    if (milestone) {
+      acct.boxes += milestone.boxes;
+      addCoins(acct, milestone.coins);
+      if (milestone.skin) {
+        acct.skins = acct.skins || [];
+        if (!acct.skins.includes(milestone.skin)) acct.skins.push(milestone.skin);
+      }
+    }
+    st.reward = { coins, milestone: milestone ? st.count : null };
+    acct.streak = st;
     return true;
   }
 
@@ -1307,6 +1576,14 @@
       superPieces: { ...(acct.superPieces || {}) },
       coins: acct.coins || 0,
       quests: questView(acct),
+      weekQuests: periodView(acct, today, 'week'),
+      monthQuests: periodView(acct, today, 'month'),
+      streak: acct.streak ? { count: acct.streak.last === today || acct.streak.last === prevDay(today) ? acct.streak.count : 0, best: acct.streak.best || 0, reward: acct.streak.last === today ? acct.streak.reward || null : null } : { count: 0, best: 0, reward: null },
+      robotLv: { ...(acct.robotLv || {}) },
+      skins: [...(acct.skins || [])],
+      robotSkin: { ...(acct.robotSkin || {}) },
+      sets: setsStatus(acct),
+      hunt: { id: huntFor(today), done: acct.huntDay === today, coins: HUNT_COINS },
     };
   }
 
@@ -1418,5 +1695,8 @@
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem,
     QUEST_POOL, questEvent, questView,
+    ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
+    SKINS, skinById, buySkin, setSkin,
+    ITEM_LOOK, SETS, setsStatus, huntFor, HUNT_COINS, STREAK_MILESTONES,
   };
 });

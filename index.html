@@ -94,6 +94,7 @@
   <div id="explore-bar" hidden>
     <span id="explore-hint"></span>
     <div class="buttons">
+      <button id="btn-travel" type="button" class="secondary" hidden>🚀 Snabbresa (T)</button>
       <button id="btn-explore-equipment" type="button" class="secondary">Utrustning</button>
       <button id="btn-explore-back" type="button" class="secondary">Tillbaka</button>
     </div>
@@ -164,6 +165,7 @@
         <p class="hint">Klicka på en robot för att spela med den, och gå sedan ut i staden igen.</p>
         <div id="cards"></div>
         <p id="detail" class="hint"></p>
+        <div id="garage-panel" class="garage-panel"></div>
         <button id="btn-rename-wildcard" type="button" class="linklike" hidden>Döp om jokern</button>
         <button id="btn-choose-wildcard-attack" type="button" class="linklike" hidden>Beskriv jokerns attack</button>
         <p id="select-error" class="error"></p>
@@ -260,6 +262,20 @@
         <button id="btn-world-back" type="button" class="linklike">Tillbaka</button>
       </section>
 
+      <section id="screen-travel" hidden>
+        <h2>🚀 Snabbresa</h2>
+        <p class="hint">Vart vill du? Du teleporteras direkt till portalen.</p>
+        <div id="travel-list" class="travel-list"></div>
+        <button id="btn-travel-back" type="button" class="linklike">Stanna här</button>
+      </section>
+
+      <section id="screen-royals" hidden>
+        <h2>👑 Kungastrider</h2>
+        <p class="hint">Du och fyra AI-robotar mot en kung eller drottningen. Långt svårare än vanliga monster — välj en robot med rätt typ!</p>
+        <div id="royals-list" class="royals-list"></div>
+        <button id="btn-royals-back" type="button" class="linklike">Tillbaka till staden</button>
+      </section>
+
       <section id="screen-questboard" hidden>
         <h2>📜 Uppdragstavlan</h2>
         <div id="quests-board" class="quests"></div>
@@ -279,6 +295,7 @@
         <p class="hint">Här finns varor som du aldrig kan vinna i en strid — bara köpa. Mynt får du när du spelar: 10 för en vinst, 2 för en förlust, 15 för ett monster, 30 för en boss, 100 för en kung eller drottning och 20 för den dagliga lådan.</p>
         <p id="shop-coins" class="shop-coins"></p>
         <div id="shop-list" class="shop-list"></div>
+        <div id="shop-skins" class="shop-skins"></div>
         <p id="shop-error" class="hint"></p>
         <button id="btn-shop-back" type="button" class="linklike">Tillbaka</button>
       </section>
