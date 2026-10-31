@@ -1210,6 +1210,9 @@ const BOSS_TIERS = {
   hard: { skill: { think: [0.1, 0.2], attack: 0.85, dodge: 0.72, special: 0.6, speed: 1.1, jitter: 0.02 }, enrageMax: 4, enrageSeconds: 45 },
 };
 const bossTier = (def) => BOSS_TIERS[def.difficulty] || BOSS_TIERS.medium;
+// Elitrobotarna i staden (från nivå 20): de svåraste bossarnas AI, och en ilska som växer till
+// 2,5x skada.
+const ELITE_TIER = { skill: BOSS_TIERS.hard.skill, enrageMax: 2.5, enrageSeconds: 50 };
 // Monstervärldens kungar och drottning: den skarpaste AI:n av alla, och en ilska som snabbt
 // växer till 2x skada (drottningen 2,5x).
 const ROYAL_TIERS = {
@@ -1464,6 +1467,7 @@ const game = {
   bossTime: 0,             // hur länge bossmatchen pågått, styr hur boostad bossen är
   bossTier: null,          // {skill, enrageMax, enrageSeconds} för just den här bossens svårighetsgrad
   monster: false,          // pågående match är en monsterstrid (egen bana, ger utrustning i stället för låda)
+  elite: false,            // pågående match är mot en elitrobot i staden (slåss som en boss)
   explore: null,           // {player, monsters, near, attackHeld} medan man går runt i Monstervärlden
   arena: arenaById.classic, // banan som pågående/senaste match spelades på, se pickArena()
   matchToken: null,       // matchen som pågår mot AI, från net.startMatch()
@@ -1572,7 +1576,8 @@ async function startMatch(modeOverride, monsterId, forceAi) {
 
   const pDef = applyEquipment(myDef(robotById[started.match.robot]));
   const aDef = robotById[started.match.opp]; // en eventuell AI-joker är alltid namnlös, får förvalet
-  game.bossTier = game.boss ? bossTier(aDef) : aDef.royal ? ROYAL_TIERS[aDef.royal] : null;
+  game.elite = !!started.match.elite;
+  game.bossTier = game.boss ? bossTier(aDef) : aDef.royal ? ROYAL_TIERS[aDef.royal] : game.elite ? ELITE_TIER : null;
   game.online = null;
   game.fighters = null;
   game.player = new Fighter(pDef, W * 0.25, 1);
@@ -1582,7 +1587,7 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.training = null;
   resetArena();
   hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
-  hud.nameAi.textContent = game.boss ? '??? · MYSTISK ROBOT' : `${aDef.name} · ${game.monster ? 'MONSTER' : 'AI'}`;
+  hud.nameAi.textContent = game.boss ? '??? · MYSTISK ROBOT' : `${game.elite ? '⭐ ' : ''}${aDef.name} · ${game.monster ? 'MONSTER' : game.elite ? 'ELIT' : 'AI'}`;
   setHudType(hud.typePlayer, pDef);
   setHudType(hud.typeAi, aDef);
   showScreen(null);
@@ -2398,14 +2403,16 @@ function showHub() {
 
 // Robotarna som går omkring är stadens utmanare (Shared.streetChallengers): de man redan vunnit
 // går hem, och var tionde minut kommer ett nytt gäng. De som redan går kvar står kvar där de är.
+// Elitrobotarna (från nivå 20) är lite större och lyser starkare.
 function syncWalkers(hub) {
-  const ids = Shared.streetChallengers(game.acct, Date.now());
-  hub.walkers = hub.walkers.filter((w) => ids.includes(w.f.def.id));
-  for (const id of ids) {
-    if (hub.walkers.some((w) => w.f.def.id === id)) continue;
-    const f = new Fighter(robotById[id], rand(100, HUB_W - 100), 1);
+  const list = Shared.streetChallengers(game.acct, Date.now());
+  hub.walkers = hub.walkers.filter((w) => list.some((r) => r.id === w.id));
+  for (const r of list) {
+    if (hub.walkers.some((w) => w.id === r.id)) continue;
+    const def = robotById[r.id];
+    const f = new Fighter(r.elite ? { ...def, scale: def.scale * 1.25 } : def, rand(100, HUB_W - 100), 1);
     f.z = rand(-50, 50);
-    hub.walkers.push({ f, dir: 0, depth: 0, t: 0 });
+    hub.walkers.push({ id: r.id, elite: r.elite, f, dir: 0, depth: 0, t: 0 });
   }
 }
 
@@ -2466,13 +2473,14 @@ function updateHub(dt) {
   }
   if (near !== hub.near) {
     const def = near && near.f && near.f.def;
-    byId('explore-hint').textContent = def
-      ? `⚔️ ${def.name} (${RARITY[def.rarity].label}) — MELLANSLAG/J: Utmana till match! Vinner du får du roboten.`
-      : near ? `${near.emoji} ${near.name} — ${STATION_HINT[near.id]}. MELLANSLAG/J: Gå in` : HUB_HINT;
+    byId('explore-hint').textContent = def && near.elite
+      ? `⭐ ELITROBOT ${def.name} (${RARITY[def.rarity].label}) — slåss som en boss! MELLANSLAG/J: Utmana. Vinner du får du roboten + 100 🪙.`
+      : def ? `⚔️ ${def.name} (${RARITY[def.rarity].label}) — MELLANSLAG/J: Utmana till match! Vinner du får du roboten.`
+        : near ? `${near.emoji} ${near.name} — ${STATION_HINT[near.id]}. MELLANSLAG/J: Gå in` : HUB_HINT;
   }
   hub.near = near;
   if (near && input.attack && !hub.attackHeld) {
-    if (near.f) startMatch('street', near.f.def.id);
+    if (near.f) startMatch('street', near.id);
     else enterStation(near.id);
   }
   hub.attackHeld = input.attack;
@@ -2574,7 +2582,7 @@ function drawHub() {
   if (!hub) return;
   const stations = STATIONS.map((st) => ({ ...st, near: hub.near === st }));
   if (r3d) {
-    const fighters = hub.walkers.map((w) => ({ f: w.f, pose: fighterPose(w.f) }));
+    const fighters = hub.walkers.map((w) => ({ f: w.f, pose: { ...fighterPose(w.f), ready: w.elite } }));
     fighters.push({ f: hub.player, pose: fighterPose(hub.player), isPlayer: true });
     r3d.render({ arena: game.arena, shake: 0, fighters, focus: [{ f: hub.player }], stations });
     ctx.clearRect(0, 0, W, H);
@@ -2589,6 +2597,18 @@ function drawHub() {
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
       ctx.strokeText(d.name, at.x, at.y);
       ctx.fillText(d.name, at.x, at.y);
+    }
+    // Namnskyltar över stadsrobotarna: elitrobotarna alltid, de andra när man står nära.
+    for (const w of hub.walkers) {
+      if (!w.elite && hub.near !== w) continue;
+      const at = r3d.project(w.f.x, FLOOR - 150 * w.f.def.scale, w.f.z);
+      ctx.font = `bold ${hub.near === w ? 16 : 13}px ui-monospace, Menlo, monospace`;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillStyle = w.elite ? '#ffd93d' : '#ffffff';
+      const label = `${w.elite ? '⭐ ELIT ' : '⚔️ '}${w.f.def.name}`;
+      ctx.strokeText(label, at.x, at.y);
+      ctx.fillText(label, at.x, at.y);
     }
     for (const st of stations) {
       if (Math.abs(st.x - hub.player.x) > 380) continue;
@@ -2968,7 +2988,8 @@ function showResult() {
         : 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
     }
   } else if (r.won) {
-    text = r.street ? `${robotById[r.gained].name} från staden är din nu — och du fick en låda!`
+    text = r.elite ? `Du besegrade elitroboten! ${robotById[r.gained].name} är din nu — och du fick en låda!`
+      : r.street ? `${robotById[r.gained].name} från staden är din nu — och du fick en låda!`
       : r.gained ? 'Du vann motståndarens robot och fick en låda!' : 'Du fick en låda!';
     if (r.gained) rewardItem('DU VANN ROBOTEN!', robotById[r.gained], { isNew: true, n: invCount(r.gained) });
   } else if (r.lost) {
