@@ -649,6 +649,8 @@
     { id: 'divine', on: 'divinewin', goal: 1, step: 1, coins: 60, name: (n) => `Vinn ${plural(n, 'en match', 'matcher')} med en gudomlig robot` },
     { id: 'street', on: 'street', goal: 1, step: 1, coins: 50, name: (n) => `Vinn ${plural(n, 'en robot', 'robotar')} som går omkring i staden` },
     { id: 'elite', on: 'elite', goal: 1, step: 0, coins: 200, name: () => 'Besegra en elitrobot i staden' }, // bara från nivå ELITE_LEVEL
+    { id: 'elite3', on: 'elite', goal: 3, step: 1, coins: 400, name: (n) => `Besegra ${n} elitrobotar i staden` }, // bara från nivå CHAMPION_LEVEL
+    { id: 'champion', on: 'champion', goal: 1, step: 0, coins: 600, name: () => 'Besegra stadens mästare' }, // bara från nivå CHAMPION_LEVEL
   ];
   const questById = Object.fromEntries(QUEST_POOL.map((q) => [q.id, q]));
   const QUEST_SLOTS = 4;
@@ -682,6 +684,7 @@
       if ((base.param === 'type' && !types.length) || (base.param === 'rarity' && !rarities.length)) continue;
       if (base.id === 'divine' && !owned.some((o) => o.rarity === 'divine')) continue;
       if (base.id === 'elite' && !(acct.level >= ELITE_LEVEL)) continue;
+      if ((base.id === 'elite3' || base.id === 'champion') && !(acct.level >= CHAMPION_LEVEL)) continue;
       const level = questLevel(st.done);
       const q = { id: base.id, goal: base.goal + base.step * level, coins: Math.round(base.coins * (1 + 0.25 * level)), prog: 0, idle: 0 };
       if (base.param === 'type') q.param = types[next() % types.length];
@@ -1222,7 +1225,7 @@
       }
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
       if (Array.isArray(raw.streetBeaten)) {
-        acct.streetBeaten = raw.streetBeaten.filter((k) => typeof k === 'string' && /^\d+:[\w-]+$/.test(k)).slice(-(STREET_COUNT + ELITE_COUNT) * 2);
+        acct.streetBeaten = raw.streetBeaten.filter((k) => typeof k === 'string' && /^\d+:[\w-]+$/.test(k)).slice(-STREET_MAX * 2);
       }
       if (raw.robotLv && typeof raw.robotLv === 'object') {
         acct.robotLv = {};
@@ -1390,15 +1393,21 @@
   // låda), så servern vet exakt vilka som går där och bara de går att utmana. Vinner man får man
   // roboten — men varje robot går bara att vinna en gång innan nästa gäng kommer.
   // Från nivå ELITE_LEVEL går även elitrobotar omkring: minst episka, de slåss som de svåraste
-  // bossarna (se ELITE_TIER i game.js) och ger extra mynt när man vinner.
+  // bossarna och blir starkare ju högre nivå man har (se eliteTier i game.js), och ger extra
+  // mynt när man vinner. Från CHAMPION_LEVEL kommer en elitrobot till, och stadens mästare:
+  // minst legendarisk, med mycket mer liv och den skarpaste AI:n — och ett stort pris.
   const STREET_SLOT_MS = 10 * 60 * 1000;
   const STREET_COUNT = 8;
   const ELITE_COUNT = 2;
   const ELITE_LEVEL = 20;
   const ELITE_COINS = 100;
+  const CHAMPION_LEVEL = 30;
+  const CHAMPION_COINS = 300;
+  const CHAMPION_BOXES = 2;
+  const STREET_MAX = STREET_COUNT + ELITE_COUNT + 2; // + en elitrobot och mästaren från CHAMPION_LEVEL
   const streetSlot = (now) => Math.floor(now / STREET_SLOT_MS);
 
-  // [{ id, elite }] — hela gänget i den tidsluckan, elitrobotarna sist.
+  // [{ id, elite, champion, minLevel }] — hela gänget i den tidsluckan, de svåraste sist.
   function streetRobots(slot) {
     let s = hashName(`gata-${slot}`) >>> 0;
     const rng = () => { // mulberry32
@@ -1416,15 +1425,20 @@
       }
     };
     add(() => rollBox(rng), STREET_COUNT);
-    add(() => rollBoxFrom(rng, 'epic'), ELITE_COUNT);
-    return ids.map((id, i) => ({ id, elite: i >= STREET_COUNT }));
+    add(() => rollBoxFrom(rng, 'epic'), ELITE_COUNT + 1);
+    add(() => rollBoxFrom(rng, 'legendary'), 1);
+    return ids.map((id, i) => {
+      if (i < STREET_COUNT) return { id, elite: false, champion: false, minLevel: 1 };
+      if (i < STREET_COUNT + ELITE_COUNT) return { id, elite: true, champion: false, minLevel: ELITE_LEVEL };
+      return { id, elite: true, champion: i === STREET_MAX - 1, minLevel: CHAMPION_LEVEL };
+    });
   }
 
-  // Stadsrobotarna man kan utmana just nu: nuvarande gäng (elitrobotarna bara från nivå
-  // ELITE_LEVEL), minus dem man redan vunnit.
+  // Stadsrobotarna man kan utmana just nu: nuvarande gäng (de svåraste bara från sin nivå),
+  // minus dem man redan vunnit.
   function streetChallengers(acct, now, slot = streetSlot(now)) {
     const beaten = acct.streetBeaten || [];
-    return streetRobots(slot).filter((r) => (!r.elite || acct.level >= ELITE_LEVEL) && !beaten.includes(`${slot}:${r.id}`));
+    return streetRobots(slot).filter((r) => acct.level >= r.minLevel && !beaten.includes(`${slot}:${r.id}`));
   }
 
   // Startar en match. Insatsen dras direkt, så det går inte att smita undan en förlust. Alla
@@ -1440,7 +1454,7 @@
         const hit = streetChallengers(acct, now, slot).find((r) => r.id === target);
         if (!hit) continue;
         acct.selected = robotId;
-        return { robot: robotId, stake: false, opp: target, street: slot, elite: hit.elite };
+        return { robot: robotId, stake: false, opp: target, street: slot, elite: hit.elite, champion: hit.champion };
       }
       return { error: 'Den roboten har gått vidare.' };
     }
@@ -1483,6 +1497,7 @@
       if (match.stake) events.push('stake');
       if (match.street !== undefined) events.push('street');
       if (match.elite) events.push('elite');
+      if (match.champion) events.push('champion');
       events.push('typewin', 'raritywin');
       if (robotDef && robotDef.rarity === 'divine') events.push('divinewin');
     }
@@ -1556,11 +1571,15 @@
         addRobot(acct, match.opp);
         result.gained = match.opp;
         result.street = true;
-        if (match.elite) {
+        if (match.champion) {
+          result.coins += addCoins(acct, CHAMPION_COINS);
+          acct.boxes += CHAMPION_BOXES;
+          result.champion = true;
+        } else if (match.elite) {
           result.coins += addCoins(acct, ELITE_COINS);
           result.elite = true;
         }
-        acct.streetBeaten = [...(acct.streetBeaten || []), `${match.street}:${match.opp}`].slice(-(STREET_COUNT + ELITE_COUNT) * 2);
+        acct.streetBeaten = [...(acct.streetBeaten || []), `${match.street}:${match.opp}`].slice(-STREET_MAX * 2);
       } else if (match.stake) {
         addRobot(acct, match.robot);
         addRobot(acct, match.opp);
@@ -1767,7 +1786,7 @@
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem,
     QUEST_POOL, questEvent, questView,
-    STREET_SLOT_MS, ELITE_LEVEL, streetSlot, streetRobots, streetChallengers,
+    STREET_SLOT_MS, ELITE_LEVEL, CHAMPION_LEVEL, streetSlot, streetRobots, streetChallengers,
     ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
     SKINS, skinById, buySkin, setSkin,
     ITEM_LOOK, SETS, setsStatus, huntFor, HUNT_COINS, STREAK_MILESTONES,
