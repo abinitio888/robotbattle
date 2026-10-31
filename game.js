@@ -3102,6 +3102,11 @@ function showResult() {
   if (friend) byId('result-quests').replaceChildren();
   else renderQuests(byId('result-quests'), r.newQuests);
   byId('btn-again').hidden = friend;
+  // I tornet säger knappen vart man ska: uppåt efter en vinst, samma våning efter en förlust.
+  const floor = game.acct.tower;
+  byId('btn-again').textContent = !game.tower ? 'Kämpa igen (Enter)'
+    : floor > Shared.TOWER_TOP ? '🏆 Tillbaka till staden (Enter)'
+      : r.tower ? `🗼 Upp till våning ${floor} (Enter)` : `🗼 Försök våning ${floor} igen (Enter)`;
   byId('btn-open-result').hidden = friend || game.acct.boxes === 0;
   byId('btn-open-result').textContent = `Öppna låda (${game.acct.boxes})`;
   byId('btn-change').hidden = friend;
