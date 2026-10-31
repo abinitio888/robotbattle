@@ -1224,6 +1224,20 @@ function eliteTier(level, champion) {
   const over = clamp(level - 20, 0, 30);
   return { skill: BOSS_TIERS.hard.skill, enrageMax: 2.5 + over * 0.05, enrageSeconds: 50, hpMul: 1 + over * 0.02 };
 }
+// Utmaningstornet: AI:n går från de svåraste bossarnas till drottningens ju högre upp man
+// kommer, och motståndaren får mer liv (upp till 2,25x) och mer ilska (upp till 4x skada).
+function towerTier(floor) {
+  const t = clamp(floor / Shared.TOWER_TOP, 0, 1);
+  const a = BOSS_TIERS.hard.skill;
+  const b = ROYAL_TIERS.queen.skill;
+  const mix = (x, y) => x + (y - x) * t;
+  const skill = {
+    think: [mix(a.think[0], b.think[0]), mix(a.think[1], b.think[1])],
+    attack: mix(a.attack, b.attack), dodge: mix(a.dodge, b.dodge), special: mix(a.special, b.special),
+    speed: mix(a.speed, b.speed), jitter: mix(a.jitter, b.jitter),
+  };
+  return { skill, enrageMax: 2 + 2 * t, enrageSeconds: 60, hpMul: 1 + 1.25 * t };
+}
 // Monstervärldens kungar och drottning: den skarpaste AI:n av alla, och en ilska som snabbt
 // växer till 2x skada (drottningen 2,5x).
 const ROYAL_TIERS = {
@@ -1495,6 +1509,7 @@ const game = {
   monster: false,          // pågående match är en monsterstrid (egen bana, ger utrustning i stället för låda)
   elite: false,            // pågående match är mot en elitrobot i staden (slåss som en boss)
   champion: false,         // ... och då kanske mot stadens mästare (nivå 30+)
+  tower: 0,                // våningen i Utmaningstornet som pågående match gäller (0 = ingen tornmatch)
   explore: null,           // {player, monsters, near, attackHeld} medan man går runt i Monstervärlden
   arena: arenaById.classic, // banan som pågående/senaste match spelades på, se pickArena()
   matchToken: null,       // matchen som pågår mot AI, från net.startMatch()
@@ -1605,9 +1620,10 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   const oppDef = robotById[started.match.opp]; // en eventuell AI-joker är alltid namnlös, får förvalet
   game.elite = !!started.match.elite;
   game.champion = !!started.match.champion;
-  game.bossTier = game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
+  game.tower = started.match.tower || 0;
+  game.bossTier = game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
     : game.elite ? eliteTier(game.acct.level, game.champion) : null;
-  const aDef = game.elite ? { ...oppDef, hp: Math.round(oppDef.hp * game.bossTier.hpMul) } : oppDef;
+  const aDef = game.bossTier && game.bossTier.hpMul ? { ...oppDef, hp: Math.round(oppDef.hp * game.bossTier.hpMul) } : oppDef;
   game.online = null;
   game.fighters = null;
   game.player = new Fighter(pDef, W * 0.25, 1);
@@ -1617,7 +1633,8 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.training = null;
   resetArena();
   hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
-  hud.nameAi.textContent = game.boss ? '??? · MYSTISK ROBOT' : game.champion ? `👑 ${aDef.name} · STADENS MÄSTARE`
+  hud.nameAi.textContent = game.tower ? `🗼 VÅNING ${game.tower}/${Shared.TOWER_TOP} · ${aDef.name}`
+    : game.boss ? '??? · MYSTISK ROBOT' : game.champion ? `👑 ${aDef.name} · STADENS MÄSTARE`
     : `${game.elite ? '⭐ ' : ''}${aDef.name} · ${game.monster ? 'MONSTER' : game.elite ? 'ELIT' : 'AI'}`;
   setHudType(hud.typePlayer, pDef);
   setHudType(hud.typeAi, aDef);
@@ -1779,11 +1796,18 @@ function endMatch() {
     .catch((e) => { game.result = { won, stake: game.stake, gained: null, lost: null, error: e.message }; });
 }
 
+// "Kämpa igen": efter en tornmatch blir det nästa (eller samma) våning, annars en vanlig match.
+function fightAgain() {
+  if (!game.tower) startMatch();
+  else if (game.acct.tower <= Shared.TOWER_TOP) startMatch('tower');
+  else showHub();
+}
+
 function onEnter() {
   if (game.phase === 'menu') showHub();
   else if (game.phase === 'select') showHub();
   else if (game.phase === 'teleport') startMatch();
-  else if (game.phase === 'over' && !screens.result.hidden && !game.online) startMatch();
+  else if (game.phase === 'over' && !screens.result.hidden && !game.online) fightAgain();
   else if (game.phase === 'box') {
     if (game.acct.boxes > 0) openBox();
     else showSelect();
@@ -2382,6 +2406,7 @@ const STATIONS = [
   { id: 'arena', name: 'Vanlig match', emoji: '⚔', color: '#35d0ff', x: 800, z: -120 },
   { id: 'stake', name: 'Insatsmatch', emoji: '💰', color: '#ffd93d', x: 800, z: 120 },
   { id: 'training', name: 'Träningsarenan', emoji: '🎯', color: '#c9a36b', x: 1020, z: -120 },
+  { id: 'tower', name: 'Utmaningstornet', emoji: '🗼', color: '#ff5ad1', x: 1210, z: 0 },
   { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 1020, z: 120 },
 
   { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 1400, z: -120 },
@@ -2404,6 +2429,7 @@ const STATION_HINT = {
   monsters: 'res till Monstervärlden',
   world: 'världsdelarna och deras beskyddare',
   friend: 'spela mot en kompis',
+  tower: `${Shared.TOWER_TOP} våningar med allt starkare robotar, från nivå ${Shared.TOWER_LEVEL}`,
   shop: 'köp varor för mynt',
   trade: 'byt robotar med Handlaren',
   clan: 'gå med i en klan',
@@ -2511,7 +2537,7 @@ function updateHub(dt) {
       : def && near.elite
       ? `⭐ ELITROBOT ${def.name} (${RARITY[def.rarity].label}) — slåss som en boss! MELLANSLAG/J: Utmana. Vinner du får du roboten + 100 🪙.`
       : def ? `⚔️ ${def.name} (${RARITY[def.rarity].label}) — MELLANSLAG/J: Utmana till match! Vinner du får du roboten.`
-        : near ? `${near.emoji} ${near.name} — ${STATION_HINT[near.id]}. MELLANSLAG/J: Gå in` : HUB_HINT;
+        : near ? `${near.emoji} ${near.name} — ${STATION_HINT[near.id]}${towerProgress(near.id)}. MELLANSLAG/J: Gå in` : HUB_HINT;
   }
   hub.near = near;
   if (near && input.attack && !hub.attackHeld) {
@@ -2525,10 +2551,21 @@ function updateHub(dt) {
   hub.attackHeld = input.attack;
 }
 
+// Hur långt man kommit i Utmaningstornet, för tipsraden vid portalen.
+function towerProgress(id) {
+  if (id !== 'tower' || game.acct.level < Shared.TOWER_LEVEL) return '';
+  return game.acct.tower > Shared.TOWER_TOP ? ' (klarat! 🏆)' : ` (du är på våning ${game.acct.tower})`;
+}
+
 function enterStation(id) {
   const blocked = (msg) => { byId('explore-hint').textContent = msg; };
   if (id === 'stake' && !canStake()) { blocked('💰 Insatsarenan kräver minst 2 robotar.'); return; }
   if (id === 'friend' && !roomCap) { blocked('Vänmatcher går inte att spela här just nu.'); return; }
+  if (id === 'tower' && game.acct.level < Shared.TOWER_LEVEL) {
+    blocked(`🗼 Utmaningstornet öppnar på nivå ${Shared.TOWER_LEVEL} — du är nivå ${game.acct.level}.`);
+    return;
+  }
+  if (id === 'tower' && game.acct.tower > Shared.TOWER_TOP) { blocked('🗼 Du har klarat hela Utmaningstornet! 🏆'); return; }
   byId('explore-bar').hidden = true;
   switch (id) {
     case 'arena': game.mode = 'normal'; startMatch(); break;
@@ -2541,6 +2578,7 @@ function enterStation(id) {
     case 'trade': showTrade(); break;
     case 'clan': showClan(); break;
     case 'training': startTraining(true); break;
+    case 'tower': startMatch('tower'); break;
     case 'garage': game.fromHub = true; showSelect(); break;
     case 'boxes':
       // Den dagliga lådan hämtas automatiskt när man går in i Lådor.
@@ -3026,6 +3064,13 @@ function showResult() {
         ? `${opp.name} var för stark. ${opp.royal === 'queen' ? 'Drottningen' : 'Kungen'} väntar kvar — bli starkare och försök igen.`
         : 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
     }
+  } else if (r.won && r.tower) {
+    text = r.tower === Shared.TOWER_TOP ? `🏆 Du klarade alla ${Shared.TOWER_TOP} våningar i Utmaningstornet!`
+      : `🗼 Våning ${r.tower} klar! Nästa: våning ${r.tower + 1}.`;
+    if (r.gained) {
+      text += ` Var ${Shared.TOWER_PRIZE_EVERY}:e våning ger ett pris: ${robotById[r.gained].name} och en extra låda!`;
+      rewardItem(`VÅNING ${r.tower}!`, robotById[r.gained], { isNew: true, n: invCount(r.gained) });
+    }
   } else if (r.won) {
     text = r.champion ? `👑 Du besegrade stadens mästare! ${robotById[r.gained].name} är din nu, och du fick 3 lådor!`
       : r.elite ? `Du besegrade elitroboten! ${robotById[r.gained].name} är din nu — och du fick en låda!`
@@ -3035,6 +3080,8 @@ function showResult() {
   } else if (r.lost) {
     text = 'Du tappade din insats.';
     rewardItem('FÖRLORAD ROBOT', robotById[r.lost], { n: invCount(r.lost) });
+  } else if (game.tower) {
+    text = `🗼 Våning ${game.tower} var för svår den här gången. Du står kvar där — försök igen!`;
   } else {
     text = 'Vinn en match för att få en låda.';
   }
@@ -4242,7 +4289,7 @@ byId('btn-leave-friend').addEventListener('click', () => {
 
 byId('btn-play').addEventListener('click', showHub);
 byId('btn-fight').addEventListener('click', () => startMatch());
-byId('btn-again').addEventListener('click', () => startMatch());
+byId('btn-again').addEventListener('click', fightAgain);
 byId('btn-change').addEventListener('click', showHub);
 byId('btn-boxes').addEventListener('click', showBox);
 byId('btn-daily').addEventListener('click', claimDaily);

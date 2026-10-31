@@ -651,6 +651,7 @@
     { id: 'elite', on: 'elite', goal: 1, step: 0, coins: 200, name: () => 'Besegra en elitrobot i staden' }, // bara från nivå ELITE_LEVEL
     { id: 'elite3', on: 'elite', goal: 3, step: 1, coins: 400, name: (n) => `Besegra ${n} elitrobotar i staden` }, // bara från nivå CHAMPION_LEVEL
     { id: 'champion', on: 'champion', goal: 1, step: 0, coins: 600, name: () => 'Besegra stadens mästare' }, // bara från nivå CHAMPION_LEVEL
+    { id: 'tower', on: 'tower', goal: 2, step: 1, coins: 120, name: (n) => `Klättra ${n} våningar i Utmaningstornet` }, // bara från nivå TOWER_LEVEL
   ];
   const questById = Object.fromEntries(QUEST_POOL.map((q) => [q.id, q]));
   const QUEST_SLOTS = 4;
@@ -685,6 +686,7 @@
       if (base.id === 'divine' && !owned.some((o) => o.rarity === 'divine')) continue;
       if (base.id === 'elite' && !(acct.level >= ELITE_LEVEL)) continue;
       if ((base.id === 'elite3' || base.id === 'champion') && !(acct.level >= CHAMPION_LEVEL)) continue;
+      if (base.id === 'tower' && !(acct.level >= TOWER_LEVEL && (acct.tower || 1) <= TOWER_TOP)) continue;
       const level = questLevel(st.done);
       const q = { id: base.id, goal: base.goal + base.step * level, coins: Math.round(base.coins * (1 + 0.25 * level)), prog: 0, idle: 0 };
       if (base.param === 'type') q.param = types[next() % types.length];
@@ -1224,6 +1226,7 @@
         acct.streak = { last: raw.streak.last, count: n(raw.streak.count), best: n(raw.streak.best) };
       }
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
+      acct.tower = Math.max(1, Math.min(TOWER_TOP + 1, Math.floor(Number(raw.tower)) || 1));
       if (Array.isArray(raw.streetBeaten)) {
         acct.streetBeaten = raw.streetBeaten.filter((k) => typeof k === 'string' && /^\d+:[\w-]+$/.test(k)).slice(-STREET_MAX * 2);
       }
@@ -1441,6 +1444,34 @@
     return streetRobots(slot).filter((r) => acct.level >= r.minLevel && !beaten.includes(`${slot}:${r.id}`));
   }
 
+  // ---------- Utmaningstornet (från nivå TOWER_LEVEL) ----------
+  // TOWER_TOP våningar, var och en med en bestämd motståndare som blir sällsyntare (och, i
+  // game.js, starkare) ju högre upp man kommer. Var tionde våning vaktas av en mystisk robot.
+  // Vinst tar en upp en våning och ger mynt; var femte våning ger dessutom en låda och
+  // våningens robot. Förlust kostar inget — man står kvar och kan försöka igen.
+  const TOWER_LEVEL = 20;
+  const TOWER_TOP = 50;
+  const TOWER_PRIZE_EVERY = 5;
+  const TOWER_TOP_COINS = 1000;
+  const towerCoins = (floor) => 20 + floor * 4;
+
+  function towerOpponent(floor) {
+    if (floor % 10 === 0) return BOSS_IDS[floor / 10 % BOSS_IDS.length];
+    let s = hashName(`torn-${floor}`) >>> 0;
+    const rng = () => { // mulberry32
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const floorRarity = floor < 10 ? 'rare' : floor < 20 ? 'epic' : floor < 35 ? 'legendary' : 'divine';
+    const below = floor > 1 ? towerOpponent(floor - 1) : null; // aldrig samma robot två våningar i rad
+    for (;;) {
+      const r = rollBoxFrom(rng, floorRarity);
+      if (r.id !== 'wildcard' && r.id !== below) return r.id;
+    }
+  }
+
   // Startar en match. Insatsen dras direkt, så det går inte att smita undan en förlust. Alla
   // bossar går att utmana när som helst, oavsett nivå, och om och om igen — vilken av dem
   // man möter slumpas. Ingen insats sätts på spel mot en boss. Monster fungerar likadant
@@ -1457,6 +1488,13 @@
         return { robot: robotId, stake: false, opp: target, street: slot, elite: hit.elite, champion: hit.champion };
       }
       return { error: 'Den roboten har gått vidare.' };
+    }
+    if (mode === 'tower') {
+      if (!(acct.level >= TOWER_LEVEL)) return { error: `Utmaningstornet öppnar på nivå ${TOWER_LEVEL}.` };
+      const floor = acct.tower || 1;
+      if (floor > TOWER_TOP) return { error: 'Du har redan klarat hela tornet!' };
+      acct.selected = robotId;
+      return { robot: robotId, stake: false, opp: towerOpponent(floor), tower: floor };
     }
     const monsterId = target;
     acct.selected = robotId;
@@ -1498,6 +1536,7 @@
       if (match.street !== undefined) events.push('street');
       if (match.elite) events.push('elite');
       if (match.champion) events.push('champion');
+      if (match.tower) events.push('tower');
       events.push('typewin', 'raritywin');
       if (robotDef && robotDef.rarity === 'divine') events.push('divinewin');
     }
@@ -1564,7 +1603,19 @@
     if (won) {
       acct.boxes += 1;
       result.levelUps = addXp(acct, 1, rng);
-      if (match.boss) {
+      if (match.tower) {
+        // Bara om man faktiskt står på den våningen (en gammal match räknas inte två gånger).
+        if ((acct.tower || 1) === match.tower) {
+          acct.tower = match.tower + 1;
+          result.tower = match.tower;
+          result.coins += addCoins(acct, match.tower === TOWER_TOP ? TOWER_TOP_COINS : towerCoins(match.tower));
+          if (match.tower % TOWER_PRIZE_EVERY === 0) {
+            acct.boxes += 1;
+            addRobot(acct, match.opp);
+            result.gained = match.opp;
+          }
+        }
+      } else if (match.boss) {
         addRobot(acct, match.opp);
         result.bossWon = match.opp;
       } else if (match.street !== undefined) {
@@ -1666,6 +1717,7 @@
       superPieces: { ...(acct.superPieces || {}) },
       coins: acct.coins || 0,
       streetBeaten: [...(acct.streetBeaten || [])],
+      tower: acct.tower || 1,
       quests: questView(acct),
       weekQuests: periodView(acct, today, 'week'),
       monthQuests: periodView(acct, today, 'month'),
@@ -1787,6 +1839,7 @@
     SHOP_ITEMS, COINS, buyItem,
     QUEST_POOL, questEvent, questView,
     STREET_SLOT_MS, ELITE_LEVEL, CHAMPION_LEVEL, streetSlot, streetRobots, streetChallengers,
+    TOWER_LEVEL, TOWER_TOP, TOWER_PRIZE_EVERY, towerOpponent, towerCoins,
     ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
     SKINS, skinById, buySkin, setSkin,
     ITEM_LOOK, SETS, setsStatus, huntFor, HUNT_COINS, STREAK_MILESTONES,
