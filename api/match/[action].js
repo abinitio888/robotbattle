@@ -29,13 +29,13 @@ module.exports = dispatch({
     method: 'POST',
     async handler(req, res, body) {
       const session = await requireSession(req);
-      const { token, won } = body;
+      const { token, won, perfect } = body;
       const raw = typeof token === 'string' ? await redis.get(`match:${token}`) : null;
       const entry = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : null;
       if (!entry || entry.key !== session.key) throw new HttpError(400, 'Ingen match pågår.');
       if (Date.now() - entry.startedAt < MIN_MATCH_MS) throw new HttpError(400, 'Matchen var för kort.');
       await redis.del(`match:${token}`);
-      const result = S.finishMatch(session.user.acct, entry.match, won === true, randomFloat, clock().today);
+      const result = S.finishMatch(session.user.acct, entry.match, won === true, randomFloat, clock().today, perfect === true);
       // Klan: varje vinst ger klanpoäng (mer för svårare motståndare) och lite extra mynt.
       if (result.won && session.user.clan) {
         const opp = S.robotById[entry.match.opp];

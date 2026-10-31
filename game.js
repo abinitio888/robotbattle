@@ -115,6 +115,7 @@ function hurt(target, dmg, dirX, knock, source) {
     game.superBanner = { name: 'Återspolning', t: 1.4, mine: target === game.player };
   }
   if (target.hp <= 0) target.dead = true;
+  if (target === game.player) game.hitTaken = true; // inte längre Felfri
   Sound.hit(dmg);
   if (target.dead) Sound.ko();
   popDamage(target, dmg, dmg >= 30);
@@ -1654,6 +1655,7 @@ function resetArena() {
   game.superBanner = null;
   game.winner = null;
   game.result = null;
+  game.hitTaken = false;
   game.introT = 2.4;
   game.banner = 0;
   specialBuffer = 0;
@@ -1797,7 +1799,7 @@ function endMatch() {
   game.result = null;
   setTimeout(() => (won ? Sound.win() : Sound.lose()), 800); // efter K.O.-smällen
   const token = game.matchToken;
-  net.finishMatch(token, won)
+  net.finishMatch(token, won, won && !game.hitTaken)
     .then((r) => { applyAcct(r.acct); game.result = r.result; })
     .catch((e) => { game.result = { won, stake: game.stake, gained: null, lost: null, error: e.message }; });
 }
@@ -2306,7 +2308,23 @@ function showQuestBoard() {
     box.append(el('p', 'quests-title', '🎯 Dagens monsterjakt'),
       el('p', 'hint', hunt.done ? `Du har redan fällt dagens jaktbyte, ${robotById[hunt.id].name}. Nytt byte i morgon!` : `Jaga ${robotById[hunt.id].name} i Monstervärlden: +${hunt.coins} mynt och en supervapendel!`));
   }
+  renderMedals(box);
   showScreen('questboard');
+}
+
+// Medaljskåpet: de man tagit lyser, de andra är gråa men visar vad som krävs.
+function renderMedals(box) {
+  const have = game.acct.medals || [];
+  box.append(el('p', 'quests-title', `🏅 Medaljer: ${have.length} av ${Shared.MEDALS.length}`));
+  const grid = el('div', 'medals');
+  for (const m of Shared.MEDALS) {
+    const got = have.includes(m.id);
+    const cell = el('div', `medal${got ? ' got' : ''}`);
+    cell.title = m.desc;
+    cell.append(el('span', 'micon', m.icon), el('b', 'mname', m.name), el('span', 'mdesc', m.desc));
+    grid.append(cell);
+  }
+  box.append(grid);
 }
 
 // ---------- Guiden ----------
@@ -2402,7 +2420,15 @@ function renderTower() {
 
 // ---------- Stora festen ----------
 // En stor text som flyger in, konfetti som regnar och en fanfar. big: prisvåningar och toppen.
+// Flera fester på en gång (t.ex. en våning och en ny medalj) visas en i taget.
+const celebrations = [];
 function celebrate(title, sub, big) {
+  celebrations.push([title, sub, big]);
+  if (celebrations.length === 1) showCelebration();
+}
+
+function showCelebration() {
+  const [title, sub, big] = celebrations[0];
   const box = el('div', `celebrate${big ? ' big' : ''}`);
   box.append(el('div', 'ctitle', title), el('div', 'csub', sub));
   const colors = ['#ffd93d', '#ff5ad1', '#3ee8ff', '#7fd94a', '#ff7a1a', '#ffffff'];
@@ -2417,7 +2443,11 @@ function celebrate(title, sub, big) {
   }
   document.body.append(box);
   Sound.fanfare(big);
-  setTimeout(() => box.remove(), 3200);
+  setTimeout(() => {
+    box.remove();
+    celebrations.shift();
+    if (celebrations.length) showCelebration();
+  }, 3200);
 }
 
 // fresh: namnen på uppdrag som just dök upp, de märks med NYTT.
@@ -3216,6 +3246,12 @@ function showResult() {
   if (r.clanPoints) text += ` Klanen fick ${r.clanPoints} poäng.`;
   for (const q of r.quests || []) text += ` 📜 Uppdrag klart: ${q.name}! +${q.coins} mynt.`;
   if ((r.quests || []).length) setTimeout(Sound.quest, 600);
+  for (const id of r.medals || []) {
+    const m = Shared.MEDALS.find((x) => x.id === id);
+    if (!m) continue;
+    text += ` 🏅 Ny medalj: ${m.name}!`;
+    celebrate(`🏅 NY MEDALJ!`, `${m.icon} ${m.name} — ${m.desc}`, true);
+  }
   if (r.questBonus) text += ` Var tredje uppdrag ger en bonuslåda — du fick ${r.questBonus === 1 ? 'en' : r.questBonus}!`;
   for (const name of r.newQuests || []) text += ` ✨ Nytt uppdrag: ${name}.`;
   if (r.periodBonus) text += ` Alla vecko-/månadsuppdrag klara — ${r.periodBonus} bonuslådor!`;

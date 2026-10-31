@@ -1227,6 +1227,11 @@
       }
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
       acct.tower = Math.max(1, Math.min(TOWER_TOP + 1, Math.floor(Number(raw.tower)) || 1));
+      if (Array.isArray(raw.medals)) acct.medals = [...new Set(raw.medals.filter((id) => MEDAL_IDS.has(id)))];
+      if (raw.stats && typeof raw.stats === 'object') {
+        acct.stats = {};
+        for (const k of STAT_KEYS) acct.stats[k] = Math.max(0, Math.min(1e7, Math.floor(Number(raw.stats[k])) || 0));
+      }
       if (Array.isArray(raw.streetBeaten)) {
         acct.streetBeaten = raw.streetBeaten.filter((k) => typeof k === 'string' && /^\d+:[\w-]+$/.test(k)).slice(-STREET_MAX * 2);
       }
@@ -1472,6 +1477,56 @@
     }
   }
 
+  // ---------- Medaljer ----------
+  // Rena hedersbetygelser — de ger inga mynt eller robotar, bara äran (och en fest). Därför
+  // går det bra att "Felfri" bygger på klientens uppgift om att man inte blev träffad.
+  // stats räknar vinster av olika slag, se countWin().
+  const MEDALS = [
+    { id: 'first_win', icon: '🥉', name: 'Första vinsten', desc: 'Vinn din första match.', check: (a) => a.stats.wins >= 1 },
+    { id: 'wins50', icon: '🥈', name: 'Rutinerad', desc: 'Vinn 50 matcher.', check: (a) => a.stats.wins >= 50 },
+    { id: 'wins250', icon: '🥇', name: 'Veteran', desc: 'Vinn 250 matcher.', check: (a) => a.stats.wins >= 250 },
+    { id: 'perfect', icon: '✨', name: 'Felfri', desc: 'Vinn en match utan att bli träffad en enda gång.', check: (a, ev) => ev.won && ev.perfect },
+    { id: 'street1', icon: '🚶', name: 'Gatuslagsmål', desc: 'Vinn en robot som går omkring i staden.', check: (a) => a.stats.street >= 1 },
+    { id: 'street10', icon: '🏙', name: 'Gatans kung', desc: 'Vinn 10 robotar i staden.', check: (a) => a.stats.street >= 10 },
+    { id: 'elite1', icon: '⭐', name: 'Elitjägare', desc: 'Besegra en elitrobot i staden.', check: (a) => a.stats.elite >= 1 },
+    { id: 'champion', icon: '👑', name: 'Stadens mästare', desc: 'Besegra stadens mästare.', check: (a) => a.stats.champion >= 1 },
+    { id: 'boss', icon: '🔮', name: 'Mystiker', desc: 'Besegra en mystisk robot.', check: (a) => a.stats.boss >= 1 },
+    { id: 'royal', icon: '🗡', name: 'Kungadråpare', desc: 'Besegra en kung eller drottningen.', check: (a) => a.stats.royal >= 1 },
+    { id: 'tower10', icon: '🗼', name: 'Tornklättrare', desc: 'Klara våning 10 i Utmaningstornet.', check: (a) => (a.tower || 1) > 10 },
+    { id: 'tower25', icon: '🌆', name: 'Halvvägs', desc: 'Klara våning 25 i Utmaningstornet.', check: (a) => (a.tower || 1) > 25 },
+    { id: 'tower50', icon: '🏆', name: 'Toppen av tornet', desc: 'Klara alla 50 våningar.', check: (a) => (a.tower || 1) > TOWER_TOP },
+    { id: 'underdog', icon: '💪', name: 'Underdog', desc: 'Besegra en elitrobot, mästaren eller en tornboss med en vanlig robot.', check: (a, ev) => ev.won && ev.underdog },
+    { id: 'collector', icon: '📦', name: 'Samlare', desc: 'Äg 25 olika robotar.', check: (a) => Object.keys(a.inv).filter((id) => a.inv[id] > 0).length >= 25 },
+    { id: 'level30', icon: '🔥', name: 'Nivå 30', desc: 'Nå nivå 30.', check: (a) => (a.level || 1) >= 30 },
+  ];
+  const MEDAL_IDS = new Set(MEDALS.map((m) => m.id));
+  const STAT_KEYS = ['wins', 'street', 'elite', 'champion', 'boss', 'royal'];
+
+  function ensureStats(acct) {
+    acct.medals = acct.medals || [];
+    acct.stats = acct.stats || {};
+    for (const k of STAT_KEYS) acct.stats[k] = acct.stats[k] || 0;
+  }
+
+  function countWin(acct, match) {
+    const s = acct.stats;
+    s.wins += 1;
+    if (match.street !== undefined) s.street += 1;
+    if (match.elite) s.elite += 1;
+    if (match.champion) s.champion += 1;
+    if (match.boss) s.boss += 1;
+    const opp = robotById[match.opp];
+    if (match.monster && opp && opp.royal) s.royal += 1;
+  }
+
+  // Delar ut de medaljer man just förtjänat. ev: { won, perfect, underdog }. Ger deras id:n.
+  function awardMedals(acct, ev = {}) {
+    ensureStats(acct);
+    const got = MEDALS.filter((m) => !acct.medals.includes(m.id) && m.check(acct, ev)).map((m) => m.id);
+    acct.medals.push(...got);
+    return got;
+  }
+
   // Startar en match. Insatsen dras direkt, så det går inte att smita undan en förlust. Alla
   // bossar går att utmana när som helst, oavsett nivå, och om och om igen — vilken av dem
   // man möter slumpas. Ingen insats sätts på spel mot en boss. Monster fungerar likadant
@@ -1521,8 +1576,9 @@
   // att ÄVEN hitta en del av ett supervapen. Helt egen, parallell ekonomi; förlorar man kostar det
   // inget, precis som mot en boss.
   // rng behövs bara vid vinst (för ett eventuellt nivåpris/föremål/supervapendel) — vänmatcher
-  // anropar aldrig den här funktionen.
-  function finishMatch(acct, match, won, rng, today) {
+  // anropar aldrig den här funktionen. perfect: klienten säger att man inte blev träffad (bara
+  // för medaljen Felfri, som inte ger något annat än äran).
+  function finishMatch(acct, match, won, rng, today, perfect = false) {
     // Uppdragen: vad hände i matchen?
     const robotDef = robotById[match.robot];
     const oppDef = robotById[match.opp];
@@ -1552,6 +1608,10 @@
     result.quests = quest.completed;
     result.newQuests = quest.added;
     result.questBonus = quest.bonus;
+    ensureStats(acct);
+    if (won) countWin(acct, match);
+    const underdog = robotDef && robotDef.rarity === 'common' && (match.elite || (match.tower && oppDef && oppDef.boss));
+    result.medals = awardMedals(acct, { won, perfect: perfect === true, underdog: !!underdog });
     return result;
   }
 
@@ -1666,6 +1726,7 @@
     if (today) for (const period of ['week', 'month']) periodEvent(acct, today, period, ['box']);
     const prize = rollBox(rng);
     addRobot(acct, prize.id);
+    awardMedals(acct); // Samlare
     return { id: prize.id, n: count(acct, prize.id) };
   }
 
@@ -1718,6 +1779,8 @@
       coins: acct.coins || 0,
       streetBeaten: [...(acct.streetBeaten || [])],
       tower: acct.tower || 1,
+      medals: [...(acct.medals || [])],
+      stats: { ...(acct.stats || {}) },
       quests: questView(acct),
       weekQuests: periodView(acct, today, 'week'),
       monthQuests: periodView(acct, today, 'month'),
@@ -1840,6 +1903,7 @@
     QUEST_POOL, questEvent, questView,
     STREET_SLOT_MS, ELITE_LEVEL, CHAMPION_LEVEL, streetSlot, streetRobots, streetChallengers,
     TOWER_LEVEL, TOWER_TOP, TOWER_PRIZE_EVERY, towerOpponent, towerCoins,
+    MEDALS, awardMedals,
     ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
     SKINS, skinById, buySkin, setSkin,
     ITEM_LOOK, SETS, setsStatus, huntFor, HUNT_COINS, STREAK_MILESTONES,

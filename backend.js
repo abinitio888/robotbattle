@@ -140,9 +140,9 @@
       return { acct: this.view() };
     }
 
-    async finishMatch(match, won) {
+    async finishMatch(match, won, perfect) {
       if (!this.match) throw new Error('Ingen match pågår.');
-      const result = S.finishMatch(this.acct, this.match, won, Math.random, todayKey());
+      const result = S.finishMatch(this.acct, this.match, won, Math.random, todayKey(), perfect);
       this.match = null;
       this.save();
       return { acct: this.view(), result };
@@ -263,7 +263,7 @@
 
     select(robot) { return this.api('/api/select', { robot }); }
     startMatch(robot, mode, target) { return this.api('/api/match/start', { robot, mode, target }); }
-    finishMatch(match, won) { return this.api('/api/match/finish', { token: match.token, won }); }
+    finishMatch(match, won, perfect) { return this.api('/api/match/finish', { token: match.token, won, perfect }); }
     openBox() { return this.api('/api/box-open', {}); }
     claimDaily() { return this.api('/api/daily-claim', {}); }
     nameWildcard(name) { return this.api('/api/wildcard/name', { name }); }
@@ -400,9 +400,9 @@
       return { acct: this.view() };
     }
 
-    async finishMatch(match, won) {
+    async finishMatch(match, won, perfect) {
       if (!this.match) throw new Error('Ingen match pågår.');
-      const result = S.finishMatch(this.acct, this.match, won, Math.random, todayKey());
+      const result = S.finishMatch(this.acct, this.match, won, Math.random, todayKey(), perfect);
       this.match = null;
       await this.save();
       return { acct: this.view(), result };
