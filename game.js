@@ -115,6 +115,8 @@ function hurt(target, dmg, dirX, knock, source) {
     game.superBanner = { name: 'Återspolning', t: 1.4, mine: target === game.player };
   }
   if (target.hp <= 0) target.dead = true;
+  Sound.hit(dmg);
+  if (target.dead) Sound.ko();
   popDamage(target, dmg, dmg >= 30);
   if (dmg >= 15) game.hitStop = Math.max(game.hitStop || 0, dmg >= 30 ? 0.09 : 0.05); // tunga träffar fryser bilden ett ögonblick
   return true;
@@ -643,7 +645,9 @@ class Fighter {
   startAct(kind) {
     if (kind === 'punch') {
       this.act = { kind, dur: 0.32, fires: [0.1], t: 0, i: 0, hit: false };
+      if (this === game.player) Sound.swing();
     } else {
+      Sound.special();
       const spec = SPECIALS[this.def.special.type];
       this.act = { kind: 'special', dur: spec.dur, fires: spec.fires, t: 0, i: 0, hit: false };
     }
@@ -718,6 +722,7 @@ class Fighter {
           walkZ = rooted ? 0 : (input.depth || 0) * this.def.speed * DEPTH_SPEED * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow * rage;
           if (input.jump && this.onGround && !rooted) {
             this.vy = -JUMP_V * (this.def.jumpMul || 1); // Fjäderskorna hoppar högre
+            if (this === game.player) Sound.jump();
             this.onGround = false;
           } else if (input.jump && !this.jumpHeld && !this.onGround && this.passive === 'doublejump' && !this.doubleUsed) {
             // Änglavingar: ett extra hopp mitt i luften.
@@ -1148,6 +1153,7 @@ function useSuper(f, opp) {
   if (!power || !SUPERS[power.type]) return;
   game.shake = Math.max(game.shake, 0.2);
   game.superBanner = { name: power.name, t: 1.4, mine: f === game.player };
+  Sound.superPower();
   SUPERS[power.type](f, opp);
 }
 
@@ -1363,6 +1369,20 @@ function playerInput() {
   };
 }
 
+function toggleSound() {
+  Sound.toggle();
+  renderSoundButton();
+}
+// byId finns inte än här uppe (den definieras längre ner), därav getElementById.
+function renderSoundButton() {
+  document.getElementById('btn-sound').textContent = Sound.muted ? '🔇 Ljud av (M)' : '🔊 Ljud på (M)';
+}
+document.getElementById('btn-sound').addEventListener('click', (e) => {
+  toggleSound();
+  e.currentTarget.blur(); // annars "klickar" mellanslag på knappen i stället för att slå
+});
+renderSoundButton();
+
 function triggerSpecial() { specialBuffer = 0.15; }
 function triggerSuper() { superBuffer = 0.15; }
 
@@ -1373,6 +1393,7 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyE' || e.code === 'KeyK') triggerSpecial();
     if (e.code === 'KeyQ' || e.code === 'KeyI') triggerSuper();
     const onButton = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT');
+    if (e.code === 'KeyM' && !(e.target && e.target.tagName === 'INPUT')) toggleSound();
     if (e.code === 'Enter' && !onButton) onEnter();
     const locked = (game.stake || game.online) && (game.phase === 'intro' || game.phase === 'fight');
     if (e.code === 'KeyT' && game.phase === 'hub') showTravel();
@@ -1751,6 +1772,7 @@ function endMatch() {
   game.winner = won ? game.player : game.ai;
   game.overT = 1.6;
   game.result = null;
+  setTimeout(() => (won ? Sound.win() : Sound.lose()), 800); // efter K.O.-smällen
   const token = game.matchToken;
   net.finishMatch(token, won)
     .then((r) => { applyAcct(r.acct); game.result = r.result; })
@@ -2493,8 +2515,12 @@ function updateHub(dt) {
   }
   hub.near = near;
   if (near && input.attack && !hub.attackHeld) {
-    if (near.f) startMatch('street', near.id);
-    else enterStation(near.id);
+    if (near.f) {
+      Sound.challenge();
+      startMatch('street', near.id);
+    } else {
+      enterStation(near.id);
+    }
   }
   hub.attackHeld = input.attack;
 }
@@ -3015,6 +3041,7 @@ function showResult() {
   if (r.coins) text += ` +${r.coins} 🪙 mynt.`;
   if (r.clanPoints) text += ` Klanen fick ${r.clanPoints} poäng.`;
   for (const q of r.quests || []) text += ` 📜 Uppdrag klart: ${q.name}! +${q.coins} mynt.`;
+  if ((r.quests || []).length) setTimeout(Sound.quest, 600);
   if (r.questBonus) text += ` Var tredje uppdrag ger en bonuslåda — du fick ${r.questBonus === 1 ? 'en' : r.questBonus}!`;
   for (const name of r.newQuests || []) text += ` ✨ Nytt uppdrag: ${name}.`;
   if (r.periodBonus) text += ` Alla vecko-/månadsuppdrag klara — ${r.periodBonus} bonuslådor!`;
@@ -3098,7 +3125,10 @@ async function openBox() {
   art.classList.remove('burst');
   art.classList.add('shake');
   byId('btn-open').hidden = true;
-  setTimeout(() => art.classList.add('burst'), 1150);
+  setTimeout(() => {
+    art.classList.add('burst');
+    Sound.box(rankOf(def));
+  }, 1150);
   setTimeout(() => {
     game.opening = false;
     if (['legendary', 'divine', 'wildcard'].includes(def.rarity)) {
