@@ -1403,6 +1403,11 @@ function triggerSuper() { superBuffer = 0.15; }
 window.addEventListener('keydown', (e) => {
   const handled = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
   if (handled.includes(e.code)) e.preventDefault();
+  if (guideStep >= 0) { // guiden är öppen: Enter/mellanslag bläddrar, Escape stänger, inget annat händer
+    if (!e.repeat && (e.code === 'Enter' || e.code === 'Space')) { e.preventDefault(); guideNext(); }
+    if (e.code === 'Escape') closeGuide();
+    return;
+  }
   if (!e.repeat) {
     if (e.code === 'KeyE' || e.code === 'KeyK') triggerSpecial();
     if (e.code === 'KeyQ' || e.code === 'KeyI') triggerSuper();
@@ -2304,6 +2309,58 @@ function showQuestBoard() {
   showScreen('questboard');
 }
 
+// ---------- Guiden ----------
+// Visas automatiskt första gången man kommer till staden (minns det i webbläsaren), och går
+// att öppna igen med ❔ Guide. Medan den är öppen står spelaren still i staden.
+const GUIDE = [
+  { icon: '🤖', title: 'Välkommen till Robotstaden!', text: 'Här bor alla robotar. Du styr din egen robot och går runt i staden mellan portalerna.' },
+  { icon: '⌨️', title: 'Gå runt', text: 'Gå med WASD eller piltangenterna. W och S går in i bilden och ut ur den. Gå fram till en portal och tryck MELLANSLAG eller J för att gå in.' },
+  { icon: '⚔️', title: 'Slåss', text: 'I en match: J eller MELLANSLAG slår, Shift eller L hoppar, E är din specialattack (när linjerna på roboten pulserar starkt är den laddad) och Q är ditt supervapen om du bär ett.' },
+  { icon: '🛡', title: 'Undvik attacker', text: 'Gå undan i djupled med W och S — skott och vågor flyger längs en linje, så ett steg åt sidan räddar dig ofta bättre än ett hopp.' },
+  { icon: '🚶', title: 'Robotarna på gatan', text: 'Robotarna som går omkring kan du utmana: gå fram och tryck J. Vinner du får du roboten! Från nivå 20 kommer elitrobotar och från nivå 30 stadens mästare.' },
+  { icon: '📜', title: 'Uppdrag och lådor', text: 'På Uppdragstavlan finns uppdrag hela tiden — de ger mynt, och var tredje ger en bonuslåda. Vinner du matcher går du upp i nivå och får nya robotar.' },
+  { icon: '🗼', title: 'Utmaningstornet', text: 'Från nivå 20: klättra 50 våningar mot allt starkare robotar. Var femte våning ger ett pris, och högst upp väntar 1000 mynt. Lycka till!' },
+];
+const GUIDE_SEEN = 'robotbattle-guide-seen';
+let guideStep = -1; // -1 = stängd
+
+function openGuide() {
+  guideStep = 0;
+  renderGuide();
+  document.getElementById('guide').hidden = false;
+}
+
+function closeGuide() {
+  guideStep = -1;
+  document.getElementById('guide').hidden = true;
+  try { localStorage.setItem(GUIDE_SEEN, '1'); } catch (e) { /* ingen lagring */ }
+}
+
+function renderGuide() {
+  const s = GUIDE[guideStep];
+  byId('guide-step').textContent = `${guideStep + 1} / ${GUIDE.length}`;
+  byId('guide-icon').textContent = s.icon;
+  byId('guide-title').textContent = s.title;
+  byId('guide-text').textContent = s.text;
+  byId('guide-next').textContent = guideStep === GUIDE.length - 1 ? 'Nu kör vi! 🚀' : 'Nästa';
+  byId('guide-skip').hidden = guideStep === GUIDE.length - 1;
+}
+
+function guideNext() {
+  if (guideStep < GUIDE.length - 1) {
+    guideStep += 1;
+    renderGuide();
+  } else {
+    closeGuide();
+  }
+}
+
+function maybeShowGuide() {
+  let seen = false;
+  try { seen = localStorage.getItem(GUIDE_SEEN) === '1'; } catch (e) { /* ingen lagring */ }
+  if (!seen && guideStep < 0) openGuide();
+}
+
 // ---------- Utmaningstornet: kartan ----------
 // Alla våningar staplade med toppen överst. Klarade våningar visar vem man besegrade, den
 // man står på visar nästa motståndare, och de ovanför är hemliga — utom att man ser vilka som
@@ -2517,6 +2574,7 @@ function showHub() {
   byId('btn-travel').hidden = false;
   byId('explore-hint').textContent = HUB_HINT;
   showScreen(null);
+  maybeShowGuide();
 }
 
 // Robotarna som går omkring är stadens utmanare (Shared.streetChallengers): de man redan vunnit
@@ -2537,7 +2595,7 @@ function syncWalkers(hub) {
 
 function updateHub(dt) {
   const hub = game.hub;
-  if (!hub) return;
+  if (!hub || guideStep >= 0) return;
   hub.syncT -= dt;
   if (hub.syncT <= 0) {
     hub.syncT = 2;
@@ -3024,6 +3082,9 @@ byId('btn-explore-back').addEventListener('click', () => {
 byId('btn-questboard-back').addEventListener('click', showHub);
 byId('btn-tower-back').addEventListener('click', showHub);
 byId('btn-tower-climb').addEventListener('click', () => startMatch('tower'));
+byId('btn-guide').addEventListener('click', (e) => { e.currentTarget.blur(); openGuide(); });
+byId('guide-next').addEventListener('click', guideNext);
+byId('guide-skip').addEventListener('click', closeGuide);
 byId('btn-travel').addEventListener('click', showTravel);
 byId('btn-travel-back').addEventListener('click', closeTravel);
 byId('btn-royals-back').addEventListener('click', showHub);

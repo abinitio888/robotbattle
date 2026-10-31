@@ -850,3 +850,11 @@ button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-sha
 @keyframes celebrate-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes confetti-fall { 0% { transform: translateY(0) rotate(0); } 100% { transform: translateY(105vh) rotate(var(--spin)); } }
 @media (prefers-reduced-motion: reduce) { .celebrate .confetti { display: none; } .floor.here { animation: none; } }
+
+/* ---- Guiden ---- */
+#guide { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(5, 8, 16, 0.72); }
+#guide[hidden] { display: none; }
+.guide-card { width: min(440px, 100%); padding: 18px 20px; border-radius: 16px; background: var(--panel); border: 2px solid #3ee8ff; box-shadow: 0 0 30px rgba(62, 232, 255, 0.35); text-align: center; animation: pop 0.35s ease-out; }
+.guide-card h2 { margin: 4px 0 8px; }
+.guide-card p { line-height: 1.5; }
+.guide-icon { font-size: 54px; line-height: 1.1; }
