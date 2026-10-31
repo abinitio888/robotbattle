@@ -825,3 +825,28 @@ button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-sha
 .royals-list { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 .royals-list .card { width: 190px; }
 .royals-list .card button { margin-top: 6px; }
+
+/* ---- Utmaningstornet: kartan ---- */
+.tower-map { width: min(560px, 100%); max-height: 46vh; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; padding: 6px; border-radius: 12px; background: linear-gradient(#2a1240, #131a2b); border: 1px solid #5a2f7a; }
+.floor { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 2px; border-radius: 8px; background: #1c2440; border: 1px solid #2a3556; font-size: 11px; min-width: 0; }
+.floor .fnum { font-size: 14px; }
+.floor .fwho { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.floor .ficon { position: absolute; top: 2px; right: 4px; font-size: 11px; }
+.floor.done { background: #183326; border-color: #3ddc84; color: #9ff0c0; }
+.floor.locked { opacity: 0.55; }
+.floor.boss { border-color: #ff1744; }
+.floor.prize { border-color: var(--legendary); }
+.floor.summit { border-color: var(--divine); box-shadow: 0 0 10px rgba(62, 232, 255, 0.5); }
+@keyframes here-pulse { 0%, 100% { box-shadow: 0 0 6px #ff5ad1; } 50% { box-shadow: 0 0 18px #ff5ad1; } }
+.floor.here { border-color: #ff5ad1; background: #3a1640; color: #fff; opacity: 1; animation: here-pulse 1.2s ease-in-out infinite; }
+
+/* ---- Stora festen ---- */
+.celebrate { position: fixed; inset: 0; z-index: 50; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; background: radial-gradient(circle, rgba(255, 90, 209, 0.25), transparent 60%); animation: celebrate-fade 3.2s ease-out forwards; }
+.celebrate .ctitle { font-size: clamp(32px, 7vw, 64px); font-weight: 900; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 18px #ff5ad1, 0 0 40px #ff5ad1, 0 4px 0 #6a1a5a; animation: celebrate-in 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) both; text-align: center; padding: 0 16px; }
+.celebrate.big .ctitle { color: var(--legendary); text-shadow: 0 0 20px #ffd93d, 0 0 50px #ff7a1a, 0 4px 0 #7a4a00; }
+.celebrate .csub { margin-top: 8px; font-size: clamp(16px, 3vw, 24px); font-weight: 700; color: #fff; text-shadow: 0 2px 6px #000; animation: celebrate-in 0.6s 0.25s cubic-bezier(0.2, 1.6, 0.4, 1) both; text-align: center; padding: 0 16px; }
+.celebrate .confetti { position: absolute; top: -20px; width: 9px; height: 14px; border-radius: 2px; animation-name: confetti-fall; animation-timing-function: linear; animation-fill-mode: both; }
+@keyframes celebrate-in { 0% { transform: scale(0.2) rotate(-8deg); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes celebrate-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes confetti-fall { 0% { transform: translateY(0) rotate(0); } 100% { transform: translateY(105vh) rotate(var(--spin)); } }
+@media (prefers-reduced-motion: reduce) { .celebrate .confetti { display: none; } .floor.here { animation: none; } }

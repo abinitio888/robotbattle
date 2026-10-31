@@ -101,6 +101,17 @@ const Sound = (function () {
       if (rank >= 3) notes([1568, 2093, 1568, 2093], 0.06, { type: 'square', vol: 0.06 });
     },
     quest() { notes([784, 988, 1319], 0.07, { type: 'square', vol: 0.1 }); },
+    // Stora festen: en stigande fanfar och smällande fyrverkerier (fler när det är stort).
+    fanfare(big) {
+      notes([392, 523, 659, 784, 1047], 0.09, { type: 'square', vol: 0.11 });
+      tone(1047, 1047, 0.6, { type: 'triangle', vol: 0.15, at: 0.45 });
+      tone(1319, 1319, 0.6, { type: 'triangle', vol: 0.1, at: 0.45 });
+      for (let i = 0; i < (big ? 7 : 3); i++) {
+        const at = 0.5 + i * 0.22 + Math.random() * 0.1;
+        noise(0.35, { freq: 600 + Math.random() * 1500, q: 0.7, vol: 0.35, at });
+        tone(1800 + Math.random() * 800, 300, 0.3, { type: 'sine', vol: 0.05, at: at - 0.15 });
+      }
+    },
     challenge() {
       tone(110, 220, 0.25, { type: 'sawtooth', vol: 0.2 });
       tone(165, 330, 0.25, { type: 'sawtooth', vol: 0.12, at: 0.12 });

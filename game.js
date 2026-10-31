@@ -1467,6 +1467,7 @@ const screens = {
   teleport: document.getElementById('screen-teleport'),
   clan: document.getElementById('screen-clan'),
   questboard: document.getElementById('screen-questboard'),
+  tower: document.getElementById('screen-tower'),
   travel: document.getElementById('screen-travel'),
   royals: document.getElementById('screen-royals'),
   shop: document.getElementById('screen-shop'),
@@ -2303,6 +2304,65 @@ function showQuestBoard() {
   showScreen('questboard');
 }
 
+// ---------- Utmaningstornet: kartan ----------
+// Alla våningar staplade med toppen överst. Klarade våningar visar vem man besegrade, den
+// man står på visar nästa motståndare, och de ovanför är hemliga — utom att man ser vilka som
+// vaktas av en mystisk robot och vilka som ger pris.
+function showTower() {
+  game.phase = 'tower';
+  renderTower();
+  showScreen('tower');
+}
+
+function renderTower() {
+  const top = Shared.TOWER_TOP;
+  const floor = game.acct.tower;
+  const done = floor > top;
+  const next = !done && robotById[Shared.towerOpponent(floor)];
+  byId('tower-status').textContent = done ? `🏆 Du har klarat alla ${top} våningar!`
+    : `Du är på våning ${floor} av ${top}. Nästa motståndare: ${floor % 10 === 0 ? '❓ en mystisk robot' : `${next.name} (${RARITY[next.rarity].label})`}.`;
+  const climb = byId('btn-tower-climb');
+  climb.hidden = done;
+  climb.textContent = `🗼 Klättra: våning ${floor}`;
+  const map = byId('tower-map');
+  map.replaceChildren();
+  for (let f = top; f >= 1; f--) {
+    const boss = f % 10 === 0;
+    const prize = f % Shared.TOWER_PRIZE_EVERY === 0 && !boss;
+    const cls = f < floor ? 'done' : f === floor ? 'here' : 'locked';
+    const cell = el('div', `floor ${cls}${boss ? ' boss' : ''}${prize ? ' prize' : ''}${f === top ? ' summit' : ''}`);
+    const icon = f === top ? '🏆' : boss ? '❓' : prize ? '🎁' : '';
+    cell.append(el('b', 'fnum', `${f}`));
+    if (f < floor) cell.append(el('span', 'fwho', `✅ ${robotById[Shared.towerOpponent(f)].name}`));
+    else if (f === floor) cell.append(el('span', 'fwho', `👉 ${boss ? '???' : next.name}`));
+    else cell.append(el('span', 'fwho', icon || '🔒'));
+    if (icon && f <= floor) cell.append(el('span', 'ficon', icon));
+    map.append(cell);
+  }
+  const here = map.querySelector('.here');
+  if (here) setTimeout(() => here.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+}
+
+// ---------- Stora festen ----------
+// En stor text som flyger in, konfetti som regnar och en fanfar. big: prisvåningar och toppen.
+function celebrate(title, sub, big) {
+  const box = el('div', `celebrate${big ? ' big' : ''}`);
+  box.append(el('div', 'ctitle', title), el('div', 'csub', sub));
+  const colors = ['#ffd93d', '#ff5ad1', '#3ee8ff', '#7fd94a', '#ff7a1a', '#ffffff'];
+  for (let i = 0; i < (big ? 90 : 45); i++) {
+    const c = el('i', 'confetti');
+    c.style.left = `${Math.random() * 100}%`;
+    c.style.background = colors[i % colors.length];
+    c.style.animationDelay = `${Math.random() * 0.6}s`;
+    c.style.animationDuration = `${1.6 + Math.random() * 1.2}s`;
+    c.style.setProperty('--spin', `${(Math.random() < 0.5 ? -1 : 1) * (360 + Math.random() * 720)}deg`);
+    box.append(c);
+  }
+  document.body.append(box);
+  Sound.fanfare(big);
+  setTimeout(() => box.remove(), 3200);
+}
+
 // fresh: namnen på uppdrag som just dök upp, de märks med NYTT.
 function renderQuests(box = byId('quests'), fresh = []) {
   box.replaceChildren();
@@ -2578,7 +2638,7 @@ function enterStation(id) {
     case 'trade': showTrade(); break;
     case 'clan': showClan(); break;
     case 'training': startTraining(true); break;
-    case 'tower': startMatch('tower'); break;
+    case 'tower': showTower(); break;
     case 'garage': game.fromHub = true; showSelect(); break;
     case 'boxes':
       // Den dagliga lådan hämtas automatiskt när man går in i Lådor.
@@ -2962,6 +3022,8 @@ byId('btn-explore-back').addEventListener('click', () => {
   if (wasHub) showSelect(); else showHub();
 });
 byId('btn-questboard-back').addEventListener('click', showHub);
+byId('btn-tower-back').addEventListener('click', showHub);
+byId('btn-tower-climb').addEventListener('click', () => startMatch('tower'));
 byId('btn-travel').addEventListener('click', showTravel);
 byId('btn-travel-back').addEventListener('click', closeTravel);
 byId('btn-royals-back').addEventListener('click', showHub);
@@ -3071,6 +3133,10 @@ function showResult() {
       text += ` Var ${Shared.TOWER_PRIZE_EVERY}:e våning ger ett pris: ${robotById[r.gained].name} och en extra låda!`;
       rewardItem(`VÅNING ${r.tower}!`, robotById[r.gained], { isNew: true, n: invCount(r.gained) });
     }
+    const top = r.tower === Shared.TOWER_TOP;
+    celebrate(top ? '🏆 TORNET KLART!' : `🗼 VÅNING ${r.tower} KLAR!`,
+      top ? `Alla ${Shared.TOWER_TOP} våningar — du är en legend!` : r.gained ? `Pris: ${robotById[r.gained].name} + en låda!` : `Upp till våning ${r.tower + 1}!`,
+      top || !!r.gained);
   } else if (r.won) {
     text = r.champion ? `👑 Du besegrade stadens mästare! ${robotById[r.gained].name} är din nu, och du fick 3 lådor!`
       : r.elite ? `Du besegrade elitroboten! ${robotById[r.gained].name} är din nu — och du fick en låda!`
@@ -4336,7 +4402,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);
