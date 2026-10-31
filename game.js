@@ -1517,6 +1517,7 @@ const game = {
   elite: false,            // pågående match är mot en elitrobot i staden (slåss som en boss)
   champion: false,         // ... och då kanske mot stadens mästare (nivå 30+)
   tower: 0,                // våningen i Utmaningstornet som pågående match gäller (0 = ingen tornmatch)
+  weekly: 0,               // våningen i veckans torn som pågående match gäller (0 = ingen sådan match)
   explore: null,           // {player, monsters, near, attackHeld} medan man går runt i Monstervärlden
   arena: arenaById.classic, // banan som pågående/senaste match spelades på, se pickArena()
   matchToken: null,       // matchen som pågår mot AI, från net.startMatch()
@@ -1628,7 +1629,9 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.elite = !!started.match.elite;
   game.champion = !!started.match.champion;
   game.tower = started.match.tower || 0;
-  game.bossTier = game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
+  game.weekly = started.match.weekly ? started.match.weekly.floor : 0;
+  // Veckans torn är svårt redan från början: våning 1 är som tornets våning 32, våning 10 som toppen.
+  game.bossTier = game.weekly ? towerTier(30 + game.weekly * 2) : game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
     : game.elite ? eliteTier(game.acct.level, game.champion) : null;
   const aDef = game.bossTier && game.bossTier.hpMul ? { ...oppDef, hp: Math.round(oppDef.hp * game.bossTier.hpMul) } : oppDef;
   game.online = null;
@@ -1640,7 +1643,8 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.training = null;
   resetArena();
   hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
-  hud.nameAi.textContent = game.tower ? `🗼 VÅNING ${game.tower}/${Shared.TOWER_TOP} · ${aDef.name}`
+  hud.nameAi.textContent = game.weekly ? `📅 VECKANS TORN ${game.weekly}/${Shared.WEEKLY_TOP} · ${aDef.name}`
+    : game.tower ? `🗼 VÅNING ${game.tower}/${Shared.TOWER_TOP} · ${aDef.name}`
     : game.boss ? '??? · MYSTISK ROBOT' : game.champion ? `👑 ${aDef.name} · STADENS MÄSTARE`
     : `${game.elite ? '⭐ ' : ''}${aDef.name} · ${game.monster ? 'MONSTER' : game.elite ? 'ELIT' : 'AI'}`;
   setHudType(hud.typePlayer, pDef);
@@ -1806,9 +1810,18 @@ function endMatch() {
 
 // "Kämpa igen": efter en tornmatch blir det nästa (eller samma) våning, annars en vanlig match.
 function fightAgain() {
-  if (!game.tower) startMatch();
+  if (game.weekly) {
+    if (weeklyFloorNow() <= Shared.WEEKLY_TOP) startMatch('weekly');
+    else showTower();
+  } else if (!game.tower) startMatch();
   else if (game.acct.tower <= Shared.TOWER_TOP) startMatch('tower');
   else showHub();
+}
+
+// Våningen man står på i veckans torn just nu (1 om en ny vecka har börjat).
+function weeklyFloorNow() {
+  const w = game.acct.weekly;
+  return w && w.week === Shared.weekOf(Date.now()) ? w.floor : 1;
 }
 
 function onEnter() {
@@ -2385,8 +2398,8 @@ function maybeShowGuide() {
 // vaktas av en mystisk robot och vilka som ger pris.
 function showTower() {
   game.phase = 'tower';
+  showScreen('tower'); // först synlig, annars har kartan ingen höjd att skrolla i
   renderTower();
-  showScreen('tower');
 }
 
 function renderTower() {
@@ -2414,8 +2427,67 @@ function renderTower() {
     if (icon && f <= floor) cell.append(el('span', 'ficon', icon));
     map.append(cell);
   }
+  // Skrolla bara kartan (inte hela sidan) så att våningen man står på syns.
   const here = map.querySelector('.here');
-  if (here) setTimeout(() => here.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+  if (here) map.scrollTop = here.offsetTop - map.clientHeight / 2;
+  renderWeekly();
+  renderTops();
+}
+
+// Veckans torn: tio våningar, samma för alla den här veckan.
+function renderWeekly() {
+  const top = Shared.WEEKLY_TOP;
+  const w = game.acct.weekly || { floor: 1 };
+  const week = Shared.weekOf(Date.now());
+  const floor = w.week === week ? w.floor : 1;
+  const done = floor > top;
+  byId('weekly-status').textContent = done
+    ? '🎉 Du har klarat veckans torn! Ett nytt torn kommer på måndag.'
+    : `Våning ${floor} av ${top}. Klara alla tio för en legendarisk robot, ${Shared.WEEKLY_TOP_COINS} 🪙 och ${Shared.WEEKLY_TOP_BOXES} lådor! Nytt torn varje måndag.`;
+  const map = byId('weekly-map');
+  map.replaceChildren();
+  for (let f = 1; f <= top; f++) {
+    const def = robotById[Shared.weeklyOpponent(week, f)];
+    const cell = el('div', `wfloor ${f < floor ? 'done' : f === floor ? 'here' : 'locked'}`);
+    cell.title = f <= floor ? def.name : 'Hemlig';
+    cell.append(el('b', '', `${f}`), el('span', '', f < floor ? '✅' : f === floor ? def.name : f === top ? '👑' : '🔒'));
+    map.append(cell);
+  }
+  const btn = byId('btn-weekly-climb');
+  btn.hidden = done;
+  btn.textContent = `📅 Klättra i veckans torn: våning ${floor}`;
+}
+
+// Topplistan kommer från servern och kräver konto. Gäster ser en uppmaning i stället.
+async function renderTops() {
+  const box = byId('tower-tops');
+  const api = worldApi();
+  if (!api) {
+    box.replaceChildren(el('p', 'hint', 'Logga in för att vara med på topplistan!'));
+    return;
+  }
+  box.replaceChildren(el('p', 'hint', 'Laddar...'));
+  let r;
+  try {
+    r = await api.tops();
+  } catch (e) {
+    box.replaceChildren(el('p', 'hint', 'Topplistan går inte att hämta just nu.'));
+    return;
+  }
+  box.replaceChildren();
+  const list = (title, t, unit) => {
+    box.append(el('p', 'hint', title));
+    if (!t.top.length) box.append(el('p', 'hint', 'Ingen än — bli först!'));
+    t.top.forEach((row, i) => {
+      const line = el('div', `quest${t.mine && t.mine.rank === i + 1 ? ' done' : ''}`);
+      line.append(el('span', 'qname', `${['🥇', '🥈', '🥉'][i] || `${i + 1}.`} ${row.name}`), el('span', 'qprog', `${unit} ${row.floor}`));
+      box.append(line);
+    });
+    if (t.mine && t.mine.rank > t.top.length) box.append(el('p', 'hint', `Du: plats ${t.mine.rank} (${unit.toLowerCase()} ${t.mine.floor})`));
+  };
+  list('🗼 Högst i Utmaningstornet', r.tower, 'Våning');
+  list(`📅 Veckans torn (${r.week})`, r.weekly, 'Våning');
+  if (!r.loggedIn) box.append(el('p', 'hint', 'Logga in för att vara med på topplistan!'));
 }
 
 // ---------- Stora festen ----------
@@ -3112,6 +3184,7 @@ byId('btn-explore-back').addEventListener('click', () => {
 byId('btn-questboard-back').addEventListener('click', showHub);
 byId('btn-tower-back').addEventListener('click', showHub);
 byId('btn-tower-climb').addEventListener('click', () => startMatch('tower'));
+byId('btn-weekly-climb').addEventListener('click', () => startMatch('weekly'));
 byId('btn-guide').addEventListener('click', (e) => { e.currentTarget.blur(); openGuide(); });
 byId('guide-next').addEventListener('click', guideNext);
 byId('guide-skip').addEventListener('click', closeGuide);
@@ -3217,6 +3290,13 @@ function showResult() {
         ? `${opp.name} var för stark. ${opp.royal === 'queen' ? 'Drottningen' : 'Kungen'} väntar kvar — bli starkare och försök igen.`
         : 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
     }
+  } else if (r.won && r.weekly) {
+    const top = r.weekly === Shared.WEEKLY_TOP;
+    text = top ? `👑 Du klarade veckans torn! ${robotById[r.gained].name} är din, och du fick ${Shared.WEEKLY_TOP_BOXES} extra lådor!`
+      : `📅 Våning ${r.weekly} i veckans torn klar! Nästa: våning ${r.weekly + 1}.`;
+    if (top) rewardItem('VECKANS TORN!', robotById[r.gained], { isNew: true, n: invCount(r.gained) });
+    celebrate(top ? '👑 VECKANS TORN KLART!' : `📅 VÅNING ${r.weekly} KLAR!`,
+      top ? `${robotById[r.gained].name} + ${Shared.WEEKLY_TOP_COINS} 🪙 + ${Shared.WEEKLY_TOP_BOXES} lådor!` : `Upp till våning ${r.weekly + 1} av ${Shared.WEEKLY_TOP}!`, top);
   } else if (r.won && r.tower) {
     text = r.tower === Shared.TOWER_TOP ? `🏆 Du klarade alla ${Shared.TOWER_TOP} våningar i Utmaningstornet!`
       : `🗼 Våning ${r.tower} klar! Nästa: våning ${r.tower + 1}.`;
@@ -3237,6 +3317,8 @@ function showResult() {
   } else if (r.lost) {
     text = 'Du tappade din insats.';
     rewardItem('FÖRLORAD ROBOT', robotById[r.lost], { n: invCount(r.lost) });
+  } else if (game.weekly) {
+    text = `📅 Våning ${game.weekly} i veckans torn var för svår. Du står kvar där — försök igen!`;
   } else if (game.tower) {
     text = `🗼 Våning ${game.tower} var för svår den här gången. Du står kvar där — försök igen!`;
   } else {
@@ -3267,7 +3349,10 @@ function showResult() {
   byId('btn-again').hidden = friend;
   // I tornet säger knappen vart man ska: uppåt efter en vinst, samma våning efter en förlust.
   const floor = game.acct.tower;
-  byId('btn-again').textContent = !game.tower ? 'Kämpa igen (Enter)'
+  const wf = weeklyFloorNow();
+  byId('btn-again').textContent = game.weekly
+    ? (wf > Shared.WEEKLY_TOP ? '📅 Till tornet (Enter)' : r.weekly ? `📅 Upp till våning ${wf} (Enter)` : `📅 Försök våning ${wf} igen (Enter)`)
+    : !game.tower ? 'Kämpa igen (Enter)'
     : floor > Shared.TOWER_TOP ? '🏆 Tillbaka till staden (Enter)'
       : r.tower ? `🗼 Upp till våning ${floor} (Enter)` : `🗼 Försök våning ${floor} igen (Enter)`;
   byId('btn-open-result').hidden = friend || game.acct.boxes === 0;

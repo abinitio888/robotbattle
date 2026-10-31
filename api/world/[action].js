@@ -13,6 +13,8 @@
 //   clan:<id>            { id, name, owner, members: [{ key, name, joined }], created }
 //   clanname:<namn>      klanens id (namnet med små bokstäver, så två klaner aldrig heter likadant)
 //   clans:points         sorterad mängd: klan-id -> klanpoäng (se api/match finish)
+//   tops:tower           sorterad mängd: spelarnamn -> högsta klarade våningen i Utmaningstornet
+//   tops:weekly:<vecka>  sorterad mängd: spelarnamn -> högsta klarade våningen i veckans torn
 const crypto = require('crypto');
 const { dispatch, requireSession, sessionOf, redis, HttpError, S, tooMany, saveUser } = require('../_lib.js');
 
@@ -107,7 +109,29 @@ const challengeView = (c) => ({
   id: c.id, continent: c.continent, fromName: c.fromName, robot: c.robot, toName: c.toName, status: statusOf(c),
 });
 
+// Topp 10 i en sorterad mängd (spelarnamn -> våning), plus var spelaren själv står.
+async function topList(key, me) {
+  const raw = await redis.zrange(key, 0, 9, { rev: true, withScores: true });
+  const top = [];
+  for (let i = 0; i < raw.length; i += 2) top.push({ name: raw[i], floor: Number(raw[i + 1]) || 0 });
+  if (!me) return { top, mine: null };
+  const [score, rank] = await Promise.all([redis.zscore(key, me), redis.zrevrank(key, me)]);
+  return { top, mine: rank === null ? null : { rank: rank + 1, floor: Number(score) || 0 } };
+}
+
 module.exports = dispatch({
+  // ---------- Topplistor: Utmaningstornet och veckans torn (se api/match finish) ----------
+  tops: {
+    method: 'GET',
+    async handler(req) {
+      const session = await sessionOf(req);
+      const me = session ? session.user.name : null;
+      const week = S.weekOf(Date.now());
+      const [tower, weekly] = await Promise.all([topList('tops:tower', me), topList(`tops:weekly:${week}`, me)]);
+      return { loggedIn: !!session, week, tower, weekly };
+    },
+  },
+
   // ---------- Klaner ----------
   clans: {
     method: 'GET',

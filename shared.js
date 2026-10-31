@@ -1227,6 +1227,9 @@
       }
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
       acct.tower = Math.max(1, Math.min(TOWER_TOP + 1, Math.floor(Number(raw.tower)) || 1));
+      if (raw.weekly && typeof raw.weekly.week === 'string' && /^\d{4}-v\d{1,2}$/.test(raw.weekly.week)) {
+        acct.weekly = { week: raw.weekly.week, floor: Math.max(1, Math.min(WEEKLY_TOP + 1, Math.floor(Number(raw.weekly.floor)) || 1)) };
+      }
       if (Array.isArray(raw.medals)) acct.medals = [...new Set(raw.medals.filter((id) => MEDAL_IDS.has(id)))];
       if (raw.stats && typeof raw.stats === 'object') {
         acct.stats = {};
@@ -1477,6 +1480,36 @@
     }
   }
 
+  // ---------- Veckans torn (från nivå TOWER_LEVEL) ----------
+  // Tio våningar med nya motståndare varje vecka (samma för alla, bestämda av veckan), episka
+  // längst ner och gudomliga högst upp. Vinst = en våning upp och mynt; den som klarar alla tio
+  // får en minst legendarisk robot, WEEKLY_TOP_COINS mynt och WEEKLY_TOP_BOXES lådor. Börjar om
+  // på måndag. Veckan räknas ur tiden i UTC, så klient och server alltid är överens.
+  const WEEKLY_TOP = 10;
+  const WEEKLY_TOP_COINS = 500;
+  const WEEKLY_TOP_BOXES = 2;
+  const weeklyCoins = (floor) => 40 + floor * 10;
+  const weekOf = (now) => weekKey(new Date(now).toISOString().slice(0, 10));
+
+  function weeklyOpponent(week, floor) {
+    let s = hashName(`vecka-${week}-${floor}`) >>> 0;
+    const rng = () => { // mulberry32
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const floorRarity = floor <= 3 ? 'epic' : floor <= 7 ? 'legendary' : 'divine';
+    const below = floor > 1 ? weeklyOpponent(week, floor - 1) : null;
+    for (;;) {
+      const r = rollBoxFrom(rng, floorRarity);
+      if (r.id !== 'wildcard' && r.id !== below) return r.id;
+    }
+  }
+
+  // Våningen man står på i veckans torn just nu (1 när en ny vecka börjat).
+  const weeklyFloor = (acct, week) => (acct.weekly && acct.weekly.week === week ? acct.weekly.floor : 1);
+
   // ---------- Medaljer ----------
   // Rena hedersbetygelser — de ger inga mynt eller robotar, bara äran (och en fest). Därför
   // går det bra att "Felfri" bygger på klientens uppgift om att man inte blev träffad.
@@ -1495,6 +1528,7 @@
     { id: 'tower10', icon: '🗼', name: 'Tornklättrare', desc: 'Klara våning 10 i Utmaningstornet.', check: (a) => (a.tower || 1) > 10 },
     { id: 'tower25', icon: '🌆', name: 'Halvvägs', desc: 'Klara våning 25 i Utmaningstornet.', check: (a) => (a.tower || 1) > 25 },
     { id: 'tower50', icon: '🏆', name: 'Toppen av tornet', desc: 'Klara alla 50 våningar.', check: (a) => (a.tower || 1) > TOWER_TOP },
+    { id: 'weekly', icon: '📅', name: 'Veckans hjälte', desc: 'Klara alla 10 våningar i veckans torn.', check: (a, ev) => !!ev.weeklyDone },
     { id: 'underdog', icon: '💪', name: 'Underdog', desc: 'Besegra en elitrobot, mästaren eller en tornboss med en vanlig robot.', check: (a, ev) => ev.won && ev.underdog },
     { id: 'collector', icon: '📦', name: 'Samlare', desc: 'Äg 25 olika robotar.', check: (a) => Object.keys(a.inv).filter((id) => a.inv[id] > 0).length >= 25 },
     { id: 'level30', icon: '🔥', name: 'Nivå 30', desc: 'Nå nivå 30.', check: (a) => (a.level || 1) >= 30 },
@@ -1544,6 +1578,15 @@
       }
       return { error: 'Den roboten har gått vidare.' };
     }
+    if (mode === 'weekly') {
+      if (!(acct.level >= TOWER_LEVEL)) return { error: `Veckans torn öppnar på nivå ${TOWER_LEVEL}.` };
+      const week = weekOf(now);
+      if (!acct.weekly || acct.weekly.week !== week) acct.weekly = { week, floor: 1 }; // ny vecka
+      const { floor } = acct.weekly;
+      if (floor > WEEKLY_TOP) return { error: 'Du har redan klarat veckans torn — ett nytt kommer på måndag!' };
+      acct.selected = robotId;
+      return { robot: robotId, stake: false, opp: weeklyOpponent(week, floor), weekly: { week, floor } };
+    }
     if (mode === 'tower') {
       if (!(acct.level >= TOWER_LEVEL)) return { error: `Utmaningstornet öppnar på nivå ${TOWER_LEVEL}.` };
       const floor = acct.tower || 1;
@@ -1592,7 +1635,7 @@
       if (match.street !== undefined) events.push('street');
       if (match.elite) events.push('elite');
       if (match.champion) events.push('champion');
-      if (match.tower) events.push('tower');
+      if (match.tower || match.weekly) events.push('tower');
       events.push('typewin', 'raritywin');
       if (robotDef && robotDef.rarity === 'divine') events.push('divinewin');
     }
@@ -1611,7 +1654,8 @@
     ensureStats(acct);
     if (won) countWin(acct, match);
     const underdog = robotDef && robotDef.rarity === 'common' && (match.elite || (match.tower && oppDef && oppDef.boss));
-    result.medals = awardMedals(acct, { won, perfect: perfect === true, underdog: !!underdog });
+    const weeklyDone = result.weekly === WEEKLY_TOP;
+    result.medals = awardMedals(acct, { won, perfect: perfect === true, underdog: !!underdog, weeklyDone });
     return result;
   }
 
@@ -1663,7 +1707,23 @@
     if (won) {
       acct.boxes += 1;
       result.levelUps = addXp(acct, 1, rng);
-      if (match.tower) {
+      if (match.weekly) {
+        // Bara om man står på den våningen samma vecka (en gammal match räknas inte två gånger).
+        const { week, floor } = match.weekly;
+        if (acct.weekly && acct.weekly.week === week && acct.weekly.floor === floor) {
+          acct.weekly = { week, floor: floor + 1 };
+          result.weekly = floor;
+          result.coins += addCoins(acct, weeklyCoins(floor));
+          if (floor === WEEKLY_TOP) {
+            let prize = rollBoxFrom(rng, 'legendary');
+            while (prize.id === 'wildcard') prize = rollBoxFrom(rng, 'legendary');
+            addRobot(acct, prize.id);
+            result.gained = prize.id;
+            acct.boxes += WEEKLY_TOP_BOXES;
+            result.coins += addCoins(acct, WEEKLY_TOP_COINS);
+          }
+        }
+      } else if (match.tower) {
         // Bara om man faktiskt står på den våningen (en gammal match räknas inte två gånger).
         if ((acct.tower || 1) === match.tower) {
           acct.tower = match.tower + 1;
@@ -1779,6 +1839,7 @@
       coins: acct.coins || 0,
       streetBeaten: [...(acct.streetBeaten || [])],
       tower: acct.tower || 1,
+      weekly: { week: weekOf(Date.now()), floor: weeklyFloor(acct, weekOf(Date.now())) },
       medals: [...(acct.medals || [])],
       stats: { ...(acct.stats || {}) },
       quests: questView(acct),
@@ -1904,6 +1965,7 @@
     STREET_SLOT_MS, ELITE_LEVEL, CHAMPION_LEVEL, streetSlot, streetRobots, streetChallengers,
     TOWER_LEVEL, TOWER_TOP, TOWER_PRIZE_EVERY, towerOpponent, towerCoins,
     MEDALS, awardMedals,
+    WEEKLY_TOP, WEEKLY_TOP_COINS, WEEKLY_TOP_BOXES, weekOf, weeklyOpponent, weeklyFloor,
     ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
     SKINS, skinById, buySkin, setSkin,
     ITEM_LOOK, SETS, setsStatus, huntFor, HUNT_COINS, STREAK_MILESTONES,

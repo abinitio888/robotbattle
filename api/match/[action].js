@@ -45,6 +45,14 @@ module.exports = dispatch({
         result.coins = (result.coins || 0) + CLAN_BONUS_COINS;
         result.clanPoints = points;
       }
+      // Topplistorna: högsta klarade våningen i tornet, och i veckans torn (en lista per vecka).
+      const name = session.user.name;
+      if (result.tower) await redis.zadd('tops:tower', { gt: true }, { score: result.tower, member: name }).catch(() => {});
+      if (result.weekly) {
+        const key = `tops:weekly:${entry.match.weekly.week}`;
+        await redis.zadd(key, { gt: true }, { score: result.weekly, member: name }).catch(() => {});
+        await redis.expire(key, 21 * 24 * 3600).catch(() => {});
+      }
       await saveUser(session.key, session.user);
       return { acct: acctView(session.user), result };
     },

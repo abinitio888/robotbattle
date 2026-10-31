@@ -291,6 +291,7 @@
     mmQueue(cid) { return this.api('/api/world/queue', { cid }); }
     mmUnqueue(cid) { return this.api('/api/world/unqueue', { cid }); }
     clans() { return this.api('/api/world/clans'); }
+    tops() { return this.api('/api/world/tops'); }
     clanCreate(name) { return this.api('/api/world/clan-create', { name }); }
     clanJoin(name) { return this.api('/api/world/clan-join', { name }); }
     clanLeave() { return this.api('/api/world/clan-leave', {}); }
