@@ -1149,7 +1149,7 @@
   // Ett konto är { inv: {robotId: antal}, boxes, daily: 'ÅÅÅÅ-MM-DD', selected, level, xp }.
   function newAccount() {
     return {
-      inv: { bolt: 1 }, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0,
+      inv: { bolt: 1 }, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0, xpv: 2,
       wildcardName: null, wildcardSpecialType: null, wildcardCustomSpecial: null, wildcardColor: null,
       wildcardHead: null, wildcardExtra: null,
       equipmentInv: {}, equippedItem: null, superPieces: {}, coins: 0,
@@ -1190,6 +1190,7 @@
       if (typeof raw.selected === 'string') acct.selected = raw.selected;
       acct.level = Math.max(1, Math.min(9999, Math.floor(Number(raw.level)) || 1));
       acct.xp = Math.max(0, Math.min(1e6, Math.floor(Number(raw.xp)) || 0));
+      acct.xpv = raw.xpv === 2 ? 2 : 0; // 0: gammal XP som räknas om av ensureXp()
       acct.wildcardName = cleanName(raw.wildcardName);
       if (typeof raw.wildcardSpecialType === 'string' && WILDCARD_SPECIAL_TYPES.has(raw.wildcardSpecialType)) {
         acct.wildcardSpecialType = raw.wildcardSpecialType;
@@ -1285,9 +1286,36 @@
     return acct;
   }
 
-  // Hur mycket erfarenhet som krävs för att gå från en viss nivå till nästa. Växer sakta så att
-  // det aldrig tar orimligt lång tid, men ändå känns som framsteg.
-  const xpNeeded = (level) => level + 2;
+  // Hur mycket erfarenhet (XP) som krävs för att gå från en viss nivå till nästa. Växer sakta
+  // så att det aldrig tar orimligt lång tid, men ändå känns som framsteg.
+  const xpNeeded = (level) => (level + 2) * 10;
+
+  // XP för en match: svårare motståndare ger mer, och även en förlust ger lite (man lär sig
+  // något varje gång). En vanlig vinst ger 10.
+  const XP = {
+    loss: 3, win: 10, stake: 20, street: 15, elite: 40, champion: 100, boss: 30, monster: 15, royal: 60,
+  };
+  function xpFor(match, won) {
+    if (!won) return XP.loss;
+    const opp = robotById[match.opp];
+    if (match.weekly) return 40 + match.weekly.floor * 4;
+    if (match.tower) return 15 + match.tower;
+    if (match.champion) return XP.champion;
+    if (match.elite) return XP.elite;
+    if (match.street !== undefined) return XP.street;
+    if (match.monster) return opp && opp.royal ? XP.royal : XP.monster;
+    if (match.boss) return XP.boss;
+    if (match.stake) return XP.stake;
+    return XP.win;
+  }
+
+  // Förr gav varje vinst 1 XP och nivåerna krävde en tiondel så mycket. Gamla konton (som
+  // servern läser utan sanitize()) räknas om en gång, så att ingen tappar sina framsteg.
+  function ensureXp(acct) {
+    if (acct.xpv === 2) return;
+    acct.xp = (acct.xp || 0) * 10;
+    acct.xpv = 2;
+  }
 
   // Från vilken sällsynthet ett nivåpris lägst får vara. Var femte nivå är garanterat legendarisk.
   function levelPrizeFloor(level) {
@@ -1610,15 +1638,15 @@
     return { robot: robotId, stake, opp: pickOpponent(robotId, stake, rng).id };
   }
 
-  // Avslutar en match. Vinst ger en låda och erfarenhet (närmre nästa nivå), och i en
-  // insatsmatch får du tillbaka insatsen plus motståndarens robot. En bossvinst ger i stället
-  // bossens robot (utan den stridstillfälliga boostern) — bossen går att utmana igen när du
-  // vill, om och om igen. Förlorar du mot bossen kostar det inget — bara en ny chans.
-  // En monstervinst ger varken låda, erfarenhet eller en robot — bara det bestämda föremålet
-  // just det monstret ger (def.drop, aldrig slumpat), plus en chans (SUPER_PIECE_CHANCE)
-  // att ÄVEN hitta en del av ett supervapen. Helt egen, parallell ekonomi; förlorar man kostar det
-  // inget, precis som mot en boss.
-  // rng behövs bara vid vinst (för ett eventuellt nivåpris/föremål/supervapendel) — vänmatcher
+  // Avslutar en match. Varje match ger XP (se xpFor(): mer för svårare motståndare, lite även
+  // för en förlust), och vinst ger en låda; i en insatsmatch får du tillbaka insatsen plus
+  // motståndarens robot. En bossvinst ger i stället bossens robot (utan den stridstillfälliga
+  // boostern) — bossen går att utmana igen när du vill, om och om igen. Förlorar du mot bossen
+  // kostar det inget — bara en ny chans.
+  // En monstervinst ger varken låda eller robot — bara det bestämda föremålet just det monstret
+  // ger (def.drop, aldrig slumpat), plus en chans (SUPER_PIECE_CHANCE) att ÄVEN hitta en del av
+  // ett supervapen. Förlorar man kostar det inget, precis som mot en boss.
+  // rng behövs för nivåpris/föremål/supervapendel — vänmatcher
   // anropar aldrig den här funktionen. perfect: klienten säger att man inte blev träffad (bara
   // för medaljen Felfri, som inte ger något annat än äran).
   function finishMatch(acct, match, won, rng, today, perfect = false) {
@@ -1654,6 +1682,10 @@
     ensureStats(acct);
     if (won) countWin(acct, match);
     const underdog = robotDef && robotDef.rarity === 'common' && (match.elite || (match.tower && oppDef && oppDef.boss));
+    // XP och nivåer: varje match ger XP (mer för svårare motståndare), se xpFor().
+    ensureXp(acct);
+    result.xp = xpFor(match, won);
+    result.levelUps = addXp(acct, result.xp, rng);
     const weeklyDone = result.weekly === WEEKLY_TOP;
     result.medals = awardMedals(acct, { won, perfect: perfect === true, underdog: !!underdog, weeklyDone });
     return result;
@@ -1706,7 +1738,6 @@
     result.coins = addCoins(acct, !won ? COINS.loss : match.boss ? COINS.bossWin : match.stake ? COINS.stakeWin : COINS.win);
     if (won) {
       acct.boxes += 1;
-      result.levelUps = addXp(acct, 1, rng);
       if (match.weekly) {
         // Bara om man står på den våningen samma vecka (en gammal match räknas inte två gånger).
         const { week, floor } = match.weekly;
@@ -1817,6 +1848,7 @@
 
   // Det klienten får se: kontot plus om dagens låda finns att hämta.
   function view(acct, today, minutesToNext) {
+    ensureXp(acct);
     const level = acct.level || 1;
     return {
       inv: { ...acct.inv },
@@ -1958,7 +1990,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
-    xpNeeded, addXp,
+    xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem,
     QUEST_POOL, questEvent, questView,

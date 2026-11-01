@@ -3325,6 +3325,8 @@ function showResult() {
     text = 'Vinn en match för att få en låda.';
   }
   if (r.coins) text += ` +${r.coins} 🪙 mynt.`;
+  if (r.xp) text += ` +${r.xp} XP (nivå ${game.acct.level}: ${game.acct.xp}/${game.acct.xpNeeded} XP).`;
+  for (const up of r.levelUps || []) celebrate(`⬆️ NIVÅ ${up.level}!`, `Du fick ${robotById[up.prize].name} som pris!`, up.level % 5 === 0);
   if (r.clanPoints) text += ` Klanen fick ${r.clanPoints} poäng.`;
   for (const q of r.quests || []) text += ` 📜 Uppdrag klart: ${q.name}! +${q.coins} mynt.`;
   if ((r.quests || []).length) setTimeout(Sound.quest, 600);
