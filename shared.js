@@ -1090,9 +1090,13 @@
       sky: '#082029', ground: '#041019', line: '#2f8fae',
     },
     {
-      id: 'scrapyard', name: 'Skrotupplaget', hint: 'Tungt underlag — långsammare men hårdare slag',
+      id: 'scrapyard', name: 'Skrotupplaget', hint: 'Tungt underlag och sågklingor — hoppa över dem!',
       gravityMul: 1, speedMul: 0.72, dmgMul: 1.35,
       sky: '#241a0e', ground: '#120c06', line: '#8a5a2a',
+      traps: [
+        { kind: 'saw', x: 420, z: 0, range: 180, speed: 1.3, phase: 0 },
+        { kind: 'saw', x: 560, z: 0, range: 180, speed: 1.1, phase: 1.6 },
+      ],
     },
     // Banor med något extra: oändlig energi (infiniteEnergy) och/eller saker som blockerar
     // (obstacles). Ett hinder är { x, z, w, d, h, kind }: mitt (x i spelets koordinater, z i
@@ -1138,14 +1142,18 @@
         { x: 480, z: 0, w: 40, d: 40, h: 200, kind: 'pillar' },
       ],
     },
+    // Fällor (traps): { kind: 'lava', x, z, r } bränner den som står i den; { kind: 'saw', x, z,
+    // range, speed, phase } åker fram och tillbaka i djupled (se trapZ) — hoppa över den!;
+    // { kind: 'spring', x, z, r } är en studsmatta som skjuter upp en högt. Se updateTraps i game.js.
     {
-      id: 'volcano', name: 'Vulkankratern', hint: 'Het mark — snabbare och hårdare slag. Göm dig bakom lavapelarna!',
+      id: 'volcano', name: 'Vulkankratern', hint: 'Het mark och en lavapöl i mitten — gå runt den!',
       gravityMul: 1, speedMul: 1.1, dmgMul: 1.25,
       sky: '#2a0c06', ground: '#140503', line: '#ff5a1a',
       obstacles: [
         { x: 480, z: -140, w: 54, d: 54, h: 200, kind: 'pillar' },
         { x: 480, z: 140, w: 54, d: 54, h: 200, kind: 'pillar' },
       ],
+      traps: [{ kind: 'lava', x: 480, z: 0, r: 55 }],
     },
     {
       id: 'space', name: 'Rymdstationen', hint: 'Nästan ingen tyngdkraft och snabba robotar — du svävar!',
@@ -1196,13 +1204,28 @@
       ],
     },
     {
-      id: 'candy', name: 'Godisfabriken', hint: 'Klibbfritt och halt — snabba robotar och lådor att hoppa på!',
+      id: 'candy', name: 'Godisfabriken', hint: 'Halt och snabbt, med lådor och studsmattor!',
       gravityMul: 0.9, speedMul: 1.3, dmgMul: 1,
       sky: '#2a1024', ground: '#140812', line: '#ff8ac0',
       obstacles: [
         { x: 400, z: 120, w: 50, d: 50, h: 55, kind: 'crate' },
         { x: 480, z: -20, w: 50, d: 50, h: 55, kind: 'crate' },
         { x: 560, z: -150, w: 50, d: 50, h: 55, kind: 'crate' },
+      ],
+      traps: [
+        { kind: 'spring', x: 320, z: -150, r: 30 },
+        { kind: 'spring', x: 640, z: 150, r: 30 },
+      ],
+    },
+    {
+      id: 'trapfactory', name: 'Fällfabriken', hint: 'Lava, sågklingor och studsmattor — se upp var du går!',
+      gravityMul: 1, speedMul: 1, dmgMul: 1,
+      sky: '#1a1a1a', ground: '#0c0c0c', line: '#ffb020',
+      traps: [
+        { kind: 'lava', x: 480, z: 160, r: 50 },
+        { kind: 'saw', x: 480, z: -40, range: 130, speed: 1.5, phase: 0 },
+        { kind: 'spring', x: 330, z: -170, r: 30 },
+        { kind: 'spring', x: 630, z: -170, r: 30 },
       ],
     },
     // monster: true → ingår aldrig i den SLUMPADE poolen (pickArena) för vanliga matcher, bara
@@ -1223,6 +1246,9 @@
   ];
   const arenaById = Object.fromEntries(ARENAS.map((a) => [a.id, a]));
   // rng är en funktion som ger ett tal i [0, 1) — samma mönster som rollBox/pickOpponent.
+  // Var en sågklinga (trap.kind === 'saw') är i djupled vid tiden t sedan matchen började.
+  const trapZ = (trap, t) => trap.z + Math.sin(t * trap.speed + (trap.phase || 0)) * trap.range;
+
   const pickArena = (rng) => {
     const pool = ARENAS.filter((a) => !a.monster);
     return pool[Math.floor(rng() * pool.length)];
@@ -2079,7 +2105,7 @@
   const continentById = Object.fromEntries(CONTINENTS.map((c) => [c.id, c]));
 
   return {
-    RARITY, ROBOTS, robotById, rankOf, BOSS_IDS, MONSTER_IDS,
+    RARITY, ROBOTS, robotById, rankOf, BOSS_IDS, MONSTER_IDS, trapZ,
     CONTINENTS, continentById,
     EQUIPMENT, SUPER_WEAPONS, SUPER_PIECE_CHANCE, addEquipment, equipItem,
     ARENAS, arenaById, pickArena,

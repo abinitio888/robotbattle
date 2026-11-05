@@ -1129,6 +1129,48 @@
       }
     }
 
+    // Fällorna: lavapölar, sågklingor (rör sig, se moveSaws) och studsmattor.
+    g.userData.saws = [];
+    for (const tr of arena.traps || []) {
+      const x = tr.x - W / 2;
+      if (tr.kind === 'lava') {
+        const lava = new THREE.Mesh(new THREE.CircleGeometry(tr.r, 32), new THREE.MeshBasicMaterial({ color: '#ff5a1a' }));
+        lava.rotation.x = -Math.PI / 2;
+        lava.position.set(x, 1, tr.z);
+        const glow = new THREE.Mesh(new THREE.CircleGeometry(tr.r + 14, 32), glowMat('#ff9a2a', 0.35));
+        glow.rotation.x = -Math.PI / 2;
+        glow.position.set(x, 1.5, tr.z);
+        g.add(lava, glow);
+      } else if (tr.kind === 'saw') {
+        const saw = new THREE.Group();
+        const blade = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 4, 24), new THREE.MeshStandardMaterial({ color: '#d8dce4', metalness: 0.6, roughness: 0.3, emissive: '#ff3b1f', emissiveIntensity: 0.25 }));
+        blade.rotation.x = Math.PI / 2; // står upp, vinkelrätt mot banan
+        // En glödande röd varningskant, så att man ser sågen i tid och hinner hoppa.
+        const warn = new THREE.Mesh(new THREE.TorusGeometry(31, 2.5, 6, 32), glowMat('#ff3b1f', 0.9));
+        saw.add(blade, warn);
+        for (let k = 0; k < 12; k++) {
+          const a = (k / 12) * Math.PI * 2;
+          const tooth = new THREE.Mesh(new THREE.ConeGeometry(4, 9, 4), new THREE.MeshStandardMaterial({ color: '#eef0f4', metalness: 0.9, roughness: 0.2 }));
+          tooth.position.set(Math.cos(a) * 29, Math.sin(a) * 29, 0);
+          tooth.rotation.z = a - Math.PI / 2;
+          saw.add(tooth);
+        }
+        const slot = new THREE.Mesh(box(10, 3, tr.range * 2 + 60), new THREE.MeshBasicMaterial({ color: '#2a2a2a' }));
+        slot.position.set(x, 0.8, tr.z);
+        g.add(slot);
+        saw.position.set(x, 26, tr.z);
+        g.add(saw);
+        g.userData.saws.push({ saw, trap: tr });
+      } else if (tr.kind === 'spring') {
+        const pad = new THREE.Mesh(new THREE.CylinderGeometry(tr.r, tr.r + 4, 8, 24), new THREE.MeshStandardMaterial({ color: '#3ddc84', emissive: '#3ddc84', emissiveIntensity: 0.35 }));
+        pad.position.set(x, 4, tr.z);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(tr.r - 6, 2.5, 6, 24), glowMat('#b6ff7a', 0.8));
+        ring.rotation.x = Math.PI / 2;
+        ring.position.set(x, 9, tr.z);
+        g.add(pad, ring);
+      }
+    }
+
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     for (const row of [{ z: -700, n: 22, base: 0.55 }, { z: -1100, n: 26, base: 0.35 }]) {
@@ -1991,8 +2033,17 @@
     }
 
     // s: { arena, shake, fighters: [{ f, pose, isPlayer }], projectiles, beams, ... }
+    // Sågklingorna åker fram och tillbaka i djupled (samma formel som spelet, Shared.trapZ) och snurrar.
+    function moveSaws(t) {
+      for (const { saw, trap } of arenas[currentArena].group.userData.saws || []) {
+        saw.position.z = Shared.trapZ(trap, t);
+        saw.rotation.z = -t * 12;
+      }
+    }
+
     function render(s) {
       setArena(s.arena);
+      moveSaws(s.trapTime || 0);
       camWorld = s.arena.width || W;
       for (const byOwner of rigs.values()) for (const k in byOwner) { byOwner[k].used = false; }
       for (const entry of s.fighters || []) drawFighter(entry);

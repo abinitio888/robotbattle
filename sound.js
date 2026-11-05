@@ -93,6 +93,7 @@ const Sound = (function () {
       tone(700, 120, 0.4, { type: 'sawtooth', vol: 0.18 });
     },
     jump() { tone(220, 520, 0.12, { type: 'square', vol: 0.08 }); },
+    spring() { tone(180, 900, 0.3, { type: 'sine', vol: 0.18 }); tone(360, 1500, 0.25, { type: 'triangle', vol: 0.08, at: 0.05 }); },
     special() {
       tone(180, 900, 0.35, { type: 'sawtooth', vol: 0.12 });
       tone(270, 1350, 0.35, { type: 'square', vol: 0.06, at: 0.03 });

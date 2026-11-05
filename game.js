@@ -831,6 +831,50 @@ function enemyOf(owner) {
   return game.ai;
 }
 
+// ---------- Fällor på banan (arena.traps, se ARENAS i shared.js) ----------
+// Fällorna skadar som en "neutral" källa: ingen typfördel, inga passiva förmågor, ingen
+// spegling. game.trapT räknar tiden sedan matchen började, så att sågklingorna rör sig.
+const TRAP_SOURCE = { def: { types: [] }, passive: null, act: null, enrage: 1, energy: 0, dead: true };
+const LAVA_DMG = 5;          // per bränning
+const LAVA_EVERY = 0.45;     // sekunder mellan bränningarna
+const SAW_DMG = 12;
+const SAW_HEIGHT = 40;       // hoppar man högre än så går sågen under en
+const SPRING_LAUNCH = 1.55;  // gånger ett vanligt hopp
+
+function updateTraps(dt, fighters) {
+  const traps = game.arena.traps;
+  if (!traps) return;
+  game.trapT += dt;
+  for (const f of fighters) {
+    if (!f || f.dead) continue;
+    f.trapCd = Math.max(0, (f.trapCd || 0) - dt);
+    const height = FLOOR - f.y;
+    for (const tr of traps) {
+      if (tr.kind === 'lava') {
+        if (height < 4 && Math.hypot(f.x - tr.x, f.z - tr.z) < tr.r && f.trapCd <= 0) {
+          f.trapCd = LAVA_EVERY;
+          hurt(f, LAVA_DMG, Math.sign(f.x - tr.x) || 1, 80, TRAP_SOURCE);
+          sparks(f.x, f.y - 6, '#ff5a1a', 8, f.z);
+        }
+      } else if (tr.kind === 'saw') {
+        const z = Shared.trapZ(tr, game.trapT);
+        if (height < SAW_HEIGHT && Math.abs(f.x - tr.x) < 26 + f.w / 2 && Math.abs(f.z - z) < 22 + f.d / 2 && f.trapCd <= 0) {
+          f.trapCd = 0.8;
+          hurt(f, SAW_DMG, Math.sign(f.x - tr.x) || 1, 420, TRAP_SOURCE);
+          sparks(f.x, f.y - 20, '#ffffff', 16, f.z);
+        }
+      } else if (tr.kind === 'spring') {
+        if (f.onGround && Math.hypot(f.x - tr.x, f.z - tr.z) < tr.r) {
+          f.vy = -JUMP_V * SPRING_LAUNCH;
+          f.onGround = false;
+          sparks(f.x, f.y, '#7fd94a', 12, f.z);
+          if (f === game.player) Sound.spring();
+        }
+      }
+    }
+  }
+}
+
 // ---------- Hinder på banan ----------
 // Banans hinder (arena.obstacles) som rutor i (x, z) med en höjd. hit(): är punkten inne i ett
 // hinder (och lägre än dess topp)?
@@ -1801,6 +1845,7 @@ function resetArena() {
   game.winner = null;
   game.result = null;
   game.hitTaken = false;
+  game.trapT = 0; // fällornas klocka, se updateTraps
   game.introT = 2.4;
   game.banner = 0;
   specialBuffer = 0;
@@ -4413,6 +4458,7 @@ function updateFriendMatch(dt) {
       updateClocks(dt);
       updateMeteors(dt);
       updateTides(dt);
+      updateTraps(dt, [f0, f1]);
       updateSupers(dt);
       if (!om.ended && (f0.hp <= 0 || f1.hp <= 0)) {
         om.ended = true;
@@ -4422,8 +4468,9 @@ function updateFriendMatch(dt) {
       }
     }
     if (throttled) sendFriendState();
-  } else if (throttled) {
-    sendFriendInput();
+  } else {
+    if (fighting) game.trapT += dt; // bara för att sågklingorna ska röra sig även hos gästen
+    if (throttled) sendFriendInput();
   }
 }
 
@@ -4884,6 +4931,7 @@ function update(dt) {
     updateClocks(dt);
     updateMeteors(dt);
     updateTides(dt);
+    if (fighting) updateTraps(dt, [player, ai, ...game.allies.map((a) => a.f), ...game.foes.map((x) => x.f)]);
     updateSupers(dt);
 
     const lost = allies.length ? player.hp <= 0 && allies.every((a) => a.f.hp <= 0) : player.hp <= 0;
@@ -5430,7 +5478,7 @@ function draw() {
     }
     const none = [];
     r3d.render({
-      arena: game.arena, shake: game.shake, fighters, lookAt: fighting ? player.target || ai : null, eyes: !game.online,
+      arena: game.arena, shake: game.shake, fighters, lookAt: fighting ? player.target || ai : null, eyes: !game.online, trapTime: game.trapT,
       megabeams: fighting ? game.megabeams : none, bolts: fighting ? game.bolts : none,
       projectiles: fighting ? game.projectiles : none, beams: fighting ? game.beams : none,
       strikes: fighting ? game.strikes : none, waves: fighting ? game.waves : none,
