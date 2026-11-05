@@ -1338,6 +1338,7 @@
       }
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
       acct.tower = Math.max(1, Math.min(TOWER_TOP + 1, Math.floor(Number(raw.tower)) || 1));
+      if (Number.isInteger(raw.eventBeaten) && raw.eventBeaten > 0) acct.eventBeaten = raw.eventBeaten;
       const tr = raw.tourney;
       if (tr && Array.isArray(tr.field) && tr.field.length === 7 && tr.field.every((id) => robotById[id])) {
         acct.tourney = { round: Math.max(0, Math.min(TOURNEY_ROUNDS.length - 1, Math.floor(Number(tr.round)) || 0)), field: [...tr.field] };
@@ -1422,6 +1423,7 @@
     if (match.stake) return XP.stake;
     if (match.team) return match.team === 5 ? XP.team5 : XP.team3;
     if (match.tourney) return 15 + match.tourney * 10; // kvartsfinal 25, semifinal 35, final 45
+    if (match.event !== undefined) return 120;
     return XP.win;
   }
 
@@ -1654,6 +1656,27 @@
   // Våningen man står på i veckans torn just nu (1 när en ny vecka börjat).
   const weeklyFloor = (acct, week) => (acct.weekly && acct.weekly.week === week ? acct.weekly.floor : 1);
 
+  // ---------- Händelse: Jättebossen ----------
+  // De första EVENT_OPEN_MS av varje EVENT_PERIOD_MS kommer en jättebosss till Robotstaden (samma
+  // för alla, bestämd av tiden i UTC). Man slåss mot den tillsammans med fyra AI-kompisar (som
+  // i en kungastrid, se game.js). Den går bara att besegra en gång per besök (eventBeaten).
+  const EVENT_PERIOD_MS = 60 * 60 * 1000;
+  const EVENT_OPEN_MS = 20 * 60 * 1000;
+  const EVENT_COINS = 400;
+  const EVENT_BOXES = 3;
+
+  function eventWindow(now) {
+    const id = Math.floor(now / EVENT_PERIOD_MS);
+    const into = now - id * EVENT_PERIOD_MS;
+    return { id, open: into < EVENT_OPEN_MS, endsInMs: EVENT_OPEN_MS - into, startsInMs: EVENT_PERIOD_MS - into };
+  }
+
+  // Vilken gudomlig robot som är jättebossen den här gången.
+  function eventBoss(id) {
+    const pool = ROBOTS.filter((r) => r.rarity === 'divine' && !r.monster && !r.boss);
+    return pool[hashName(`jatte-${id}`) % pool.length].id;
+  }
+
   // ---------- Turneringen ----------
   // Åtta robotar: du och sju andra (field). Kvartsfinal, semifinal och final, allt svårare (se
   // tourneyTier i game.js) — man möter field[0], field[1] och field[2] i tur och ordning, resten
@@ -1721,12 +1744,13 @@
     { id: 'tower50', icon: '🏆', name: 'Toppen av tornet', desc: 'Klara alla 50 våningar.', check: (a) => (a.tower || 1) > TOWER_TOP },
     { id: 'weekly', icon: '📅', name: 'Veckans hjälte', desc: 'Klara alla 10 våningar i veckans torn.', check: (a, ev) => !!ev.weeklyDone },
     { id: 'tourney', icon: '🏆', name: 'Turneringsvinnare', desc: 'Vinn en hel turnering.', check: (a) => a.stats.trophies >= 1 },
+    { id: 'giant', icon: '👹', name: 'Jättedödare', desc: 'Besegra jättebossen i staden.', check: (a) => a.stats.giants >= 1 },
     { id: 'underdog', icon: '💪', name: 'Underdog', desc: 'Besegra en elitrobot, mästaren eller en tornboss med en vanlig robot.', check: (a, ev) => ev.won && ev.underdog },
     { id: 'collector', icon: '📦', name: 'Samlare', desc: 'Äg 25 olika robotar.', check: (a) => Object.keys(a.inv).filter((id) => a.inv[id] > 0).length >= 25 },
     { id: 'level30', icon: '🔥', name: 'Nivå 30', desc: 'Nå nivå 30.', check: (a) => (a.level || 1) >= 30 },
   ];
   const MEDAL_IDS = new Set(MEDALS.map((m) => m.id));
-  const STAT_KEYS = ['wins', 'street', 'elite', 'champion', 'boss', 'royal', 'trophies'];
+  const STAT_KEYS = ['wins', 'street', 'elite', 'champion', 'boss', 'royal', 'trophies', 'giants'];
 
   function ensureStats(acct) {
     acct.medals = acct.medals || [];
@@ -1769,6 +1793,13 @@
         return { robot: robotId, stake: false, opp: target, street: slot, elite: hit.elite, champion: hit.champion };
       }
       return { error: 'Den roboten har gått vidare.' };
+    }
+    if (mode === 'event') {
+      const ev = eventWindow(now);
+      if (!ev.open) return { error: 'Jättebossen är inte i staden just nu.' };
+      if (acct.eventBeaten === ev.id) return { error: 'Du har redan besegrat jättebossen den här gången — den kommer tillbaka nästa timme!' };
+      acct.selected = robotId;
+      return { robot: robotId, stake: false, opp: eventBoss(ev.id), event: ev.id };
     }
     if (mode === 'tourney') {
       if (!acct.tourney) acct.tourney = newTourney(robotId, rng);
@@ -1862,6 +1893,13 @@
     ensureStats(acct);
     if (won) countWin(acct, match);
     if (match.tourney) tourneyResult(acct, match, won, rng, result);
+    if (match.event !== undefined && won && acct.eventBeaten !== match.event) {
+      acct.eventBeaten = match.event;
+      acct.boxes += EVENT_BOXES;
+      result.coins += addCoins(acct, EVENT_COINS);
+      result.eventWon = true;
+      acct.stats.giants += 1;
+    }
     const underdog = robotDef && robotDef.rarity === 'common' && (match.elite || (match.tower && oppDef && oppDef.boss));
     // XP och nivåer: varje match ger XP (mer för svårare motståndare), se xpFor().
     ensureXp(acct);
@@ -2058,6 +2096,7 @@
       tower: acct.tower || 1,
       weekly: { week: weekOf(Date.now()), floor: weeklyFloor(acct, weekOf(Date.now())) },
       tourney: acct.tourney ? { round: acct.tourney.round, field: [...acct.tourney.field] } : null,
+      eventBeaten: acct.eventBeaten || 0,
       medals: [...(acct.medals || [])],
       stats: { ...(acct.stats || {}) },
       quests: questView(acct),
@@ -2185,6 +2224,7 @@
     MEDALS, awardMedals,
     WEEKLY_TOP, WEEKLY_TOP_COINS, WEEKLY_TOP_BOXES, weekOf, weeklyOpponent, weeklyFloor,
     TOURNEY_ROUNDS, TOURNEY_COINS, TOURNEY_WIN_COINS, TOURNEY_WIN_BOXES,
+    EVENT_COINS, EVENT_BOXES, eventWindow, eventBoss,
     ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
     SKINS, skinById, buySkin, setSkin,
     ITEM_LOOK, SETS, setsStatus, huntFor, HUNT_COINS, STREAK_MILESTONES,

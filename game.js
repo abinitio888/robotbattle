@@ -1332,6 +1332,9 @@ const ROYAL_TIERS = {
   king: { skill: { think: [0.08, 0.16], attack: 0.9, dodge: 0.8, special: 0.7, speed: 1.15, jitter: 0.02 }, enrageMax: 2, enrageSeconds: 90 },
   queen: { skill: { think: [0.06, 0.12], attack: 0.95, dodge: 0.88, special: 0.8, speed: 1.2, jitter: 0.01 }, enrageMax: 2.5, enrageSeconds: 80 },
 };
+// Jättebossen i staden: drottningens AI, sex gånger så mycket liv och en ilska som växer
+// långsamt — du och fyra kompisar behöver hjälpas åt (se startMatch, game.event).
+const GIANT_TIER = { skill: ROYAL_TIERS.queen.skill, enrageMax: 2.5, enrageSeconds: 90, hpMul: 6 };
 
 // AI:n blir svårare ju högre nivå du är — lätt i början, nästan SKILL_HARD från nivå 10.
 function skillForLevel(level) {
@@ -1708,6 +1711,7 @@ const game = {
   tower: 0,                // våningen i Utmaningstornet som pågående match gäller (0 = ingen tornmatch)
   weekly: 0,               // våningen i veckans torn som pågående match gäller (0 = ingen sådan match)
   tourney: 0,              // turneringsrundan som pågående match gäller (1–3, 0 = ingen)
+  event: false,            // pågående match är mot jättebossen i staden (se Shared.eventWindow)
   explore: null,           // {player, monsters, near, attackHeld} medan man går runt i Monstervärlden
   arena: arenaById.classic, // banan som pågående/senaste match spelades på, se pickArena()
   matchToken: null,       // matchen som pågår mot AI, från net.startMatch()
@@ -1823,23 +1827,26 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.tower = started.match.tower || 0;
   game.weekly = started.match.weekly ? started.match.weekly.floor : 0;
   game.tourney = started.match.tourney || 0;
+  game.event = started.match.event !== undefined;
   // Veckans torn är svårt redan från början: våning 1 är som tornets våning 32, våning 10 som toppen.
-  game.bossTier = game.tourney ? tourneyTier(game.tourney) : game.weekly ? towerTier(30 + game.weekly * 2) : game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
+  game.bossTier = game.event ? GIANT_TIER : game.tourney ? tourneyTier(game.tourney) : game.weekly ? towerTier(30 + game.weekly * 2) : game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
     : game.elite ? eliteTier(game.acct.level, game.champion) : null;
-  const aDef = game.bossTier && game.bossTier.hpMul ? { ...oppDef, hp: Math.round(oppDef.hp * game.bossTier.hpMul) } : oppDef;
+  const tierDef = game.bossTier && game.bossTier.hpMul ? { ...oppDef, hp: Math.round(oppDef.hp * game.bossTier.hpMul) } : oppDef;
+  const aDef = game.event ? { ...tierDef, scale: tierDef.scale * GIANT_SCALE } : tierDef; // jättebossen är jättestor
   game.online = null;
   game.fighters = null;
   game.player = new Fighter(pDef, W * 0.25, 1);
   game.ai = new Fighter(aDef, W * 0.75, -1);
   game.brain = makeBrain(game.bossTier ? game.bossTier.skill : skillForLevel(game.acct.level));
-  game.allies = aDef.royal ? makeAllies() : [];
+  game.allies = aDef.royal || game.event ? makeAllies() : [];
   game.foes = [];
   game.team = started.match.team || 0;
   if (game.team) setupTeamFight(game.team, started.match.foes || []);
   game.training = null;
   resetArena();
   hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
-  hud.nameAi.textContent = game.tourney ? `🏆 ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toUpperCase()} · ${aDef.name}`
+  hud.nameAi.textContent = game.event ? `👹 JÄTTEBOSSEN · ${aDef.name}`
+    : game.tourney ? `🏆 ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toUpperCase()} · ${aDef.name}`
     : game.team ? `👥 LAGSTRID ${game.team} MOT ${game.team} · ${aDef.name} leder`
     : game.weekly ? `📅 VECKANS TORN ${game.weekly}/${Shared.WEEKLY_TOP} · ${aDef.name}`
     : game.tower ? `🗼 VÅNING ${game.tower}/${Shared.TOWER_TOP} · ${aDef.name}`
@@ -2116,7 +2123,9 @@ function endMatch() {
 
 // "Kämpa igen": efter en tornmatch blir det nästa (eller samma) våning, annars en vanlig match.
 function fightAgain() {
-  if (game.tourney) {
+  if (game.event) {
+    showHub(); // jättebossen står i staden — gå dit igen
+  } else if (game.tourney) {
     showTourney(); // till lottningen: nästa runda, eller en ny turnering
   } else if (game.team) {
     startMatch('team', String(game.team));
@@ -3022,7 +3031,7 @@ function showHub() {
   byId('explore-bar').hidden = false;
   byId('btn-explore-back').hidden = true; // staden är "hemma" — inget att gå tillbaka till
   byId('btn-travel').hidden = false;
-  byId('explore-hint').textContent = HUB_HINT;
+  byId('explore-hint').textContent = hubHint();
   showScreen(null);
   maybeShowGuide();
 }
@@ -3030,7 +3039,34 @@ function showHub() {
 // Robotarna som går omkring är stadens utmanare (Shared.streetChallengers): de man redan vunnit
 // går hem, och var tionde minut kommer ett nytt gäng. De som redan går kvar står kvar där de är.
 // Elitrobotarna (från nivå 20) är lite större och lyser starkare.
+// Jättebossen (Shared.eventWindow): står mellan Handel och Äventyr när den är i staden och man
+// inte redan besegrat den den här gången.
+const GIANT_X = 1850;
+const GIANT_SCALE = 2.4;
+const GIANT_RANGE = 150; // den är stor, så man når den på längre håll
+
+function syncGiant(hub) {
+  const ev = Shared.eventWindow(Date.now());
+  const id = ev.open && game.acct.eventBeaten !== ev.id ? Shared.eventBoss(ev.id) : null;
+  if (!id) { hub.giant = null; return; }
+  if (hub.giant && hub.giant.id === id) return;
+  const def = robotById[id];
+  const f = new Fighter({ ...def, scale: def.scale * GIANT_SCALE }, GIANT_X, -1);
+  hub.giant = { id, f, giant: true };
+}
+
+// Tipsraden i staden när man inte står vid något: när jättebossen kommer eller hur länge den är kvar.
+function hubHint() {
+  const ev = Shared.eventWindow(Date.now());
+  const min = (ms) => Math.max(1, Math.ceil(ms / 60000));
+  const event = ev.open && game.acct.eventBeaten !== ev.id
+    ? ` 👹 Jättebossen är i staden i ${min(ev.endsInMs)} min till — mellan Handel och Äventyr!`
+    : ` 👹 Jättebossen kommer om ${min(ev.startsInMs)} min.`;
+  return HUB_HINT + event;
+}
+
 function syncWalkers(hub) {
+  syncGiant(hub);
   const list = Shared.streetChallengers(game.acct, Date.now());
   hub.walkers = hub.walkers.filter((w) => list.some((r) => r.id === w.id));
   for (const r of list) {
@@ -3099,20 +3135,24 @@ function updateHub(dt) {
     const d = Math.hypot(w.f.x - p.x, w.f.z - p.z);
     if (d < best) { best = d; near = w; }
   }
+  if (hub.giant && Math.hypot(hub.giant.f.x - p.x, hub.giant.f.z - p.z) < GIANT_RANGE) near = hub.giant;
   if (near !== hub.near) {
     const def = near && near.f && near.f.def;
-    byId('explore-hint').textContent = def && near.champion
+    byId('explore-hint').textContent = def && near.giant
+      ? `👹 JÄTTEBOSSEN ${def.name}! Du och fyra robotkompisar mot den. MELLANSLAG/J: Anfall! Vinner ni: ${Shared.EVENT_COINS} 🪙 + ${Shared.EVENT_BOXES} lådor.`
+      : def && near.champion
       ? `👑 STADENS MÄSTARE ${def.name} (${RARITY[def.rarity].label}) — mycket liv och skarpast av alla! MELLANSLAG/J: Utmana. Vinner du får du roboten + 300 🪙 + 2 lådor.`
       : def && near.elite
       ? `⭐ ELITROBOT ${def.name} (${RARITY[def.rarity].label}) — slåss som en boss! MELLANSLAG/J: Utmana. Vinner du får du roboten + 100 🪙.`
       : def ? `⚔️ ${def.name} (${RARITY[def.rarity].label}) — MELLANSLAG/J: Utmana till match! Vinner du får du roboten.`
-        : near ? `${near.emoji} ${near.name} — ${STATION_HINT[near.id]}${towerProgress(near.id)}. MELLANSLAG/J: Gå in` : HUB_HINT;
+        : near ? `${near.emoji} ${near.name} — ${STATION_HINT[near.id]}${towerProgress(near.id)}. MELLANSLAG/J: Gå in` : hubHint();
   }
   hub.near = near;
   if (near && input.attack && !hub.attackHeld) {
     if (near.f) {
       Sound.challenge();
-      startMatch('street', near.id);
+      if (near.giant) startMatch('event');
+      else startMatch('street', near.id);
     } else {
       enterStation(near.id);
     }
@@ -3232,6 +3272,7 @@ function drawHub() {
   const stations = STATIONS.map((st) => ({ ...st, near: hub.near === st }));
   if (r3d) {
     const fighters = hub.walkers.map((w) => ({ f: w.f, pose: { ...fighterPose(w.f), ready: w.elite } }));
+    if (hub.giant) fighters.push({ f: hub.giant.f, pose: { ...fighterPose(hub.giant.f, hub.player), ready: true } });
     fighters.push({ f: hub.player, pose: walkerPose(hub.player), isPlayer: true });
     r3d.render({ arena: game.arena, shake: 0, fighters, focus: [{ f: hub.player }], stations, lookAt: following() ? headingTarget(hub.player) : null });
     ctx.clearRect(0, 0, W, H);
@@ -3246,6 +3287,17 @@ function drawHub() {
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
       ctx.strokeText(d.name, at.x, at.y);
       ctx.fillText(d.name, at.x, at.y);
+    }
+    // Jättebossen har alltid en stor skylt.
+    if (hub.giant) {
+      const g = hub.giant.f;
+      const at = proj3d(g.x, FLOOR - 150 * g.def.scale, g.z);
+      ctx.font = `bold ${hub.near === hub.giant ? 22 : 18}px ui-monospace, Menlo, monospace`;
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillStyle = '#ff5a3a';
+      ctx.strokeText(`👹 JÄTTEBOSSEN ${g.def.name}`, at.x, at.y);
+      ctx.fillText(`👹 JÄTTEBOSSEN ${g.def.name}`, at.x, at.y);
     }
     // Namnskyltar över stadsrobotarna: elitrobotarna alltid, de andra när man står nära.
     for (const w of hub.walkers) {
@@ -3657,6 +3709,11 @@ function showResult() {
         ? `${opp.name} var för stark. ${opp.royal === 'queen' ? 'Drottningen' : 'Kungen'} väntar kvar — bli starkare och försök igen.`
         : 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
     }
+  } else if (r.won && game.event) {
+    text = r.eventWon
+      ? `👹 Ni besegrade jättebossen! Du fick ${Shared.EVENT_COINS} 🪙 och ${Shared.EVENT_BOXES} extra lådor!`
+      : '👹 Ni besegrade jättebossen igen!';
+    if (r.eventWon) celebrate('👹 JÄTTEBOSSEN ÄR BESEGRAD!', `${Shared.EVENT_COINS} 🪙 + ${Shared.EVENT_BOXES} lådor!`, true);
   } else if (r.won && r.tourney) {
     if (r.tourneyWon) {
       text = `🏆 Du vann turneringen! ${robotById[r.gained].name} är din, och du fick ${Shared.TOURNEY_WIN_BOXES} extra lådor!`;
@@ -3695,6 +3752,8 @@ function showResult() {
   } else if (r.lost) {
     text = 'Du tappade din insats.';
     rewardItem('FÖRLORAD ROBOT', robotById[r.lost], { n: invCount(r.lost) });
+  } else if (game.event) {
+    text = '👹 Jättebossen var för stark den här gången. Försök igen medan den är kvar i staden!';
   } else if (game.tourney) {
     text = `🏆 Du åkte ut i ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toLowerCase()}en. Starta en ny turnering och försök igen!`;
   } else if (game.weekly) {
@@ -3734,7 +3793,8 @@ function showResult() {
   const floor = game.acct.tower;
   const wf = weeklyFloorNow();
   const tr = game.acct.tourney;
-  byId('btn-again').textContent = game.tourney
+  byId('btn-again').textContent = game.event ? '👹 Tillbaka till staden (Enter)'
+    : game.tourney
     ? (tr ? `🏆 Till ${Shared.TOURNEY_ROUNDS[tr.round].toLowerCase()}en (Enter)` : '🏆 Till turneringen (Enter)')
     : game.weekly
     ? (wf > Shared.WEEKLY_TOP ? '📅 Till tornet (Enter)' : r.weekly ? `📅 Upp till våning ${wf} (Enter)` : `📅 Försök våning ${wf} igen (Enter)`)
