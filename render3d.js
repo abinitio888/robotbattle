@@ -1227,14 +1227,14 @@
       camera.position.set(cam.x, lookY + cam.dist * 0.5, cam.z + cam.dist * 0.88);
       camera.lookAt(cam.x, lookY, cam.z);
     }
-    // Kameralägen (V i spelet): 'side' = från sidan som vanligt, 'chase' = precis bakom och
-    // ovanför den egna roboten, 'eyes' = genom robotens egna ögon (då göms den egna roboten).
-    // I en match tittar kameran mot motståndaren (s.lookAt), annars åt hållet roboten vänder sig.
+    // Kameralägen (V i spelet): 'eyes' = genom den egna robotens ögon (då göms den egna
+    // roboten), 'side' = från sidan som förr. I en match tittar ögonen mot motståndaren
+    // (s.lookAt), annars åt hållet roboten vänder sig.
     let camMode = 'side';
-    const follow = { pos: new THREE.Vector3(), look: new THREE.Vector3(), ready: false };
+    const EYES_FOV = 72; // bredare än från sidan, så att man ser motståndaren även när den är nära
     const tmpPos = new THREE.Vector3();
     const tmpLook = new THREE.Vector3();
-    function followCamera(f, target, dt) {
+    function eyesCamera(f, target) {
       let dx = f.facing || 1;
       let dz = 0;
       if (target) {
@@ -1246,31 +1246,15 @@
       const px = wx(f.x);
       const py = wy(f.y);
       const pz = f.z || 0;
-      if (camMode === 'eyes') {
-        const head = 108 * f.def.scale;
-        tmpPos.set(px + dx * 16, py + head, pz + dz * 16);
-        tmpLook.set(px + dx * 500, py + head * 0.65, pz + dz * 500);
-      } else {
-        // Snett över axeln (lite åt höger), så att den egna roboten inte skymmer motståndaren.
-        const rx = -dz * 75;
-        const rz = dx * 75;
-        tmpPos.set(px - dx * 270 + rx, py + 175, pz - dz * 270 + rz);
-        tmpLook.set(px + dx * 240 + rx * 0.3, py + 75, pz + dz * 240 + rz * 0.3);
-      }
-      const fov = camMode === 'eyes' ? 72 : 55;
-      if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
-      // Mjukt efter, men ögonen sitter fast i huvudet (annars känns det som att flyta).
-      const k = !follow.ready || camMode === 'eyes' ? 1 : 1 - Math.exp(-dt * 6);
-      follow.pos.lerp(tmpPos, k);
-      follow.look.lerp(tmpLook, k);
-      follow.ready = true;
-      camera.position.copy(follow.pos);
-      camera.lookAt(follow.look);
+      const head = 108 * f.def.scale;
+      tmpPos.set(px + dx * 16, py + head, pz + dz * 16);
+      tmpLook.set(px + dx * 500, py + head * 0.65, pz + dz * 500);
+      if (camera.fov !== EYES_FOV) { camera.fov = EYES_FOV; camera.updateProjectionMatrix(); }
+      camera.position.copy(tmpPos);
+      camera.lookAt(tmpLook);
     }
     function setCameraMode(mode) {
       camMode = mode;
-      follow.ready = false;
-      if (mode === 'side' && camera.fov !== FOV) { camera.fov = FOV; camera.updateProjectionMatrix(); }
     }
 
     let lastT = performance.now();
@@ -1999,9 +1983,10 @@
       for (const byOwner of rigs.values()) for (const k in byOwner) { byOwner[k].used = false; }
       for (const entry of s.fighters || []) drawFighter(entry);
       const me = (s.fighters || []).find((e) => e.isPlayer);
-      const following = camMode !== 'side' && me;
-      // Genom robotens ögon syns inte den egna roboten (då skulle man se insidan av huvudet).
-      if (following && camMode === 'eyes') for (const rig of Object.values(rigs.get(me.f) || {})) rig.root.visible = false;
+      // I robotens ögon (utom där spelet ber om sidovyn, t.ex. vänmatcher) syns inte den egna
+      // roboten — då skulle man se insidan av huvudet.
+      const eyes = camMode === 'eyes' && me && s.eyes !== false;
+      if (eyes) for (const rig of Object.values(rigs.get(me.f) || {})) rig.root.visible = false;
       drawProjectiles(s);
       // Kämpar som inte längre finns med (förra matchen) göms och släpps.
       for (const [owner, byOwner] of rigs) {
@@ -2019,7 +2004,7 @@
 
       const now = performance.now();
       const frameDt = Math.min((now - lastT) / 1000, 0.1);
-      if (following) followCamera(me.f, s.lookAt, frameDt);
+      if (eyes) eyesCamera(me.f, s.lookAt);
       else {
         if (camera.fov !== FOV) { camera.fov = FOV; camera.updateProjectionMatrix(); }
         aimCamera(s.focus || s.fighters || [], frameDt);

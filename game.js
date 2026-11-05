@@ -1508,15 +1508,16 @@ const ctx = canvas.getContext('2d');
 // 3D-renderaren (render3d.js). null om WebGL eller three.js saknas — då ritas allt i 2D som förut.
 const r3d = window.Render3D ? Render3D.init(document.getElementById('game3d')) : null;
 
-// Kameran (V): från sidan, bakom roboten eller genom robotens ögon. Minns valet i webbläsaren.
-// Fungerar bara med 3D — utan WebGL finns bara den vanliga 2D-vyn.
+// Kameran: man ser det robotens ögon ser. V växlar till den gamla vyn från sidan (och tillbaka),
+// om man behöver se hela banan. Minns valet i webbläsaren. Fungerar bara med 3D — utan WebGL
+// finns bara den vanliga 2D-vyn.
 const CAMERA_MODES = [
-  { id: 'side', label: '🎥 Kamera: från sidan (V)' },
-  { id: 'chase', label: '🎥 Kamera: bakom roboten (V)' },
-  { id: 'eyes', label: '🎥 Kamera: robotens ögon (V)' },
+  { id: 'eyes', label: '👀 Robotens ögon (V)' },
+  { id: 'side', label: '🎥 Från sidan (V)' },
 ];
-let cameraMode = 'side';
-try { cameraMode = CAMERA_MODES.some((m) => m.id === localStorage.getItem('robotbattle-camera')) ? localStorage.getItem('robotbattle-camera') : 'side'; } catch (e) { /* ingen lagring */ }
+const CAMERA_KEY = 'robotbattle-camera-v2'; // nytt namn: alla börjar i robotens ögon
+let cameraMode = 'eyes';
+try { if (localStorage.getItem(CAMERA_KEY) === 'side') cameraMode = 'side'; } catch (e) { /* ingen lagring */ }
 
 function applyCameraMode() {
   if (r3d) r3d.setCameraMode(cameraMode);
@@ -1529,7 +1530,7 @@ function cycleCamera() {
   if (!r3d) return;
   const i = CAMERA_MODES.findIndex((m) => m.id === cameraMode);
   cameraMode = CAMERA_MODES[(i + 1) % CAMERA_MODES.length].id;
-  try { localStorage.setItem('robotbattle-camera', cameraMode); } catch (e) { /* ingen lagring */ }
+  try { localStorage.setItem(CAMERA_KEY, cameraMode); } catch (e) { /* ingen lagring */ }
   applyCameraMode();
 }
 document.getElementById('btn-camera').addEventListener('click', (e) => {
@@ -2446,7 +2447,7 @@ function renderMedals(box) {
 // att öppna igen med ❔ Guide. Medan den är öppen står spelaren still i staden.
 const GUIDE = [
   { icon: '🤖', title: 'Välkommen till Robotstaden!', text: 'Här bor alla robotar. Du styr din egen robot och går runt i staden mellan portalerna.' },
-  { icon: '⌨️', title: 'Gå runt', text: 'Gå med WASD eller piltangenterna. W och S går in i bilden och ut ur den. Gå fram till en portal och tryck MELLANSLAG eller J för att gå in.' },
+  { icon: '👀', title: 'Du är roboten', text: 'Du ser allt genom din robots ögon. W går framåt, S bakåt och A/D svänger. I en match tittar du alltid på motståndaren och A/D kliver åt sidan. Gå fram till en portal och tryck MELLANSLAG eller J för att gå in. V byter till vyn från sidan.' },
   { icon: '⚔️', title: 'Slåss', text: 'I en match: J eller MELLANSLAG slår, Shift eller L hoppar, E är din specialattack (när linjerna på roboten pulserar starkt är den laddad) och Q är ditt supervapen om du bär ett.' },
   { icon: '🛡', title: 'Undvik attacker', text: 'Gå undan i djupled med W och S — skott och vågor flyger längs en linje, så ett steg åt sidan räddar dig ofta bättre än ett hopp.' },
   { icon: '🚶', title: 'Robotarna på gatan', text: 'Robotarna som går omkring kan du utmana: gå fram och tryck J. Vinner du får du roboten! Från nivå 20 kommer elitrobotar och från nivå 30 stadens mästare.' },
@@ -5283,7 +5284,7 @@ function draw() {
     }
     const none = [];
     r3d.render({
-      arena: game.arena, shake: game.shake, fighters, lookAt: fighting ? ai : null,
+      arena: game.arena, shake: game.shake, fighters, lookAt: fighting ? ai : null, eyes: !game.online,
       megabeams: fighting ? game.megabeams : none, bolts: fighting ? game.bolts : none,
       projectiles: fighting ? game.projectiles : none, beams: fighting ? game.beams : none,
       strikes: fighting ? game.strikes : none, waves: fighting ? game.waves : none,
