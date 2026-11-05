@@ -1373,15 +1373,61 @@ let specialBuffer = 0;    // kort tidsfönster så en tidig tryckning inte missa
 let superBuffer = 0;      // samma sak för supervapnets superkraft (Q eller I)
 
 function playerInput() {
-  return {
-    dir: (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0),
+  const right = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+  const back = (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0);
+  const input = {
+    dir: right,
     // +z är mot kameran: S/↓ går närmare, W/↑ längre in i bilden.
-    depth: (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0),
+    depth: back,
     jump: !!(keys.ShiftLeft || keys.ShiftRight || keys.KeyL),
     attack: !!(keys.Space || keys.KeyJ),
     special: specialBuffer > 0,
     super: superBuffer > 0,
+    turn: 0,
   };
+  // Med kameran bakom roboten eller i dess ögon följer tangenterna kameran: W framåt, S bakåt.
+  // I en match låser kameran på motståndaren och A/D kliver åt sidan; i staden och
+  // Monstervärlden svänger A/D roboten (heading). Vänmatcher har alltid de vanliga tangenterna.
+  if (!r3d || cameraMode === 'side' || game.online) return input;
+  const fwd = -back;
+  const opp = (game.phase === 'intro' || game.phase === 'fight') && game.player && game.ai ? game.ai : null;
+  if (opp) {
+    let dx = opp.x - game.player.x;
+    let dz = (opp.z || 0) - (game.player.z || 0);
+    const len = Math.hypot(dx, dz) || 1;
+    dx /= len;
+    dz /= len;
+    input.dir = fwd * dx - right * dz;
+    input.depth = fwd * dz + right * dx;
+  } else {
+    input.dir = fwd * Math.cos(heading);
+    input.depth = fwd * Math.sin(heading);
+    input.turn = right;
+  }
+  return input;
+}
+
+// Åt vilket håll roboten tittar när man går runt med kameran bakom den (radianer, 0 = höger
+// längs gatan). Ändras med A/D, se turnRobot().
+let heading = 0;
+const TURN_SPEED = 2.6;
+
+// Svänger roboten med A/D och vänder den åt hållet den tittar. Bara i de följande kameralägena.
+function turnRobot(p, input, dt) {
+  if (cameraMode === 'side' || !r3d) return;
+  heading += input.turn * TURN_SPEED * dt;
+  p.facing = Math.cos(heading) >= 0 ? 1 : -1;
+}
+
+// En punkt framför roboten, dit kameran ska titta när man går runt.
+const headingTarget = (p) => ({ x: p.x + Math.cos(heading) * 200, z: (p.z || 0) + Math.sin(heading) * 200 });
+const following = () => !!r3d && cameraMode !== 'side';
+
+// Den egna roboten när man går runt: med kameran bakom den tittar den åt hållet man svängt.
+function walkerPose(p) {
+  const pose = fighterPose(p);
+  if (following()) { pose.aimX = Math.cos(heading); pose.aimZ = Math.sin(heading); }
+  return pose;
 }
 
 function toggleSound() {
@@ -1414,6 +1460,7 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyQ' || e.code === 'KeyI') triggerSuper();
     const onButton = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT');
     if (e.code === 'KeyM' && !(e.target && e.target.tagName === 'INPUT')) toggleSound();
+    if (e.code === 'KeyV' && !(e.target && e.target.tagName === 'INPUT')) cycleCamera();
     if (e.code === 'Enter' && !onButton) onEnter();
     const locked = (game.stake || game.online) && (game.phase === 'intro' || game.phase === 'fight');
     if (e.code === 'KeyT' && game.phase === 'hub') showTravel();
@@ -1460,6 +1507,43 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 // 3D-renderaren (render3d.js). null om WebGL eller three.js saknas — då ritas allt i 2D som förut.
 const r3d = window.Render3D ? Render3D.init(document.getElementById('game3d')) : null;
+
+// Kameran (V): från sidan, bakom roboten eller genom robotens ögon. Minns valet i webbläsaren.
+// Fungerar bara med 3D — utan WebGL finns bara den vanliga 2D-vyn.
+const CAMERA_MODES = [
+  { id: 'side', label: '🎥 Kamera: från sidan (V)' },
+  { id: 'chase', label: '🎥 Kamera: bakom roboten (V)' },
+  { id: 'eyes', label: '🎥 Kamera: robotens ögon (V)' },
+];
+let cameraMode = 'side';
+try { cameraMode = CAMERA_MODES.some((m) => m.id === localStorage.getItem('robotbattle-camera')) ? localStorage.getItem('robotbattle-camera') : 'side'; } catch (e) { /* ingen lagring */ }
+
+function applyCameraMode() {
+  if (r3d) r3d.setCameraMode(cameraMode);
+  const btn = document.getElementById('btn-camera');
+  btn.hidden = !r3d;
+  btn.textContent = CAMERA_MODES.find((m) => m.id === cameraMode).label;
+}
+
+function cycleCamera() {
+  if (!r3d) return;
+  const i = CAMERA_MODES.findIndex((m) => m.id === cameraMode);
+  cameraMode = CAMERA_MODES[(i + 1) % CAMERA_MODES.length].id;
+  try { localStorage.setItem('robotbattle-camera', cameraMode); } catch (e) { /* ingen lagring */ }
+  applyCameraMode();
+}
+document.getElementById('btn-camera').addEventListener('click', (e) => {
+  cycleCamera();
+  e.currentTarget.blur(); // annars "klickar" mellanslag på knappen i stället för att slå
+});
+applyCameraMode();
+
+// Var en spelpunkt hamnar på skärmen, för text ovanpå 3D:n. Ligger den bakom kameran (kan
+// hända bakom eller i roboten) hamnar den utanför bild, så att ingen text ritas där.
+function proj3d(x, y, z) {
+  const p = r3d.project(x, y, z);
+  return p.behind ? { x: -9999, y: -9999 } : p;
+}
 if (!r3d) document.getElementById('game3d').hidden = true;
 const overlay = document.getElementById('overlay');
 const screens = {
@@ -2687,6 +2771,7 @@ function showHub() {
   const player = new Fighter(applyEquipment(myDef(robotById[game.selectedId])), prev ? prev.player.x : 610, 1);
   player.z = prev ? prev.player.z : 0;
   game.hub = { player, walkers: prev ? prev.walkers : [], near: null, attackHeld: true, syncT: 0 };
+  if (!prev) heading = 0;
   syncWalkers(game.hub);
   byId('explore-bar').hidden = false;
   byId('btn-explore-back').hidden = true; // staden är "hemma" — inget att gå tillbaka till
@@ -2727,7 +2812,8 @@ function updateHub(dt) {
   const walkZ = input.depth * p.def.speed * DEPTH_SPEED;
   p.moving = walk !== 0 || walkZ !== 0;
   if (p.moving) p.walkT += dt;
-  if (input.dir) p.facing = input.dir;
+  if (input.dir) p.facing = Math.sign(input.dir);
+  turnRobot(p, input, dt);
   p.x = clamp(p.x + walk * dt, p.w / 2, HUB_W - p.w / 2);
   p.z = clamp(p.z + walkZ * dt, -DEPTH, DEPTH);
 
@@ -2897,14 +2983,14 @@ function drawHub() {
   const stations = STATIONS.map((st) => ({ ...st, near: hub.near === st }));
   if (r3d) {
     const fighters = hub.walkers.map((w) => ({ f: w.f, pose: { ...fighterPose(w.f), ready: w.elite } }));
-    fighters.push({ f: hub.player, pose: fighterPose(hub.player), isPlayer: true });
-    r3d.render({ arena: game.arena, shake: 0, fighters, focus: [{ f: hub.player }], stations });
+    fighters.push({ f: hub.player, pose: walkerPose(hub.player), isPlayer: true });
+    r3d.render({ arena: game.arena, shake: 0, fighters, focus: [{ f: hub.player }], stations, lookAt: following() ? headingTarget(hub.player) : null });
     ctx.clearRect(0, 0, W, H);
     ctx.textAlign = 'center';
     // Kvarterens namn högt upp, och bara namnen på portalerna som är nära.
     for (const d of DISTRICTS) {
       if (Math.abs(d.x - hub.player.x) > 600) continue;
-      const at = r3d.project(d.x, FLOOR - 230, -150);
+      const at = proj3d(d.x, FLOOR - 230, -150);
       ctx.font = 'bold 22px ui-monospace, Menlo, monospace';
       ctx.lineWidth = 5;
       ctx.strokeStyle = 'rgba(0,0,0,0.6)';
@@ -2915,7 +3001,7 @@ function drawHub() {
     // Namnskyltar över stadsrobotarna: elitrobotarna alltid, de andra när man står nära.
     for (const w of hub.walkers) {
       if (!w.elite && hub.near !== w) continue;
-      const at = r3d.project(w.f.x, FLOOR - 150 * w.f.def.scale, w.f.z);
+      const at = proj3d(w.f.x, FLOOR - 150 * w.f.def.scale, w.f.z);
       ctx.font = `bold ${hub.near === w ? 16 : 13}px ui-monospace, Menlo, monospace`;
       ctx.lineWidth = 4;
       ctx.strokeStyle = 'rgba(0,0,0,0.7)';
@@ -2926,7 +3012,7 @@ function drawHub() {
     }
     for (const st of stations) {
       if (Math.abs(st.x - hub.player.x) > 380) continue;
-      const at = r3d.project(st.x, FLOOR - 120, st.z);
+      const at = proj3d(st.x, FLOOR - 120, st.z);
       ctx.font = `bold ${st.near ? 18 : 14}px ui-monospace, Menlo, monospace`;
       ctx.lineWidth = 4;
       ctx.strokeStyle = 'rgba(0,0,0,0.7)';
@@ -2998,6 +3084,7 @@ function showMonsters() {
   // utmanade det direkt).
   const player = new Fighter(applyEquipment(myDef(robotById[game.selectedId])), 60, 1);
   player.z = DEPTH * 0.6;
+  heading = 0;
   game.explore = {
     player,
     monsters: [
@@ -3031,7 +3118,8 @@ function updateExplore(dt) {
   const walkZ = input.depth * p.def.speed * DEPTH_SPEED;
   p.moving = walk !== 0 || walkZ !== 0;
   if (p.moving) p.walkT += dt;
-  if (input.dir) p.facing = input.dir;
+  if (input.dir) p.facing = Math.sign(input.dir);
+  turnRobot(p, input, dt);
   p.x = clamp(p.x + walk * dt, p.w / 2, W - p.w / 2);
   p.z = clamp(p.z + walkZ * dt, -DEPTH, DEPTH);
 
@@ -3072,14 +3160,14 @@ function drawExplore() {
   if (!ex) return;
   if (r3d) {
     const fighters = ex.monsters.map((m) => ({ f: m, pose: fighterPose(m) }));
-    fighters.push({ f: ex.player, pose: fighterPose(ex.player), isPlayer: true });
-    r3d.render({ arena: game.arena, shake: 0, fighters });
+    fighters.push({ f: ex.player, pose: walkerPose(ex.player), isPlayer: true });
+    r3d.render({ arena: game.arena, shake: 0, fighters, lookAt: following() ? headingTarget(ex.player) : ex.near });
     ctx.clearRect(0, 0, W, H);
     ctx.textAlign = 'center';
     for (const m of ex.monsters) {
       const hunted = isHuntTarget(m.def);
       if (!m.def.royal && !hunted && ex.near !== m) continue;
-      const at = r3d.project(m.x, m.y - m.h - 14, m.z);
+      const at = proj3d(m.x, m.y - m.h - 14, m.z);
       ctx.font = `bold ${m.def.royal || hunted ? 15 : 16}px ui-monospace, Menlo, monospace`;
       ctx.fillStyle = hunted ? '#ff5a5a' : m.def.royal ? (ex.near === m ? '#fff3b0' : '#ffd93d') : '#ffd93d';
       ctx.fillText(hunted ? `🎯 ${m.def.name} — jaktbyte!` : m.def.royal ? `👑 ${m.def.name}` : m.def.name, at.x, at.y);
@@ -5195,7 +5283,7 @@ function draw() {
     }
     const none = [];
     r3d.render({
-      arena: game.arena, shake: game.shake, fighters,
+      arena: game.arena, shake: game.shake, fighters, lookAt: fighting ? ai : null,
       megabeams: fighting ? game.megabeams : none, bolts: fighting ? game.bolts : none,
       projectiles: fighting ? game.projectiles : none, beams: fighting ? game.beams : none,
       strikes: fighting ? game.strikes : none, waves: fighting ? game.waves : none,
@@ -5208,9 +5296,9 @@ function draw() {
       tides: fighting ? game.tides : none,
     });
     ctx.clearRect(0, 0, W, H);
-    if (fighting) drawAllyBars((x, y, z) => r3d.project(x, y, z));
+    if (fighting) drawAllyBars(proj3d);
     if (fighting && game.training) drawTrainingStats();
-    if (fighting) drawDamageNumbers((x, y, z) => r3d.project(x, y, z));
+    if (fighting) drawDamageNumbers(proj3d);
   } else {
     ctx.save();
     if (game.shake > 0) ctx.translate(rand(-1, 1) * game.shake * 24, rand(-1, 1) * game.shake * 24);

@@ -1227,6 +1227,52 @@
       camera.position.set(cam.x, lookY + cam.dist * 0.5, cam.z + cam.dist * 0.88);
       camera.lookAt(cam.x, lookY, cam.z);
     }
+    // Kameralägen (V i spelet): 'side' = från sidan som vanligt, 'chase' = precis bakom och
+    // ovanför den egna roboten, 'eyes' = genom robotens egna ögon (då göms den egna roboten).
+    // I en match tittar kameran mot motståndaren (s.lookAt), annars åt hållet roboten vänder sig.
+    let camMode = 'side';
+    const follow = { pos: new THREE.Vector3(), look: new THREE.Vector3(), ready: false };
+    const tmpPos = new THREE.Vector3();
+    const tmpLook = new THREE.Vector3();
+    function followCamera(f, target, dt) {
+      let dx = f.facing || 1;
+      let dz = 0;
+      if (target) {
+        const tx = wx(target.x) - wx(f.x);
+        const tz = (target.z || 0) - (f.z || 0);
+        const len = Math.hypot(tx, tz);
+        if (len > 1) { dx = tx / len; dz = tz / len; }
+      }
+      const px = wx(f.x);
+      const py = wy(f.y);
+      const pz = f.z || 0;
+      if (camMode === 'eyes') {
+        const head = 108 * f.def.scale;
+        tmpPos.set(px + dx * 16, py + head, pz + dz * 16);
+        tmpLook.set(px + dx * 500, py + head * 0.65, pz + dz * 500);
+      } else {
+        // Snett över axeln (lite åt höger), så att den egna roboten inte skymmer motståndaren.
+        const rx = -dz * 75;
+        const rz = dx * 75;
+        tmpPos.set(px - dx * 270 + rx, py + 175, pz - dz * 270 + rz);
+        tmpLook.set(px + dx * 240 + rx * 0.3, py + 75, pz + dz * 240 + rz * 0.3);
+      }
+      const fov = camMode === 'eyes' ? 72 : 55;
+      if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
+      // Mjukt efter, men ögonen sitter fast i huvudet (annars känns det som att flyta).
+      const k = !follow.ready || camMode === 'eyes' ? 1 : 1 - Math.exp(-dt * 6);
+      follow.pos.lerp(tmpPos, k);
+      follow.look.lerp(tmpLook, k);
+      follow.ready = true;
+      camera.position.copy(follow.pos);
+      camera.lookAt(follow.look);
+    }
+    function setCameraMode(mode) {
+      camMode = mode;
+      follow.ready = false;
+      if (mode === 'side' && camera.fov !== FOV) { camera.fov = FOV; camera.updateProjectionMatrix(); }
+    }
+
     let lastT = performance.now();
     const lights = createLights(scene);
 
@@ -1952,6 +1998,10 @@
       camWorld = s.arena.width || W;
       for (const byOwner of rigs.values()) for (const k in byOwner) { byOwner[k].used = false; }
       for (const entry of s.fighters || []) drawFighter(entry);
+      const me = (s.fighters || []).find((e) => e.isPlayer);
+      const following = camMode !== 'side' && me;
+      // Genom robotens ögon syns inte den egna roboten (då skulle man se insidan av huvudet).
+      if (following && camMode === 'eyes') for (const rig of Object.values(rigs.get(me.f) || {})) rig.root.visible = false;
       drawProjectiles(s);
       // Kämpar som inte längre finns med (förra matchen) göms och släpps.
       for (const [owner, byOwner] of rigs) {
@@ -1969,7 +2019,11 @@
 
       const now = performance.now();
       const frameDt = Math.min((now - lastT) / 1000, 0.1);
-      aimCamera(s.focus || s.fighters || [], frameDt);
+      if (following) followCamera(me.f, s.lookAt, frameDt);
+      else {
+        if (camera.fov !== FOV) { camera.fov = FOV; camera.updateProjectionMatrix(); }
+        aimCamera(s.focus || s.fighters || [], frameDt);
+      }
       lastT = now;
       if (s.shake > 0) {
         camera.position.x += (Math.random() * 2 - 1) * s.shake * 24;
@@ -1983,7 +2037,9 @@
     const tmp = new THREE.Vector3();
     function project(x, y, z = 0) {
       tmp.set(wx(x), wy(y), z).project(camera);
-      return { x: (tmp.x + 1) * W / 2, y: (1 - tmp.y) * H / 2 };
+      // behind: punkten ligger bakom kameran (kan hända i de följande kameralägena) — rita
+      // ingen text där, den skulle hamna spegelvänd på fel ställe.
+      return { x: (tmp.x + 1) * W / 2, y: (1 - tmp.y) * H / 2, behind: tmp.z > 1 };
     }
 
     // ---------- Kort: en egen liten renderare som ritar robotar till kortens 2D-canvasar ----------
@@ -2018,7 +2074,7 @@
       ctx2d.drawImage(c.r.domElement, 0, 0, ctx2d.canvas.width, ctx2d.canvas.height);
     }
 
-    return { render, project, drawCard };
+    return { render, project, drawCard, setCameraMode };
   }
 
   window.Render3D = { init };
