@@ -2993,8 +2993,13 @@ function showMonsters() {
   const queen = ROBOTS.filter((r) => r.royal === 'queen');
   const royalMonsters = [kings[0], ...queen, ...kings.slice(1)].filter(Boolean);
   const margin = 90;
+  // Spelaren börjar framme vid kameran, en bit från monstren, så att man själv väljer vem man
+  // går fram till (förr stod man bredvid det första monstret och J-trycket från portalen
+  // utmanade det direkt).
+  const player = new Fighter(applyEquipment(myDef(robotById[game.selectedId])), 60, 1);
+  player.z = DEPTH * 0.6;
   game.explore = {
-    player: new Fighter(applyEquipment(myDef(robotById[game.selectedId])), 60, 1),
+    player,
     monsters: [
       ...commonMonsters.map((def, i) => {
         const m = new Fighter(def, margin + (i * (W - 2 * margin)) / Math.max(1, commonMonsters.length - 1), -1);
@@ -3009,7 +3014,7 @@ function showMonsters() {
       }),
     ],
     near: null,
-    attackHeld: false,
+    attackHeld: true, // ett nytt tryck krävs — inte samma som tog en in genom portalen
   };
   byId('explore-bar').hidden = false;
   byId('explore-hint').textContent = 'Gå med WASD eller piltangenterna.';
@@ -3031,10 +3036,12 @@ function updateExplore(dt) {
   p.z = clamp(p.z + walkZ * dt, -DEPTH, DEPTH);
 
   let near = null;
+  let best = EXPLORE_RANGE;
   for (const m of ex.monsters) {
     m.time += dt;
     m.facing = m.x >= p.x ? -1 : 1;
-    if (Math.hypot(m.x - p.x, m.z - p.z) < EXPLORE_RANGE) near = m;
+    const d = Math.hypot(m.x - p.x, m.z - p.z);
+    if (d < best) { best = d; near = m; }
   }
   ex.near = near;
 
