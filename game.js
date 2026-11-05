@@ -7,6 +7,10 @@ const FLOOR = 450;
 const GRAVITY = 2200;
 const JUMP_V = 820;
 const MAX_ENERGY = 100;
+const MAX_GUARD = 100;     // blocket: tål ungefär 3–4 vanliga slag innan det går sönder
+const GUARD_REGEN = 22;    // så mycket block som kommer tillbaka per sekund när man inte blockerar
+const BLOCK_DMG = 0.25;    // ett blockerat slag gör en fjärdedel av skadan
+const GUARD_BREAK_SECONDS = 1.1;
 const SPECIAL_COST = 50;
 // Turbomotorn (butiksvara) gör specialattacken billigare.
 const specialCost = (f) => f.def.specialCost || SPECIAL_COST;
@@ -59,6 +63,24 @@ function hurt(target, dmg, dirX, knock, source) {
     sparks(target.x, target.y - target.h * 0.6, '#7a3aff', 16, target.z);
     return false;
   }
+  // Blockerat: bara en fjärdedel av skadan, nästan ingen knuff och ingen stöt (man står kvar i
+  // blocket), men blocket tar slut och går sönder om man tar för mycket.
+  const blocked = target.blocking && source !== target;
+  if (blocked) {
+    target.guard -= dmg * 2.6;
+    dmg *= BLOCK_DMG;
+    knock *= 0.2;
+    sparks(target.x + target.facing * 20, target.y - target.h * 0.6, '#7fd8ff', 10, target.z);
+    if (target.guard <= 0) {
+      target.guard = 0;
+      target.blocking = false;
+      target.guardBreakT = GUARD_BREAK_SECONDS;
+      sparks(target.x, target.y - target.h * 0.8, '#ffffff', 22, target.z);
+      Sound.guardBreak();
+    } else {
+      Sound.block();
+    }
+  }
   if (target.passive === 'steadfast') { dmg *= 0.85; knock = 0; } // Orubblig
   if (target.def.noKnock) knock = 0; // Magnetstövlarna
   if (target.passive === 'rooted' && target.stillT >= 1) { dmg *= 0.6; knock = 0; } // Rotad
@@ -97,7 +119,7 @@ function hurt(target, dmg, dirX, knock, source) {
   }
   target.act = null;
   target.dashT = 0;
-  target.hurt = 0.22;
+  target.hurt = blocked ? 0 : 0.22; // blockerat: man står kvar i blocket
   target.invuln = 0.28;
   target.flash = 0.1;
   target.kx = dirX * knock;
@@ -116,7 +138,7 @@ function hurt(target, dmg, dirX, knock, source) {
   }
   if (target.hp <= 0) target.dead = true;
   if (target === game.player) game.hitTaken = true; // inte längre Felfri
-  Sound.hit(dmg);
+  if (!blocked) Sound.hit(dmg);
   if (target.dead) Sound.ko();
   popDamage(target, dmg, dmg >= 30);
   if (dmg >= 15) game.hitStop = Math.max(game.hitStop || 0, dmg >= 30 ? 0.09 : 0.05); // tunga träffar fryser bilden ett ögonblick
@@ -641,6 +663,11 @@ class Fighter {
     this.time = 0;
     this.walkT = 0;
     this.enrage = 1; // bara bossen: skalar skadan den gör, se updateBossEnrage()
+    // Blockera (F): tar bara en fjärdedel av skadan men tär på blocket (guard). Tar det slut
+    // går blocket sönder och roboten står stilla en stund (guardBreakT). Se hurt().
+    this.blocking = false;
+    this.guard = MAX_GUARD;
+    this.guardBreakT = 0;
   }
 
   startAct(kind) {
@@ -689,6 +716,9 @@ class Fighter {
     this.mirrorT = Math.max(0, this.mirrorT - dt);
     this.reviveT = Math.max(0, this.reviveT - dt);
     this.rootT = Math.max(0, this.rootT - dt);
+    this.guardBreakT = Math.max(0, this.guardBreakT - dt);
+    if (!this.blocking) this.guard = Math.min(MAX_GUARD, this.guard + GUARD_REGEN * dt);
+    this.blocking = false; // sätts igen nedan om man håller F och kan blockera
     const rooted = this.rootT > 0;
     const floating = this.floatT > 0;
     if (floating) {
@@ -716,6 +746,9 @@ class Fighter {
         }
         if (this.act) {
           this.updateAct(dt * slow, opp);
+        } else if (input.block && this.onGround && this.guardBreakT <= 0) {
+          this.blocking = true; // står still med armarna uppe, kan inte slå eller hoppa
+          this.jumpHeld = !!input.jump;
         } else {
           // Vargblod: Fenrir springer fortare under halva HP.
           const rage = this.passive === 'bloodrage' && this.hp < this.maxHp * 0.5 ? 1.2 : 1;
@@ -1331,7 +1364,19 @@ function aiInput(f, o, brain, dt) {
   const k = brain.skill;
   brain.timer -= dt;
   brain.retreat -= dt;
-  const input = { dir: brain.dir * k.speed, depth: brain.depth * k.speed, jump: brain.jump, attack: brain.attack, special: brain.special };
+  // Blockera: när motståndaren börjar ett slag nära en kan AI:n hinna lyfta armarna (bättre AI
+  // gör det oftare). Varje slag bedöms bara en gång.
+  brain.blockT = Math.max(0, (brain.blockT || 0) - dt);
+  if (o.act && o.act !== brain.sawAct) {
+    brain.sawAct = o.act;
+    const near = Math.abs(o.x - f.x) < (f.w + o.w) / 2 + PUNCH_REACH * o.def.scale + 20;
+    if (o.act.kind === 'punch' && near && f.guardBreakT <= 0 && Math.random() < k.dodge * 0.55) brain.blockT = rand(0.3, 0.55);
+  }
+  const blocking = brain.blockT > 0;
+  const input = {
+    dir: blocking ? 0 : brain.dir * k.speed, depth: blocking ? 0 : brain.depth * k.speed,
+    jump: brain.jump, attack: !blocking && brain.attack, special: !blocking && brain.special, block: blocking,
+  };
   brain.jump = false;
   brain.special = false;
 
@@ -1383,6 +1428,7 @@ function playerInput() {
     depth: back,
     jump: !!(keys.ShiftLeft || keys.ShiftRight || keys.KeyL),
     attack: !!(keys.Space || keys.KeyJ),
+    block: !!keys.KeyF,
     special: specialBuffer > 0,
     super: superBuffer > 0,
     turn: 0,
@@ -1503,6 +1549,7 @@ bindTouchButton('touch-jump', () => { keys.KeyL = true; }, () => { keys.KeyL = f
 bindTouchButton('touch-attack', () => { keys.Space = true; }, () => { keys.Space = false; });
 bindTouchButton('touch-special', () => { triggerSpecial(); });
 bindTouchButton('touch-super', () => { triggerSuper(); });
+bindTouchButton('touch-block', () => { keys.KeyF = true; }, () => { keys.KeyF = false; });
 
 // ---------- Spelstate ----------
 const canvas = document.getElementById('game');
@@ -2526,7 +2573,7 @@ const GUIDE = [
   { icon: '🤖', title: 'Välkommen till Robotstaden!', text: 'Här bor alla robotar. Du styr din egen robot och går runt i staden mellan portalerna.' },
   { icon: '👀', title: 'Du är roboten', text: 'Du ser allt genom din robots ögon. W går framåt, S bakåt och A/D svänger. I en match tittar du alltid på motståndaren och A/D kliver åt sidan. Gå fram till en portal och tryck MELLANSLAG eller J för att gå in. V byter till vyn från sidan.' },
   { icon: '⚔️', title: 'Slåss', text: 'I en match: J eller MELLANSLAG slår, Shift eller L hoppar, E är din specialattack (när linjerna på roboten pulserar starkt är den laddad) och Q är ditt supervapen om du bär ett.' },
-  { icon: '🛡', title: 'Undvik attacker', text: 'Gå undan i djupled med W och S — skott och vågor flyger längs en linje, så ett steg åt sidan räddar dig ofta bättre än ett hopp.' },
+  { icon: '🛡', title: 'Blockera och undvik', text: 'Håll F för att blockera: du tar bara en fjärdedel av skadan, men blocket går sönder om du tar för många slag i rad — då står du stilla en stund. Du kan också gå undan i djupled — skott och vågor flyger längs en linje, så ett steg åt sidan räddar dig ofta.' },
   { icon: '🚶', title: 'Robotarna på gatan', text: 'Robotarna som går omkring kan du utmana: gå fram och tryck J. Vinner du får du roboten! Från nivå 20 kommer elitrobotar och från nivå 30 stadens mästare.' },
   { icon: '📜', title: 'Uppdrag och lådor', text: 'På Uppdragstavlan finns uppdrag hela tiden — de ger mynt, och var tredje ger en bonuslåda. Vinner du matcher går du upp i nivå och får nya robotar.' },
   { icon: '🗼', title: 'Utmaningstornet', text: 'Från nivå 20: klättra 50 våningar mot allt starkare robotar. Var femte våning ger ett pris, och högst upp väntar 1000 mynt. Lycka till!' },
@@ -4072,6 +4119,7 @@ function normalizeFriendInput(data) {
     attack: !!data.attack,
     special: !!data.special,
     super: !!data.super,
+    block: !!data.block,
   };
 }
 
@@ -4765,7 +4813,7 @@ byId('mode-normal').addEventListener('click', () => { game.mode = 'normal'; show
 byId('mode-stake').addEventListener('click', () => { game.mode = 'stake'; showTeleport(); });
 
 // ---------- Uppdatering ----------
-const IDLE = { dir: 0, depth: 0, jump: false, attack: false, special: false, super: false };
+const IDLE = { dir: 0, depth: 0, jump: false, attack: false, special: false, super: false, block: false };
 
 function update(dt) {
   game.shake = Math.max(0, game.shake - dt);
@@ -5185,6 +5233,7 @@ function fighterPose(f, opp) {
     moving: f.moving, air: !f.onGround, hurt: f.hurt > 0, flash: f.flash, dead: f.dead,
     actKind: a ? a.kind : null, actT: a ? a.t : 0, actDur: a ? a.dur : 1,
     ready: f.energy >= specialCost(f),
+    blocking: !!f.blocking,
   };
 }
 

@@ -902,13 +902,22 @@
 
     const glow = new THREE.Mesh(sphere(1), M.glow);
     upper.add(glow);
+    // Blocket (F): en blå sexkantig sköld framför roboten medan den blockerar.
+    const shieldMat = new THREE.MeshBasicMaterial({
+      color: '#7fd8ff', transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    });
+    const shield = new THREE.Mesh(new THREE.CircleGeometry(34, 6), shieldMat);
+    shield.position.set(38, 72, 0);
+    shield.rotation.y = Math.PI / 2;
+    shield.visible = false;
+    upper.add(shield);
     // Gudomliga robotar och Monstervärldens kungar/drottning får extra prakt (se buildDivine).
     const divine = def.rarity === 'divine' || def.royal ? buildDivine(def, upper, inner, [front.fist, back.fist]) : null;
     const gear = def.gear ? buildGear(def.gear, inner, upper, legs, [front.fist, back.fist], head) : null;
 
     root.traverse((o) => { if (o.isMesh) o.castShadow = o.material.blending !== THREE.AdditiveBlending; });
     glow.castShadow = false;
-    return { def, root, inner, upper, legs, back, front, core, cape, flame, glow, divine, gear, neck, M };
+    return { def, root, inner, upper, legs, back, front, core, cape, flame, glow, shield, divine, gear, neck, M };
   }
 
   const SIL_BODY = new THREE.Color('#232c4a');
@@ -983,7 +992,12 @@
       front = -1.5;
       back = -1.3;
       glow = clamp(p.actT / p.actDur, 0, 1);
+    } else if (p.blocking) {
+      front = -1.25; // båda armarna uppe framför kroppen
+      back = -1.1;
     }
+    rig.shield.visible = !!p.blocking && !sil;
+    if (rig.shield.visible) rig.shield.material.opacity = (0.35 + 0.15 * Math.sin(t * 14)) * alpha;
     // 2D vrider medurs med y nedåt; i 3D med y uppåt blir samma vinkel spegelvänd.
     rig.front.pivot.rotation.z = -front;
     rig.back.pivot.rotation.z = -back;

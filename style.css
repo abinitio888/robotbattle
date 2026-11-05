@@ -638,6 +638,8 @@ button.wildcard-attack-btn .desc { display: block; font-weight: 400; color: var(
   .touch-special:active { background: rgba(255, 217, 61, 0.45); }
   .touch-super { background: rgba(62, 232, 255, 0.2); border-color: var(--divine); font-size: 20px; }
   .touch-super:active { background: rgba(62, 232, 255, 0.45); }
+  .touch-block { background: rgba(127, 216, 255, 0.2); border-color: #7fd8ff; font-size: 20px; }
+  .touch-block:active { background: rgba(127, 216, 255, 0.45); }
 }
 
 /* ---- Världskartan ---- */

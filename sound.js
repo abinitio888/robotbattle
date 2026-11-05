@@ -78,6 +78,20 @@ const Sound = (function () {
       tone(heavy ? 160 : 260, heavy ? 50 : 120, heavy ? 0.2 : 0.09, { type: 'triangle', vol: heavy ? 0.5 : 0.3 });
     },
     swing() { noise(0.07, { freq: 2500, q: 2, vol: 0.12, type: 'highpass' }); },
+    // Ett slag som tas emot i blocket: en metallisk "klonk".
+    block() {
+      const now = performance.now();
+      if (now - lastHit < 45) return;
+      lastHit = now;
+      tone(900, 700, 0.12, { type: 'square', vol: 0.12 });
+      tone(1350, 1100, 0.1, { type: 'triangle', vol: 0.08 });
+      noise(0.05, { freq: 3000, q: 3, vol: 0.12 });
+    },
+    // Blocket går sönder: en spricka och en fallande ton.
+    guardBreak() {
+      noise(0.3, { freq: 1800, q: 0.8, vol: 0.45 });
+      tone(700, 120, 0.4, { type: 'sawtooth', vol: 0.18 });
+    },
     jump() { tone(220, 520, 0.12, { type: 'square', vol: 0.08 }); },
     special() {
       tone(180, 900, 0.35, { type: 'sawtooth', vol: 0.12 });
