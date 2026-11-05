@@ -1338,6 +1338,10 @@
       }
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
       acct.tower = Math.max(1, Math.min(TOWER_TOP + 1, Math.floor(Number(raw.tower)) || 1));
+      const tr = raw.tourney;
+      if (tr && Array.isArray(tr.field) && tr.field.length === 7 && tr.field.every((id) => robotById[id])) {
+        acct.tourney = { round: Math.max(0, Math.min(TOURNEY_ROUNDS.length - 1, Math.floor(Number(tr.round)) || 0)), field: [...tr.field] };
+      }
       if (raw.weekly && typeof raw.weekly.week === 'string' && /^\d{4}-v\d{1,2}$/.test(raw.weekly.week)) {
         acct.weekly = { week: raw.weekly.week, floor: Math.max(1, Math.min(WEEKLY_TOP + 1, Math.floor(Number(raw.weekly.floor)) || 1)) };
       }
@@ -1417,6 +1421,7 @@
     if (match.boss) return XP.boss;
     if (match.stake) return XP.stake;
     if (match.team) return match.team === 5 ? XP.team5 : XP.team3;
+    if (match.tourney) return 15 + match.tourney * 10; // kvartsfinal 25, semifinal 35, final 45
     return XP.win;
   }
 
@@ -1649,6 +1654,53 @@
   // Våningen man står på i veckans torn just nu (1 när en ny vecka börjat).
   const weeklyFloor = (acct, week) => (acct.weekly && acct.weekly.week === week ? acct.weekly.floor : 1);
 
+  // ---------- Turneringen ----------
+  // Åtta robotar: du och sju andra (field). Kvartsfinal, semifinal och final, allt svårare (se
+  // tourneyTier i game.js) — man möter field[0], field[1] och field[2] i tur och ordning, resten
+  // finns med i lottningen. Förlorar man är turneringen slut; vinner man finalen får man pokalen.
+  const TOURNEY_ROUNDS = ['Kvartsfinal', 'Semifinal', 'Final'];
+  const TOURNEY_COINS = [30, 60]; // för att vinna kvartsfinalen och semifinalen
+  const TOURNEY_WIN_COINS = 300;
+  const TOURNEY_WIN_BOXES = 2;
+
+  function newTourney(robotId, rng) {
+    const field = [];
+    const add = (floor) => {
+      for (;;) {
+        const r = rollBoxFrom(rng, floor);
+        if (r.id !== 'wildcard' && r.id !== robotId && !field.includes(r.id)) { field.push(r.id); return; }
+      }
+    };
+    for (const floor of ['rare', 'epic', 'legendary', 'common', 'common', 'rare', 'rare']) add(floor);
+    return { round: 0, field };
+  }
+
+  // Efter matchen: en runda vidare, ut, eller pokalen.
+  function tourneyResult(acct, match, won, rng, result) {
+    const t = acct.tourney;
+    if (!t || t.round + 1 !== match.tourney) return; // en gammal match räknas inte
+    if (!won) {
+      acct.tourney = null;
+      result.tourneyOut = match.tourney;
+      return;
+    }
+    result.tourney = match.tourney;
+    if (match.tourney < TOURNEY_ROUNDS.length) {
+      t.round += 1;
+      result.coins += addCoins(acct, TOURNEY_COINS[match.tourney - 1]);
+      return;
+    }
+    let prize = rollBoxFrom(rng, 'legendary');
+    while (prize.id === 'wildcard') prize = rollBoxFrom(rng, 'legendary');
+    addRobot(acct, prize.id);
+    acct.boxes += TOURNEY_WIN_BOXES;
+    result.coins += addCoins(acct, TOURNEY_WIN_COINS);
+    result.gained = prize.id;
+    result.tourneyWon = true;
+    acct.stats.trophies += 1;
+    acct.tourney = null;
+  }
+
   // ---------- Medaljer ----------
   // Rena hedersbetygelser — de ger inga mynt eller robotar, bara äran (och en fest). Därför
   // går det bra att "Felfri" bygger på klientens uppgift om att man inte blev träffad.
@@ -1668,12 +1720,13 @@
     { id: 'tower25', icon: '🌆', name: 'Halvvägs', desc: 'Klara våning 25 i Utmaningstornet.', check: (a) => (a.tower || 1) > 25 },
     { id: 'tower50', icon: '🏆', name: 'Toppen av tornet', desc: 'Klara alla 50 våningar.', check: (a) => (a.tower || 1) > TOWER_TOP },
     { id: 'weekly', icon: '📅', name: 'Veckans hjälte', desc: 'Klara alla 10 våningar i veckans torn.', check: (a, ev) => !!ev.weeklyDone },
+    { id: 'tourney', icon: '🏆', name: 'Turneringsvinnare', desc: 'Vinn en hel turnering.', check: (a) => a.stats.trophies >= 1 },
     { id: 'underdog', icon: '💪', name: 'Underdog', desc: 'Besegra en elitrobot, mästaren eller en tornboss med en vanlig robot.', check: (a, ev) => ev.won && ev.underdog },
     { id: 'collector', icon: '📦', name: 'Samlare', desc: 'Äg 25 olika robotar.', check: (a) => Object.keys(a.inv).filter((id) => a.inv[id] > 0).length >= 25 },
     { id: 'level30', icon: '🔥', name: 'Nivå 30', desc: 'Nå nivå 30.', check: (a) => (a.level || 1) >= 30 },
   ];
   const MEDAL_IDS = new Set(MEDALS.map((m) => m.id));
-  const STAT_KEYS = ['wins', 'street', 'elite', 'champion', 'boss', 'royal'];
+  const STAT_KEYS = ['wins', 'street', 'elite', 'champion', 'boss', 'royal', 'trophies'];
 
   function ensureStats(acct) {
     acct.medals = acct.medals || [];
@@ -1716,6 +1769,12 @@
         return { robot: robotId, stake: false, opp: target, street: slot, elite: hit.elite, champion: hit.champion };
       }
       return { error: 'Den roboten har gått vidare.' };
+    }
+    if (mode === 'tourney') {
+      if (!acct.tourney) acct.tourney = newTourney(robotId, rng);
+      const t = acct.tourney;
+      acct.selected = robotId;
+      return { robot: robotId, stake: false, opp: t.field[t.round], tourney: t.round + 1 };
     }
     if (mode === 'weekly') {
       if (!(acct.level >= TOWER_LEVEL)) return { error: `Veckans torn öppnar på nivå ${TOWER_LEVEL}.` };
@@ -1802,6 +1861,7 @@
     result.questBonus = quest.bonus;
     ensureStats(acct);
     if (won) countWin(acct, match);
+    if (match.tourney) tourneyResult(acct, match, won, rng, result);
     const underdog = robotDef && robotDef.rarity === 'common' && (match.elite || (match.tower && oppDef && oppDef.boss));
     // XP och nivåer: varje match ger XP (mer för svårare motståndare), se xpFor().
     ensureXp(acct);
@@ -1997,6 +2057,7 @@
       streetBeaten: [...(acct.streetBeaten || [])],
       tower: acct.tower || 1,
       weekly: { week: weekOf(Date.now()), floor: weeklyFloor(acct, weekOf(Date.now())) },
+      tourney: acct.tourney ? { round: acct.tourney.round, field: [...acct.tourney.field] } : null,
       medals: [...(acct.medals || [])],
       stats: { ...(acct.stats || {}) },
       quests: questView(acct),
@@ -2123,6 +2184,7 @@
     TOWER_LEVEL, TOWER_TOP, TOWER_PRIZE_EVERY, towerOpponent, towerCoins,
     MEDALS, awardMedals,
     WEEKLY_TOP, WEEKLY_TOP_COINS, WEEKLY_TOP_BOXES, weekOf, weeklyOpponent, weeklyFloor,
+    TOURNEY_ROUNDS, TOURNEY_COINS, TOURNEY_WIN_COINS, TOURNEY_WIN_BOXES,
     ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
     SKINS, skinById, buySkin, setSkin,
     ITEM_LOOK, SETS, setsStatus, huntFor, HUNT_COINS, STREAK_MILESTONES,

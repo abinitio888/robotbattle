@@ -1299,6 +1299,14 @@ const bossTier = (def) => BOSS_TIERS[def.difficulty] || BOSS_TIERS.medium;
 // Elitrobotarna i staden (från nivå 20): de svåraste bossarnas AI och en växande ilska, och ju
 // högre nivå du har desto mer liv och ilska får de. Stadens mästare (från nivå 30) har
 // drottningens AI, 1,8x liv och en ilska som snabbt når 3,5x skada.
+// Turneringen: kvartsfinalen som en vanlig match på din nivå, semifinalen som en boss och
+// finalen som de svåraste bossarna med lite mer liv.
+function tourneyTier(round) {
+  if (round === 1) return { skill: skillForLevel(Math.max(game.acct.level, 6)), enrageMax: 1, enrageSeconds: 60 };
+  if (round === 2) return { skill: BOSS_TIERS.medium.skill, enrageMax: 1.6, enrageSeconds: 60 };
+  return { skill: BOSS_TIERS.hard.skill, enrageMax: 2.2, enrageSeconds: 55, hpMul: 1.3 };
+}
+
 function eliteTier(level, champion) {
   if (champion) return { skill: ROYAL_TIERS.queen.skill, enrageMax: 3.5, enrageSeconds: 40, hpMul: 1.8 };
   const over = clamp(level - 20, 0, 30);
@@ -1653,6 +1661,7 @@ const screens = {
   questboard: document.getElementById('screen-questboard'),
   tower: document.getElementById('screen-tower'),
   team: document.getElementById('screen-team'),
+  tourney: document.getElementById('screen-tourney'),
   travel: document.getElementById('screen-travel'),
   royals: document.getElementById('screen-royals'),
   shop: document.getElementById('screen-shop'),
@@ -1697,6 +1706,7 @@ const game = {
   champion: false,         // ... och då kanske mot stadens mästare (nivå 30+)
   tower: 0,                // våningen i Utmaningstornet som pågående match gäller (0 = ingen tornmatch)
   weekly: 0,               // våningen i veckans torn som pågående match gäller (0 = ingen sådan match)
+  tourney: 0,              // turneringsrundan som pågående match gäller (1–3, 0 = ingen)
   explore: null,           // {player, monsters, near, attackHeld} medan man går runt i Monstervärlden
   arena: arenaById.classic, // banan som pågående/senaste match spelades på, se pickArena()
   matchToken: null,       // matchen som pågår mot AI, från net.startMatch()
@@ -1811,8 +1821,9 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.champion = !!started.match.champion;
   game.tower = started.match.tower || 0;
   game.weekly = started.match.weekly ? started.match.weekly.floor : 0;
+  game.tourney = started.match.tourney || 0;
   // Veckans torn är svårt redan från början: våning 1 är som tornets våning 32, våning 10 som toppen.
-  game.bossTier = game.weekly ? towerTier(30 + game.weekly * 2) : game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
+  game.bossTier = game.tourney ? tourneyTier(game.tourney) : game.weekly ? towerTier(30 + game.weekly * 2) : game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
     : game.elite ? eliteTier(game.acct.level, game.champion) : null;
   const aDef = game.bossTier && game.bossTier.hpMul ? { ...oppDef, hp: Math.round(oppDef.hp * game.bossTier.hpMul) } : oppDef;
   game.online = null;
@@ -1827,7 +1838,8 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.training = null;
   resetArena();
   hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
-  hud.nameAi.textContent = game.team ? `👥 LAGSTRID ${game.team} MOT ${game.team} · ${aDef.name} leder`
+  hud.nameAi.textContent = game.tourney ? `🏆 ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toUpperCase()} · ${aDef.name}`
+    : game.team ? `👥 LAGSTRID ${game.team} MOT ${game.team} · ${aDef.name} leder`
     : game.weekly ? `📅 VECKANS TORN ${game.weekly}/${Shared.WEEKLY_TOP} · ${aDef.name}`
     : game.tower ? `🗼 VÅNING ${game.tower}/${Shared.TOWER_TOP} · ${aDef.name}`
     : game.boss ? '??? · MYSTISK ROBOT' : game.champion ? `👑 ${aDef.name} · STADENS MÄSTARE`
@@ -2017,6 +2029,47 @@ function stepTeamFight(dt, fighting) {
   for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) separate(all[i], all[j]);
 }
 
+// ---------- Turneringen ----------
+// Lottningen: kvartsfinalerna du–field[0], field[1]–field[3], field[2]–field[4] och
+// field[5]–field[6]. Du möter field[1] i semifinalen och field[2] i finalen (se shared.js), så
+// de vinner alltid sina matcher i lottningen — de andra åker ut.
+const TOURNEY_QF = [['du', 0], [1, 3], [2, 4], [5, 6]];
+
+function showTourney() {
+  game.phase = 'tourneypick';
+  renderTourney();
+  showScreen('tourney');
+}
+
+function renderTourney() {
+  const t = game.acct.tourney;
+  const round = t ? t.round : 0;
+  // slot: 'du', ett index i field, eller '?' för en plats som inte är avgjord än.
+  const name = (slot) => (slot === 'du' ? `🤖 Du (${robotById[game.selectedId].name})` : slot === '?' ? '?' : robotById[t.field[slot]].name);
+  byId('tourney-status').textContent = t
+    ? `Du är i ${Shared.TOURNEY_ROUNDS[round].toLowerCase()}en! Nästa motståndare: ${robotById[t.field[round]].name} (${RARITY[robotById[t.field[round]].rarity].label}).`
+    : 'Åtta robotar, tre matcher till pokalen. En ny lottning görs när du startar.';
+  byId('btn-tourney-play').textContent = t ? `⚔ Spela ${Shared.TOURNEY_ROUNDS[round].toLowerCase()}en` : '🏆 Starta en ny turnering';
+  const box = byId('tourney-bracket');
+  box.replaceChildren();
+  if (!t) return;
+  const col = (title, pairs, active) => {
+    const c = el('div', `tcol${active ? ' active' : ''}`);
+    c.append(el('p', 'quests-title', title));
+    for (const [a, b] of pairs) {
+      const m = el('div', 'tmatch');
+      for (const s of [a, b]) m.append(el('div', `tslot${s === 'du' ? ' me' : ''}`, name(s)));
+      c.append(m);
+    }
+    return c;
+  };
+  box.append(
+    col('Kvartsfinal', TOURNEY_QF, round === 0),
+    col('Semifinal', round >= 1 ? [['du', 1], [2, 5]] : [['?', '?'], ['?', '?']], round === 1),
+    col('Final', round >= 2 ? [['du', 2]] : [['?', '?']], round === 2),
+  );
+}
+
 function showTeamPick() {
   game.phase = 'teampick';
   showScreen('team');
@@ -2062,7 +2115,9 @@ function endMatch() {
 
 // "Kämpa igen": efter en tornmatch blir det nästa (eller samma) våning, annars en vanlig match.
 function fightAgain() {
-  if (game.team) {
+  if (game.tourney) {
+    showTourney(); // till lottningen: nästa runda, eller en ny turnering
+  } else if (game.team) {
     startMatch('team', String(game.team));
   } else if (game.weekly) {
     if (weeklyFloorNow() <= Shared.WEEKLY_TOP) startMatch('weekly');
@@ -2898,6 +2953,7 @@ const STATIONS = [
   { id: 'training', name: 'Träningsarenan', emoji: '🎯', color: '#c9a36b', x: 1020, z: -120 },
   { id: 'tower', name: 'Utmaningstornet', emoji: '🗼', color: '#ff5ad1', x: 1210, z: 0 },
   { id: 'team', name: 'Lagstrid', emoji: '👥', color: '#ff9a2a', x: 910, z: 0 },
+  { id: 'tourney', name: 'Turneringen', emoji: '🏆', color: '#ffd93d', x: 1110, z: 0 },
   { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 1020, z: 120 },
 
   { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 1400, z: -120 },
@@ -2922,6 +2978,7 @@ const STATION_HINT = {
   friend: 'spela mot en kompis',
   tower: `${Shared.TOWER_TOP} våningar med allt starkare robotar, från nivå ${Shared.TOWER_LEVEL}`,
   team: 'du och ditt lag mot ett annat lag — 3 mot 3 eller 5 mot 5',
+  tourney: 'åtta robotar, tre matcher — vinn pokalen!',
   shop: 'köp varor för mynt',
   trade: 'byt robotar med Handlaren',
   clan: 'gå med i en klan',
@@ -3075,6 +3132,7 @@ function enterStation(id) {
     case 'training': startTraining(true); break;
     case 'tower': showTower(); break;
     case 'team': showTeamPick(); break;
+    case 'tourney': showTourney(); break;
     case 'garage': game.fromHub = true; showSelect(); break;
     case 'boxes':
       // Den dagliga lådan hämtas automatiskt när man går in i Lådor.
@@ -3469,6 +3527,8 @@ byId('btn-explore-back').addEventListener('click', () => {
 byId('btn-questboard-back').addEventListener('click', showHub);
 byId('btn-tower-back').addEventListener('click', showHub);
 byId('btn-team-back').addEventListener('click', showHub);
+byId('btn-tourney-back').addEventListener('click', showHub);
+byId('btn-tourney-play').addEventListener('click', () => startMatch('tourney'));
 byId('btn-team-3').addEventListener('click', () => startMatch('team', '3'));
 byId('btn-team-5').addEventListener('click', () => startMatch('team', '5'));
 byId('btn-tower-climb').addEventListener('click', () => startMatch('tower'));
@@ -3578,6 +3638,16 @@ function showResult() {
         ? `${opp.name} var för stark. ${opp.royal === 'queen' ? 'Drottningen' : 'Kungen'} väntar kvar — bli starkare och försök igen.`
         : 'Monstret var för starkt den här gången. Det väntar kvar i Monstervärlden — försök igen.';
     }
+  } else if (r.won && r.tourney) {
+    if (r.tourneyWon) {
+      text = `🏆 Du vann turneringen! ${robotById[r.gained].name} är din, och du fick ${Shared.TOURNEY_WIN_BOXES} extra lådor!`;
+      rewardItem('POKALEN!', robotById[r.gained], { isNew: true, n: invCount(r.gained) });
+      celebrate('🏆 TURNERINGSSEGRARE!', `Pokalen, ${robotById[r.gained].name} och ${Shared.TOURNEY_WIN_COINS} 🪙!`, true);
+    } else {
+      const next = Shared.TOURNEY_ROUNDS[r.tourney];
+      text = `🏆 Du vann ${Shared.TOURNEY_ROUNDS[r.tourney - 1].toLowerCase()}en! Vidare till ${next.toLowerCase()}en.`;
+      celebrate(`🏆 VIDARE TILL ${next.toUpperCase()}EN!`, `+${Shared.TOURNEY_COINS[r.tourney - 1]} 🪙`, false);
+    }
   } else if (r.won && r.weekly) {
     const top = r.weekly === Shared.WEEKLY_TOP;
     text = top ? `👑 Du klarade veckans torn! ${robotById[r.gained].name} är din, och du fick ${Shared.WEEKLY_TOP_BOXES} extra lådor!`
@@ -3606,6 +3676,8 @@ function showResult() {
   } else if (r.lost) {
     text = 'Du tappade din insats.';
     rewardItem('FÖRLORAD ROBOT', robotById[r.lost], { n: invCount(r.lost) });
+  } else if (game.tourney) {
+    text = `🏆 Du åkte ut i ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toLowerCase()}en. Starta en ny turnering och försök igen!`;
   } else if (game.weekly) {
     text = `📅 Våning ${game.weekly} i veckans torn var för svår. Du står kvar där — försök igen!`;
   } else if (game.tower) {
@@ -3642,7 +3714,10 @@ function showResult() {
   // I tornet säger knappen vart man ska: uppåt efter en vinst, samma våning efter en förlust.
   const floor = game.acct.tower;
   const wf = weeklyFloorNow();
-  byId('btn-again').textContent = game.weekly
+  const tr = game.acct.tourney;
+  byId('btn-again').textContent = game.tourney
+    ? (tr ? `🏆 Till ${Shared.TOURNEY_ROUNDS[tr.round].toLowerCase()}en (Enter)` : '🏆 Till turneringen (Enter)')
+    : game.weekly
     ? (wf > Shared.WEEKLY_TOP ? '📅 Till tornet (Enter)' : r.weekly ? `📅 Upp till våning ${wf} (Enter)` : `📅 Försök våning ${wf} igen (Enter)`)
     : !game.tower ? 'Kämpa igen (Enter)'
     : floor > Shared.TOWER_TOP ? '🏆 Tillbaka till staden (Enter)'
@@ -4881,7 +4956,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);
