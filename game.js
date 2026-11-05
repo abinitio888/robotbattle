@@ -2110,6 +2110,23 @@ function showShop(message) {
   byId('shop-error').textContent = message || '';
   const list = byId('shop-list');
   list.replaceChildren();
+  // Lådor går alltid att köpa, så mynten är värda något även när man köpt allt annat.
+  const boxes = [
+    { kind: 'box', name: '📦 Robotlåda', desc: 'En vanlig låda — öppna den under Lådor.' },
+    { kind: 'gold', name: '💎 Guldlåda', desc: 'Alltid minst en episk robot! Öppnas först under Lådor.' },
+  ];
+  for (const b of boxes) {
+    const price = Shared.BOX_PRICES[b.kind];
+    const row = el('div', `shop-item box-offer${b.kind === 'gold' ? ' gold' : ''}`);
+    const info = el('div', 'shop-info');
+    info.append(el('div', 'name', b.name), el('div', 'stats', b.desc));
+    const btn = worldButton(`Köp · ${price} 🪙`, async () => {
+      try { const r = await net.buyBox(b.kind); applyAcct(r.acct); } catch (e) { showShop(e.message); return; }
+      showShop(`Du köpte en ${b.kind === 'gold' ? 'guldlåda' : 'robotlåda'}! Öppna den under Lådor (du har ${game.acct.boxes}).`);
+    }, { disabled: (game.acct.coins || 0) < price });
+    row.append(info, btn);
+    list.append(row);
+  }
   for (const item of [...Shared.SHOP_ITEMS].sort((a, b) => a.shop - b.shop)) {
     const owned = (game.acct.equipmentInv[item.id] || 0) > 0;
     const row = el('div', `shop-item${owned ? ' owned' : ''}`);

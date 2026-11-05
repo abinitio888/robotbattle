@@ -104,6 +104,10 @@ module.exports = dispatch({
     method: 'POST',
     handler: acctAction((acct, body) => S.buyItem(acct, typeof body.itemId === 'string' ? body.itemId : null)),
   },
+  'buy-box': {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.buyBox(acct, typeof body.kind === 'string' ? body.kind : null)),
+  },
 
   // Byteshandel med Handlaren — se trade() i shared.js.
   trade: {

@@ -877,3 +877,7 @@ button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-sha
 .wfloor.done { background: #183326; border-color: #3ddc84; }
 .wfloor.here { border-color: #3ee8ff; background: #10324a; box-shadow: 0 0 10px rgba(62, 232, 255, 0.5); }
 .wfloor.locked { opacity: 0.55; }
+
+/* ---- Butikens lådor ---- */
+.shop-item.box-offer { border-color: #3ee8ff; }
+.shop-item.box-offer.gold { border-color: var(--legendary); background: linear-gradient(135deg, #2a2410, #161d33); box-shadow: 0 0 12px rgba(255, 217, 61, 0.3); }

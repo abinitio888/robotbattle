@@ -921,6 +921,21 @@
   }
 
   // Köper en butiksvara. Mynten finns bara på servern (eller i gästens egen webbläsare).
+  // Lådor går alltid att köpa, så att mynten aldrig blir värdelösa när man köpt allt annat.
+  // En guldlåda räknas som en vanlig låda i acct.boxes, men acct.goldBoxes säger hur många
+  // av dem som är guld — de öppnas först och ger minst en episk robot (se openBox).
+  const BOX_PRICES = { box: 150, gold: 600 };
+
+  function buyBox(acct, kind) {
+    const price = BOX_PRICES[kind];
+    if (!price) return { error: 'Den lådan finns inte i Butiken.' };
+    if ((acct.coins || 0) < price) return { error: `Du behöver ${price - (acct.coins || 0)} mynt till.` };
+    acct.coins -= price;
+    acct.boxes += 1;
+    if (kind === 'gold') acct.goldBoxes = (acct.goldBoxes || 0) + 1;
+    return { bought: kind };
+  }
+
   function buyItem(acct, id) {
     const item = SHOP_ITEMS.find((e) => e.id === id);
     if (!item) return { error: 'Den varan finns inte i Butiken.' };
@@ -1186,6 +1201,7 @@
         if (n > 0 && n < 1e6) acct.inv[r.id] = n;
       }
       acct.boxes = Math.min(1e6, Math.max(0, Math.floor(Number(raw.boxes)) || 0));
+      acct.goldBoxes = Math.min(acct.boxes, Math.max(0, Math.floor(Number(raw.goldBoxes)) || 0));
       if (typeof raw.daily === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.daily)) acct.daily = raw.daily;
       if (typeof raw.selected === 'string') acct.selected = raw.selected;
       acct.level = Math.max(1, Math.min(9999, Math.floor(Number(raw.level)) || 1));
@@ -1813,12 +1829,14 @@
   function openBox(acct, rng, today) {
     if (acct.boxes <= 0) return null;
     acct.boxes -= 1;
+    const gold = (acct.goldBoxes || 0) > 0;
+    if (gold) acct.goldBoxes -= 1;
     questEvent(acct, ['box']);
     if (today) for (const period of ['week', 'month']) periodEvent(acct, today, period, ['box']);
-    const prize = rollBox(rng);
+    const prize = gold ? rollBoxFrom(rng, 'epic') : rollBox(rng);
     addRobot(acct, prize.id);
     awardMedals(acct); // Samlare
-    return { id: prize.id, n: count(acct, prize.id) };
+    return { id: prize.id, n: count(acct, prize.id), gold };
   }
 
   function claimDaily(acct, today) {
@@ -1853,6 +1871,7 @@
     return {
       inv: { ...acct.inv },
       boxes: acct.boxes,
+      goldBoxes: Math.min(acct.boxes, acct.goldBoxes || 0),
       selected: acct.selected,
       dailyAvailable: today > acct.daily,
       dailyMinutes: minutesToNext,
@@ -1992,7 +2011,7 @@
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
-    SHOP_ITEMS, COINS, buyItem,
+    SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox,
     QUEST_POOL, questEvent, questView,
     STREET_SLOT_MS, ELITE_LEVEL, CHAMPION_LEVEL, streetSlot, streetRobots, streetChallengers,
     TOWER_LEVEL, TOWER_TOP, TOWER_PRIZE_EVERY, towerOpponent, towerCoins,

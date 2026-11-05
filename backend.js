@@ -119,6 +119,13 @@
       return { acct: this.view() };
     }
 
+    async buyBox(kind) {
+      const result = S.buyBox(this.acct, kind);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
     async upgradeRobot(robot) {
       const result = S.upgradeRobot(this.acct, robot);
       if (result.error) throw new Error(result.error);
@@ -272,6 +279,7 @@
     equipItem(itemId) { return this.api('/api/equip', { itemId }); }
     trade(give, want) { return this.api('/api/trade', { give, want }); }
     buyItem(itemId) { return this.api('/api/buy', { itemId }); }
+    buyBox(kind) { return this.api('/api/buy-box', { kind }); }
     upgradeRobot(robot) { return this.api('/api/upgrade', { robot }); }
     buySkin(skin) { return this.api('/api/buy-skin', { skin }); }
     setSkin(robot, skin) { return this.api('/api/set-skin', { robot, skin }); }
@@ -375,6 +383,13 @@
 
     async buyItem(itemId) {
       const result = S.buyItem(this.acct, itemId);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async buyBox(kind) {
+      const result = S.buyBox(this.acct, kind);
       if (result.error) throw new Error(result.error);
       await this.save();
       return { acct: this.view() };
