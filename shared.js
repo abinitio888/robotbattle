@@ -1137,6 +1137,73 @@
         { x: 480, z: 0, w: 40, d: 40, h: 200, kind: 'pillar' },
       ],
     },
+    {
+      id: 'volcano', name: 'Vulkankratern', hint: 'Het mark — snabbare och hårdare slag. Göm dig bakom lavapelarna!',
+      gravityMul: 1, speedMul: 1.1, dmgMul: 1.25,
+      sky: '#2a0c06', ground: '#140503', line: '#ff5a1a',
+      obstacles: [
+        { x: 480, z: -140, w: 54, d: 54, h: 200, kind: 'pillar' },
+        { x: 480, z: 140, w: 54, d: 54, h: 200, kind: 'pillar' },
+      ],
+    },
+    {
+      id: 'space', name: 'Rymdstationen', hint: 'Nästan ingen tyngdkraft och snabba robotar — du svävar!',
+      gravityMul: 0.38, speedMul: 1.25, dmgMul: 0.9, // lägre gör att hoppen går ovanför bild
+
+      sky: '#05040f', ground: '#020208', line: '#b46bff',
+      obstacles: [
+        { x: 480, z: 0, w: 50, d: 50, h: 55, kind: 'crate' },
+      ],
+    },
+    {
+      id: 'jungle', name: 'Djungeltemplet', hint: 'Massor av pelare och lådor — smyg och överraska!',
+      gravityMul: 1, speedMul: 1, dmgMul: 1,
+      sky: '#0c1f10', ground: '#06120a', line: '#7fd94a',
+      obstacles: [
+        { x: 360, z: -150, w: 40, d: 40, h: 210, kind: 'pillar' },
+        { x: 360, z: 150, w: 40, d: 40, h: 210, kind: 'pillar' },
+        { x: 600, z: -150, w: 40, d: 40, h: 210, kind: 'pillar' },
+        { x: 600, z: 150, w: 40, d: 40, h: 210, kind: 'pillar' },
+        { x: 480, z: -60, w: 50, d: 50, h: 55, kind: 'crate' },
+        { x: 480, z: 60, w: 50, d: 50, h: 55, kind: 'crate' },
+      ],
+    },
+    {
+      id: 'colosseum', name: 'Gladiatorarenan', hint: 'Allt gör mycket mer skada — korta, hårda matcher!',
+      gravityMul: 1, speedMul: 1, dmgMul: 1.6,
+      sky: '#2a200c', ground: '#141006', line: '#ffd93d',
+    },
+    {
+      id: 'maze', name: 'Labyrinten', hint: 'Murar överallt — hitta vägen runt dem i djupled!',
+      gravityMul: 1, speedMul: 1, dmgMul: 1,
+      sky: '#101826', ground: '#080c14', line: '#3ee8ff',
+      obstacles: [
+        { x: 360, z: -70, w: 26, d: 160, h: 120, kind: 'wall' },
+        { x: 600, z: 70, w: 26, d: 160, h: 120, kind: 'wall' },
+        { x: 480, z: -190, w: 120, d: 26, h: 120, kind: 'wall' },
+        { x: 480, z: 190, w: 120, d: 26, h: 120, kind: 'wall' },
+        { x: 480, z: 0, w: 50, d: 50, h: 55, kind: 'crate' },
+      ],
+    },
+    {
+      id: 'storm', name: 'Stormtornet', hint: 'Låg tyngdkraft och oändlig energi — specialattacker i luften!',
+      gravityMul: 0.65, speedMul: 1, dmgMul: 1, infiniteEnergy: true,
+      sky: '#141a2e', ground: '#0a0d18', line: '#ffe066',
+      obstacles: [
+        { x: 420, z: -110, w: 50, d: 50, h: 55, kind: 'crate' },
+        { x: 540, z: 110, w: 50, d: 50, h: 55, kind: 'crate' },
+      ],
+    },
+    {
+      id: 'candy', name: 'Godisfabriken', hint: 'Klibbfritt och halt — snabba robotar och lådor att hoppa på!',
+      gravityMul: 0.9, speedMul: 1.3, dmgMul: 1,
+      sky: '#2a1024', ground: '#140812', line: '#ff8ac0',
+      obstacles: [
+        { x: 400, z: 120, w: 50, d: 50, h: 55, kind: 'crate' },
+        { x: 480, z: -20, w: 50, d: 50, h: 55, kind: 'crate' },
+        { x: 560, z: -150, w: 50, d: 50, h: 55, kind: 'crate' },
+      ],
+    },
     // monster: true → ingår aldrig i den SLUMPADE poolen (pickArena) för vanliga matcher, bara
     // tvingas fram uttryckligen för monsterstrider (se startMatch i game.js) — "en annan värld",
     // inte en bana som kan dyka upp av en slump mitt i en robotmatch.
