@@ -48,6 +48,12 @@ module.exports = dispatch({
       // Topplistorna: högsta klarade våningen i tornet, och i veckans torn (en lista per vecka).
       const name = session.user.name;
       if (result.tower) await redis.zadd('tops:tower', { gt: true }, { score: result.tower, member: name }).catch(() => {});
+      if (result.tourneyWon) await redis.zincrby('tops:trophies', 1, name).catch(() => {});
+      if (result.won) {
+        const winsKey = `tops:wins:${S.weekOf(Date.now())}`;
+        await redis.zincrby(winsKey, 1, name).catch(() => {});
+        await redis.expire(winsKey, 21 * 24 * 3600).catch(() => {});
+      }
       if (result.weekly) {
         const key = `tops:weekly:${entry.match.weekly.week}`;
         await redis.zadd(key, { gt: true }, { score: result.weekly, member: name }).catch(() => {});

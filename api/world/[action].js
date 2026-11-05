@@ -15,6 +15,8 @@
 //   clans:points         sorterad mängd: klan-id -> klanpoäng (se api/match finish)
 //   tops:tower           sorterad mängd: spelarnamn -> högsta klarade våningen i Utmaningstornet
 //   tops:weekly:<vecka>  sorterad mängd: spelarnamn -> högsta klarade våningen i veckans torn
+//   tops:trophies        sorterad mängd: spelarnamn -> antal vunna turneringar
+//   tops:wins:<vecka>    sorterad mängd: spelarnamn -> antal vunna matcher den veckan
 const crypto = require('crypto');
 const { dispatch, requireSession, sessionOf, redis, HttpError, S, tooMany, saveUser } = require('../_lib.js');
 
@@ -127,8 +129,10 @@ module.exports = dispatch({
       const session = await sessionOf(req);
       const me = session ? session.user.name : null;
       const week = S.weekOf(Date.now());
-      const [tower, weekly] = await Promise.all([topList('tops:tower', me), topList(`tops:weekly:${week}`, me)]);
-      return { loggedIn: !!session, week, tower, weekly };
+      const [tower, weekly, trophies, wins] = await Promise.all([
+        topList('tops:tower', me), topList(`tops:weekly:${week}`, me), topList('tops:trophies', me), topList(`tops:wins:${week}`, me),
+      ]);
+      return { loggedIn: !!session, week, tower, weekly, trophies, wins };
     },
   },
 

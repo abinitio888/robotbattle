@@ -1662,6 +1662,7 @@ const screens = {
   tower: document.getElementById('screen-tower'),
   team: document.getElementById('screen-team'),
   tourney: document.getElementById('screen-tourney'),
+  tops: document.getElementById('screen-tops'),
   travel: document.getElementById('screen-travel'),
   royals: document.getElementById('screen-royals'),
   shop: document.getElementById('screen-shop'),
@@ -2785,8 +2786,23 @@ function renderWeekly() {
 }
 
 // Topplistan kommer från servern och kräver konto. Gäster ser en uppmaning i stället.
-async function renderTops() {
-  const box = byId('tower-tops');
+function showTops() {
+  game.phase = 'tops';
+  showScreen('tops');
+  renderTops('tops-all', ['wins', 'trophies', 'tower', 'weekly']);
+}
+
+// Vilka topplistor som finns (se api/world tops): titel och vad siffran betyder.
+const TOP_BOARDS = {
+  tower: (r) => ['🗼 Högst i Utmaningstornet', r.tower, 'Våning'],
+  weekly: (r) => [`📅 Veckans torn (${r.week})`, r.weekly, 'Våning'],
+  trophies: (r) => ['🏆 Flest turneringsvinster', r.trophies, 'Pokaler'],
+  wins: (r) => [`⚔ Flest vinster den här veckan (${r.week})`, r.wins, 'Vinster'],
+};
+
+// boxId: var listorna ritas; boards: vilka av TOP_BOARDS (tornskärmen visar bara tornens).
+async function renderTops(boxId = 'tower-tops', boards = ['tower', 'weekly']) {
+  const box = byId(boxId);
   const api = worldApi();
   if (!api) {
     box.replaceChildren(el('p', 'hint', 'Logga in för att vara med på topplistan!'));
@@ -2811,8 +2827,7 @@ async function renderTops() {
     });
     if (t.mine && t.mine.rank > t.top.length) box.append(el('p', 'hint', `Du: plats ${t.mine.rank} (${unit.toLowerCase()} ${t.mine.floor})`));
   };
-  list('🗼 Högst i Utmaningstornet', r.tower, 'Våning');
-  list(`📅 Veckans torn (${r.week})`, r.weekly, 'Våning');
+  for (const b of boards) if (r[b]) list(...TOP_BOARDS[b](r));
   if (!r.loggedIn) box.append(el('p', 'hint', 'Logga in för att vara med på topplistan!'));
 }
 
@@ -2954,6 +2969,7 @@ const STATIONS = [
   { id: 'tower', name: 'Utmaningstornet', emoji: '🗼', color: '#ff5ad1', x: 1210, z: 0 },
   { id: 'team', name: 'Lagstrid', emoji: '👥', color: '#ff9a2a', x: 910, z: 0 },
   { id: 'tourney', name: 'Turneringen', emoji: '🏆', color: '#ffd93d', x: 1110, z: 0 },
+  { id: 'tops', name: 'Topplistor', emoji: '📊', color: '#3ee8ff', x: 310, z: 0 },
   { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 1020, z: 120 },
 
   { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 1400, z: -120 },
@@ -2979,6 +2995,7 @@ const STATION_HINT = {
   tower: `${Shared.TOWER_TOP} våningar med allt starkare robotar, från nivå ${Shared.TOWER_LEVEL}`,
   team: 'du och ditt lag mot ett annat lag — 3 mot 3 eller 5 mot 5',
   tourney: 'åtta robotar, tre matcher — vinn pokalen!',
+  tops: 'se vem som är bäst: vinster, pokaler och tornen',
   shop: 'köp varor för mynt',
   trade: 'byt robotar med Handlaren',
   clan: 'gå med i en klan',
@@ -3133,6 +3150,7 @@ function enterStation(id) {
     case 'tower': showTower(); break;
     case 'team': showTeamPick(); break;
     case 'tourney': showTourney(); break;
+    case 'tops': showTops(); break;
     case 'garage': game.fromHub = true; showSelect(); break;
     case 'boxes':
       // Den dagliga lådan hämtas automatiskt när man går in i Lådor.
@@ -3528,6 +3546,7 @@ byId('btn-questboard-back').addEventListener('click', showHub);
 byId('btn-tower-back').addEventListener('click', showHub);
 byId('btn-team-back').addEventListener('click', showHub);
 byId('btn-tourney-back').addEventListener('click', showHub);
+byId('btn-tops-back').addEventListener('click', showHub);
 byId('btn-tourney-play').addEventListener('click', () => startMatch('tourney'));
 byId('btn-team-3').addEventListener('click', () => startMatch('team', '3'));
 byId('btn-team-5').addEventListener('click', () => startMatch('team', '5'));
@@ -4956,7 +4975,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);

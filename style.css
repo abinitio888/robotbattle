@@ -894,3 +894,7 @@ button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-sha
 .tslot { padding: 4px 8px; font-size: 12px; background: #1c2440; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tslot + .tslot { border-top: 1px solid #33406a; }
 .tslot.me { background: #10324a; color: #fff; font-weight: 700; }
+
+/* ---- Topplistor ---- */
+.tops-all { width: min(560px, 100%); display: flex; flex-direction: column; gap: 4px; }
+.tops-all .quest { width: 100%; }
