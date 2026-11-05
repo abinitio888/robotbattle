@@ -791,8 +791,10 @@ class Fighter {
 // Vem en attack från `owner` ska träffa. I en vanlig match är det bara den andra. I en
 // kungastrid (game.allies) slåss spelaren och fyra AI-robotar tillsammans mot kungen, som i
 // sin tur anfaller den i laget den just nu siktar på (game.ai.target, se chooseBossTarget).
+// I en lagstrid (game.team) har varje robot ett eget mål (f.target, se chooseTeamTargets).
 function enemyOf(owner) {
-  if (owner === game.ai) return game.ai.target || game.player;
+  if (owner.target && !owner.target.dead) return owner.target;
+  if (owner === game.ai || owner.side === 'B') return game.ai.target || game.player;
   return game.ai;
 }
 
@@ -1390,7 +1392,7 @@ function playerInput() {
   // Monstervärlden svänger A/D roboten (heading). Vänmatcher har alltid de vanliga tangenterna.
   if (!r3d || cameraMode === 'side' || game.online) return input;
   const fwd = -back;
-  const opp = (game.phase === 'intro' || game.phase === 'fight') && game.player && game.ai ? game.ai : null;
+  const opp = (game.phase === 'intro' || game.phase === 'fight') && game.player && game.ai ? game.player.target || game.ai : null;
   if (opp) {
     let dx = opp.x - game.player.x;
     let dz = (opp.z || 0) - (game.player.z || 0);
@@ -1559,6 +1561,7 @@ const screens = {
   clan: document.getElementById('screen-clan'),
   questboard: document.getElementById('screen-questboard'),
   tower: document.getElementById('screen-tower'),
+  team: document.getElementById('screen-team'),
   travel: document.getElementById('screen-travel'),
   royals: document.getElementById('screen-royals'),
   shop: document.getElementById('screen-shop'),
@@ -1626,6 +1629,8 @@ const game = {
   roots: [],
   tethers: [],
   allies: [],     // [{ f, brain }] — dina fyra AI-robotar i en kungastrid, annars tomt
+  foes: [],       // [{ f, brain }] — motståndarlaget utöver game.ai i en lagstrid, annars tomt
+  team: 0,        // 3 eller 5 i en lagstrid (se setupTeamFight), annars 0
   megabeams: [],
   bolts: [],
   superBanner: null,
@@ -1725,10 +1730,14 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.ai = new Fighter(aDef, W * 0.75, -1);
   game.brain = makeBrain(game.bossTier ? game.bossTier.skill : skillForLevel(game.acct.level));
   game.allies = aDef.royal ? makeAllies() : [];
+  game.foes = [];
+  game.team = started.match.team || 0;
+  if (game.team) setupTeamFight(game.team, started.match.foes || []);
   game.training = null;
   resetArena();
   hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
-  hud.nameAi.textContent = game.weekly ? `📅 VECKANS TORN ${game.weekly}/${Shared.WEEKLY_TOP} · ${aDef.name}`
+  hud.nameAi.textContent = game.team ? `👥 LAGSTRID ${game.team} MOT ${game.team} · ${aDef.name} leder`
+    : game.weekly ? `📅 VECKANS TORN ${game.weekly}/${Shared.WEEKLY_TOP} · ${aDef.name}`
     : game.tower ? `🗼 VÅNING ${game.tower}/${Shared.TOWER_TOP} · ${aDef.name}`
     : game.boss ? '??? · MYSTISK ROBOT' : game.champion ? `👑 ${aDef.name} · STADENS MÄSTARE`
     : `${game.elite ? '⭐ ' : ''}${aDef.name} · ${game.monster ? 'MONSTER' : game.elite ? 'ELIT' : 'AI'}`;
@@ -1769,6 +1778,8 @@ function startTraining(moving) {
   game.monster = false;
   game.bossTier = null;
   game.allies = [];
+  game.foes = [];
+  game.team = 0;
   game.online = null;
   game.fighters = null;
   game.arena = arenaById.classic;
@@ -1856,6 +1867,69 @@ function makeAllies() {
   return allies;
 }
 
+// ---------- Lagstrid: 3 mot 3 eller 5 mot 5 ----------
+// Ditt lag (side 'A': du och dina AI-kompisar) till vänster, motståndarlaget (side 'B':
+// game.ai och game.foes, valda av servern) till höger. Alla har vanligt liv och lika bra AI.
+const TEAM_Z = { 2: [-0.6, 0.6], 4: [-0.75, -0.3, 0.3, 0.75] };
+
+function makeTeamSide(defs, x, facing, side) {
+  const zs = TEAM_Z[defs.length] || [];
+  return defs.map((def, i) => {
+    const f = new Fighter(def, x, facing);
+    f.z = (zs[i] || 0) * DEPTH;
+    f.side = side;
+    return { f, brain: makeBrain(skillForLevel(game.acct.level)) };
+  });
+}
+
+function setupTeamFight(size, foeIds) {
+  const pool = ROBOTS.filter((r) => !r.monster && !r.boss && r.rarity !== 'divine' && r.id !== 'wildcard');
+  const mates = [];
+  for (let i = 0; i < size - 1; i++) mates.push(pool[Math.floor(Math.random() * pool.length)]);
+  game.player.side = 'A';
+  game.ai.side = 'B';
+  game.allies = makeTeamSide(mates, W * 0.12, 1, 'A');
+  game.foes = makeTeamSide(foeIds.map((id) => robotById[id]), W * 0.88, -1, 'B');
+}
+
+const teamA = () => [game.player, ...game.allies.map((a) => a.f)];
+const teamB = () => [game.ai, ...game.foes.map((x) => x.f)];
+const teamDown = (team) => team.every((f) => f.hp <= 0);
+
+// Varje robot siktar på en fiende: oftast den närmaste, ibland någon annan, och byter med
+// jämna mellanrum. Den egna roboten siktar alltid på den närmaste.
+function chooseTeamTargets(dt) {
+  const a = teamA();
+  const b = teamB();
+  for (const f of [...a, ...b]) {
+    if (f.dead) continue;
+    const enemies = (f.side === 'A' ? b : a).filter((e) => !e.dead);
+    if (!enemies.length) continue;
+    f.retargetT = (f.retargetT || 0) - dt;
+    if (f.target && !f.target.dead && f.retargetT > 0) continue;
+    f.retargetT = f === game.player ? 0.5 : rand(2.5, 4.5);
+    enemies.sort((p, q) => Math.hypot(p.x - f.x, p.z - f.z) - Math.hypot(q.x - f.x, q.z - f.z));
+    f.target = f === game.player || Math.random() < 0.7 ? enemies[0] : enemies[Math.floor(Math.random() * enemies.length)];
+  }
+}
+
+// Ett steg i lagstriden: alla rör sig och slåss mot sina mål, och ingen går igenom någon annan.
+function stepTeamFight(dt, fighting) {
+  if (fighting) chooseTeamTargets(dt);
+  const { player, ai } = game;
+  player.step(dt, fighting ? playerInput() : IDLE, player.target || ai, fighting);
+  ai.step(dt, fighting ? aiInput(ai, ai.target || player, game.brain, dt) : IDLE, ai.target || player, fighting);
+  for (const m of game.allies) m.f.step(dt, fighting ? aiInput(m.f, m.f.target || ai, m.brain, dt) : IDLE, m.f.target || ai, fighting);
+  for (const m of game.foes) m.f.step(dt, fighting ? aiInput(m.f, m.f.target || player, m.brain, dt) : IDLE, m.f.target || player, fighting);
+  const all = [...teamA(), ...teamB()];
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) separate(all[i], all[j]);
+}
+
+function showTeamPick() {
+  game.phase = 'teampick';
+  showScreen('team');
+}
+
 // Kungen byter mål med jämna mellanrum: oftast den närmaste i laget, ibland någon annan.
 function chooseBossTarget(dt) {
   const boss = game.ai;
@@ -1879,8 +1953,9 @@ function updateBossEnrage(dt) {
 // Matchen mot AI:n är slut. Resultatet (låda, ev. vunnen/förlorad robot) avgörs av servern
 // (eller den lokala motsvarigheten som gäst) — klienten kan inte fuska till en bättre utgång.
 function endMatch() {
-  // I en kungastrid vinner laget när kungen faller, även om du själv redan ligger ner.
-  const won = game.allies.length ? game.ai.hp <= 0 : game.player.hp > 0;
+  // I en kungastrid vinner laget när kungen faller, även om du själv redan ligger ner. I en
+  // lagstrid när hela motståndarlaget ligger ner.
+  const won = game.team ? teamDown(teamB()) : game.allies.length ? game.ai.hp <= 0 : game.player.hp > 0;
   game.phase = 'over';
   game.slowMo = 1.2;
   game.winner = won ? game.player : game.ai;
@@ -1895,7 +1970,9 @@ function endMatch() {
 
 // "Kämpa igen": efter en tornmatch blir det nästa (eller samma) våning, annars en vanlig match.
 function fightAgain() {
-  if (game.weekly) {
+  if (game.team) {
+    startMatch('team', String(game.team));
+  } else if (game.weekly) {
     if (weeklyFloorNow() <= Shared.WEEKLY_TOP) startMatch('weekly');
     else showTower();
   } else if (!game.tower) startMatch();
@@ -2728,6 +2805,7 @@ const STATIONS = [
   { id: 'stake', name: 'Insatsmatch', emoji: '💰', color: '#ffd93d', x: 800, z: 120 },
   { id: 'training', name: 'Träningsarenan', emoji: '🎯', color: '#c9a36b', x: 1020, z: -120 },
   { id: 'tower', name: 'Utmaningstornet', emoji: '🗼', color: '#ff5ad1', x: 1210, z: 0 },
+  { id: 'team', name: 'Lagstrid', emoji: '👥', color: '#ff9a2a', x: 910, z: 0 },
   { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 1020, z: 120 },
 
   { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 1400, z: -120 },
@@ -2751,6 +2829,7 @@ const STATION_HINT = {
   world: 'världsdelarna och deras beskyddare',
   friend: 'spela mot en kompis',
   tower: `${Shared.TOWER_TOP} våningar med allt starkare robotar, från nivå ${Shared.TOWER_LEVEL}`,
+  team: 'du och ditt lag mot ett annat lag — 3 mot 3 eller 5 mot 5',
   shop: 'köp varor för mynt',
   trade: 'byt robotar med Handlaren',
   clan: 'gå med i en klan',
@@ -2903,6 +2982,7 @@ function enterStation(id) {
     case 'clan': showClan(); break;
     case 'training': startTraining(true); break;
     case 'tower': showTower(); break;
+    case 'team': showTeamPick(); break;
     case 'garage': game.fromHub = true; showSelect(); break;
     case 'boxes':
       // Den dagliga lådan hämtas automatiskt när man går in i Lådor.
@@ -3296,6 +3376,9 @@ byId('btn-explore-back').addEventListener('click', () => {
 });
 byId('btn-questboard-back').addEventListener('click', showHub);
 byId('btn-tower-back').addEventListener('click', showHub);
+byId('btn-team-back').addEventListener('click', showHub);
+byId('btn-team-3').addEventListener('click', () => startMatch('team', '3'));
+byId('btn-team-5').addEventListener('click', () => startMatch('team', '5'));
 byId('btn-tower-climb').addEventListener('click', () => startMatch('tower'));
 byId('btn-weekly-climb').addEventListener('click', () => startMatch('weekly'));
 byId('btn-guide').addEventListener('click', (e) => { e.currentTarget.blur(); openGuide(); });
@@ -3422,7 +3505,8 @@ function showResult() {
       top ? `Alla ${Shared.TOWER_TOP} våningar — du är en legend!` : r.gained ? `Pris: ${robotById[r.gained].name} + en låda!` : `Upp till våning ${r.tower + 1}!`,
       top || !!r.gained);
   } else if (r.won) {
-    text = r.champion ? `👑 Du besegrade stadens mästare! ${robotById[r.gained].name} är din nu, och du fick 3 lådor!`
+    text = game.team ? `👥 Ditt lag vann ${game.team} mot ${game.team}! Du fick en låda!`
+      : r.champion ? `👑 Du besegrade stadens mästare! ${robotById[r.gained].name} är din nu, och du fick 3 lådor!`
       : r.elite ? `Du besegrade elitroboten! ${robotById[r.gained].name} är din nu — och du fick en låda!`
       : r.street ? `${robotById[r.gained].name} från staden är din nu — och du fick en låda!`
       : r.gained ? 'Du vann motståndarens robot och fick en låda!' : 'Du fick en låda!';
@@ -3435,7 +3519,8 @@ function showResult() {
   } else if (game.tower) {
     text = `🗼 Våning ${game.tower} var för svår den här gången. Du står kvar där — försök igen!`;
   } else {
-    text = 'Vinn en match för att få en låda.';
+    text = game.team ? `👥 Motståndarlaget vann den här gången. Försök igen — håll ihop med ditt lag!`
+      : 'Vinn en match för att få en låda.';
   }
   if (r.coins) text += ` +${r.coins} 🪙 mynt.`;
   if (r.xp) text += ` +${r.xp} XP (nivå ${game.acct.level}: ${game.acct.xp}/${game.acct.xpNeeded} XP).`;
@@ -4098,6 +4183,8 @@ function beginFriendMatch(isHost, payload) {
   game.result = null;
   game.mode = 'friend';
   game.allies = [];
+  game.foes = [];
+  game.team = 0;
   game.training = null;
   game.stake = false;
   game.boss = false;
@@ -4699,7 +4786,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);
@@ -4716,17 +4803,21 @@ function update(dt) {
     const fighting = game.phase === 'fight';
     if (fighting) updateBossEnrage(dt);
     const allies = game.allies;
-    if (allies.length && fighting) chooseBossTarget(dt);
-    const bossTarget = (allies.length && ai.target) || player;
-    player.step(dt, fighting ? playerInput() : IDLE, ai, fighting);
-    const aiIn = !fighting ? IDLE : game.training ? trainingInput(dt) : aiInput(ai, bossTarget, game.brain, dt);
-    ai.step(dt, aiIn, bossTarget, fighting);
-    for (const a of allies) a.f.step(dt, fighting ? aiInput(a.f, ai, a.brain, dt) : IDLE, ai, fighting);
-    separate(player, ai);
-    if (allies.length) {
-      const team = [player, ...allies.map((x) => x.f)];
-      for (const f of team) separate(f, ai);
-      for (let i = 0; i < team.length; i++) for (let j = i + 1; j < team.length; j++) separate(team[i], team[j]);
+    if (game.team) {
+      stepTeamFight(dt, fighting);
+    } else {
+      if (allies.length && fighting) chooseBossTarget(dt);
+      const bossTarget = (allies.length && ai.target) || player;
+      player.step(dt, fighting ? playerInput() : IDLE, ai, fighting);
+      const aiIn = !fighting ? IDLE : game.training ? trainingInput(dt) : aiInput(ai, bossTarget, game.brain, dt);
+      ai.step(dt, aiIn, bossTarget, fighting);
+      for (const a of allies) a.f.step(dt, fighting ? aiInput(a.f, ai, a.brain, dt) : IDLE, ai, fighting);
+      separate(player, ai);
+      if (allies.length) {
+        const team = [player, ...allies.map((x) => x.f)];
+        for (const f of team) separate(f, ai);
+        for (let i = 0; i < team.length; i++) for (let j = i + 1; j < team.length; j++) separate(team[i], team[j]);
+      }
     }
     if (player.act && player.act.kind === 'special') specialBuffer = 0;
 
@@ -4748,8 +4839,9 @@ function update(dt) {
     updateSupers(dt);
 
     const lost = allies.length ? player.hp <= 0 && allies.every((a) => a.f.hp <= 0) : player.hp <= 0;
+    const beaten = game.team ? teamDown(teamB()) : ai.hp <= 0;
     if (game.training) updateTraining(dt);
-    else if (fighting && (lost || ai.hp <= 0)) endMatch();
+    else if (fighting && (lost || beaten)) endMatch();
   }
 
   if (game.phase === 'over') {
@@ -4760,19 +4852,22 @@ function update(dt) {
 
 // ---------- Rendering ----------
 // Små HP-mätare över dina robotkamrater i en kungastrid. project: spelkoordinat -> skärm.
+// I en lagstrid får motståndarna (och deras ledare, game.ai) röda mätare.
 function drawAllyBars(project) {
-  for (const a of game.allies) {
-    const f = a.f;
+  const bar = (f, color, text, label) => {
     const at = project(f.x, f.y - f.h - 16, f.z);
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(at.x - 26, at.y - 4, 52, 7);
-    ctx.fillStyle = f.dead ? '#555' : '#3ddc84';
+    ctx.fillStyle = f.dead ? '#555' : color;
     ctx.fillRect(at.x - 25, at.y - 3, 50 * Math.max(0, f.hp / f.maxHp), 5);
     ctx.font = 'bold 11px ui-monospace, Menlo, monospace';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#cfe8d8';
-    ctx.fillText(`🤖 ${f.def.name}`, at.x, at.y - 8);
-  }
+    ctx.fillStyle = text;
+    ctx.fillText(label, at.x, at.y - 8);
+  };
+  for (const a of game.allies) bar(a.f, '#3ddc84', '#cfe8d8', `🤖 ${a.f.def.name}`);
+  if (!game.team) return;
+  for (const f of teamB()) bar(f, '#ff4d4d', '#ffd0d0', `${f === game.player.target ? '🎯 ' : ''}${f.def.name}`);
 }
 
 function roundRect(c, x, y, w, h, r) {
@@ -5277,14 +5372,16 @@ function draw() {
   if (r3d) {
     const fighters = [];
     if (fighting) {
-      const aiPose = fighterPose(ai, player);
+      // Var och en tittar på sitt eget mål (i en lagstrid), annars på motståndaren.
+      const aiPose = fighterPose(ai, ai.target || player);
       if (game.boss) aiPose.silhouette = true;
-      fighters.push({ f: ai, pose: aiPose }, { f: player, pose: fighterPose(player, ai), isPlayer: true });
-      for (const a of game.allies) fighters.push({ f: a.f, pose: fighterPose(a.f, ai) });
+      fighters.push({ f: ai, pose: aiPose }, { f: player, pose: fighterPose(player, player.target || ai), isPlayer: true });
+      for (const a of game.allies) fighters.push({ f: a.f, pose: fighterPose(a.f, a.f.target || ai) });
+      for (const x of game.foes) fighters.push({ f: x.f, pose: fighterPose(x.f, x.f.target || player) });
     }
     const none = [];
     r3d.render({
-      arena: game.arena, shake: game.shake, fighters, lookAt: fighting ? ai : null, eyes: !game.online,
+      arena: game.arena, shake: game.shake, fighters, lookAt: fighting ? player.target || ai : null, eyes: !game.online,
       megabeams: fighting ? game.megabeams : none, bolts: fighting ? game.bolts : none,
       projectiles: fighting ? game.projectiles : none, beams: fighting ? game.beams : none,
       strikes: fighting ? game.strikes : none, waves: fighting ? game.waves : none,
@@ -5308,6 +5405,7 @@ function draw() {
     if (fighting) {
       drawFighter(ai, false, game.boss);
       for (const a of game.allies) drawFighter(a.f, false);
+      for (const x of game.foes) drawFighter(x.f, false);
       drawFighter(player, true);
       drawAllyBars((x, y) => ({ x, y }));
       if (game.training) drawTrainingStats();

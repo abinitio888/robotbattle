@@ -624,7 +624,8 @@
 
   // ---------- Mynt ----------
   // Tjänas i matcher (se finishMatch) och på den dagliga lådan, och används bara i Butiken.
-  const COINS = { win: 10, loss: 2, stakeWin: 20, bossWin: 30, monsterWin: 15, royalWin: 100, daily: 20 };
+  const COINS = { win: 10, loss: 2, stakeWin: 20, bossWin: 30, monsterWin: 15, royalWin: 100, daily: 20, team3Win: 25, team5Win: 40 };
+  const TEAM_SIZES = [3, 5];
   const MAX_COINS = 10000000;
   const addCoins = (acct, n) => { acct.coins = Math.min(MAX_COINS, (acct.coins || 0) + n); return n; };
 
@@ -1376,7 +1377,7 @@
   // XP för en match: svårare motståndare ger mer, och även en förlust ger lite (man lär sig
   // något varje gång). En vanlig vinst ger 10.
   const XP = {
-    loss: 3, win: 10, stake: 20, street: 15, elite: 40, champion: 100, boss: 30, monster: 15, royal: 60,
+    loss: 3, win: 10, stake: 20, team3: 20, team5: 30, street: 15, elite: 40, champion: 100, boss: 30, monster: 15, royal: 60,
   };
   function xpFor(match, won) {
     if (!won) return XP.loss;
@@ -1389,6 +1390,7 @@
     if (match.monster) return opp && opp.royal ? XP.royal : XP.monster;
     if (match.boss) return XP.boss;
     if (match.stake) return XP.stake;
+    if (match.team) return match.team === 5 ? XP.team5 : XP.team3;
     return XP.win;
   }
 
@@ -1710,6 +1712,16 @@
     if (mode === 'boss') {
       return { robot: robotId, stake: false, opp: BOSS_IDS[Math.floor(rng() * BOSS_IDS.length)], boss: true };
     }
+    // Lagstrid (target = '3' eller '5'): du och dina AI-kompisar mot lika många motståndare.
+    // Servern väljer motståndarlaget (opp + foes), som i en vanlig match.
+    if (mode === 'team') {
+      const size = Number(target);
+      if (!TEAM_SIZES.includes(size)) return { error: 'Lagstrider är 3 mot 3 eller 5 mot 5.' };
+      acct.selected = robotId;
+      const team = [];
+      for (let i = 0; i < size; i++) team.push(pickOpponent(robotId, false, rng).id);
+      return { robot: robotId, stake: false, opp: team[0], foes: team.slice(1), team: size };
+    }
     if (mode === 'monster') {
       if (!MONSTER_IDS.includes(monsterId)) return { error: 'Okänt monster.' };
       return { robot: robotId, stake: false, opp: monsterId, monster: true };
@@ -1818,7 +1830,8 @@
       return result;
     }
     const result = { won, stake: match.stake, gained: null, lost: null, box: won, levelUps: [], bossWon: null, itemWon: null, coins: 0 };
-    result.coins = addCoins(acct, !won ? COINS.loss : match.boss ? COINS.bossWin : match.stake ? COINS.stakeWin : COINS.win);
+    const teamWin = match.team === 5 ? COINS.team5Win : COINS.team3Win;
+    result.coins = addCoins(acct, !won ? COINS.loss : match.boss ? COINS.bossWin : match.stake ? COINS.stakeWin : match.team ? teamWin : COINS.win);
     if (won) {
       acct.boxes += 1;
       if (match.weekly) {
@@ -2078,7 +2091,7 @@
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
-    SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox,
+    SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,
     QUEST_POOL, questEvent, questView,
     STREET_SLOT_MS, ELITE_LEVEL, CHAMPION_LEVEL, streetSlot, streetRobots, streetChallengers,
     TOWER_LEVEL, TOWER_TOP, TOWER_PRIZE_EVERY, towerOpponent, towerCoins,
