@@ -2657,8 +2657,33 @@ function showQuestBoard() {
     box.append(el('p', 'quests-title', '🎯 Dagens monsterjakt'),
       el('p', 'hint', hunt.done ? `Du har redan fällt dagens jaktbyte, ${robotById[hunt.id].name}. Nytt byte i morgon!` : `Jaga ${robotById[hunt.id].name} i Monstervärlden: +${hunt.coins} mynt och en supervapendel!`));
   }
+  renderSeason(box);
   renderMedals(box);
   showScreen('questboard');
+}
+
+// Vad ett säsongspris är, i ord.
+function seasonRewardText(r) {
+  if (r.skin) return `skinnet ${Shared.SKINS.find((k) => k.id === r.skin).name}`;
+  if (r.gold) return 'en guldlåda';
+  if (r.boxes) return `${r.boxes === 1 ? 'en låda' : `${r.boxes} lådor`}`;
+  return `${r.coins} 🪙`;
+}
+
+// Säsongen: nivå, en mätare till nästa nivå och vad nästa nivå ger.
+function renderSeason(box) {
+  const s = game.acct.season;
+  if (!s) return;
+  box.append(el('p', 'quests-title', `🌟 ${s.name}: säsongsnivå ${s.level} av ${s.max}`));
+  const row = el('div', 'quest');
+  const bar = el('span', 'qbar');
+  bar.append(el('i'));
+  bar.firstChild.style.width = `${s.level >= s.max ? 100 : (100 * s.xp) / s.need}%`;
+  row.append(
+    el('span', 'qname', s.next ? `Nästa nivå ger ${seasonRewardText(s.next)}` : '🏆 Du har klarat hela säsongen!'),
+    el('span', 'qprog', s.level >= s.max ? 'MAX' : `${s.xp}/${s.need} XP`), bar,
+  );
+  box.append(row, el('p', 'hint', `Varje match ger säsongs-XP. Nivå 10 ger en guldlåda och nivå ${s.max} skinnet Säsongsmästare. ${s.daysLeft} dagar kvar av säsongen.`));
 }
 
 // Medaljskåpet: de man tagit lyser, de andra är gråa men visar vad som krävs.
@@ -2798,7 +2823,7 @@ function renderWeekly() {
 function showTops() {
   game.phase = 'tops';
   showScreen('tops');
-  renderTops('tops-all', ['wins', 'trophies', 'tower', 'weekly']);
+  renderTops('tops-all', ['season', 'wins', 'trophies', 'tower', 'weekly']);
 }
 
 // Vilka topplistor som finns (se api/world tops): titel och vad siffran betyder.
@@ -2807,6 +2832,7 @@ const TOP_BOARDS = {
   weekly: (r) => [`📅 Veckans torn (${r.week})`, r.weekly, 'Våning'],
   trophies: (r) => ['🏆 Flest turneringsvinster', r.trophies, 'Pokaler'],
   wins: (r) => [`⚔ Flest vinster den här veckan (${r.week})`, r.wins, 'Vinster'],
+  season: (r) => [`🌟 Högst säsongsnivå (${r.seasonName})`, r.season, 'Nivå'],
 };
 
 // boxId: var listorna ritas; boards: vilka av TOP_BOARDS (tornskärmen visar bara tornens).
@@ -3767,6 +3793,10 @@ function showResult() {
   if (r.coins) text += ` +${r.coins} 🪙 mynt.`;
   if (r.xp) text += ` +${r.xp} XP (nivå ${game.acct.level}: ${game.acct.xp}/${game.acct.xpNeeded} XP).`;
   for (const up of r.levelUps || []) celebrate(`⬆️ NIVÅ ${up.level}!`, `Du fick ${robotById[up.prize].name} som pris!`, up.level % 5 === 0);
+  for (const up of r.seasonUps || []) {
+    text += ` 🌟 Säsongsnivå ${up.level}: ${seasonRewardText(up.reward)}!`;
+    celebrate(`🌟 SÄSONGSNIVÅ ${up.level}!`, `Du fick ${seasonRewardText(up.reward)}!`, up.level === Shared.SEASON_LEVELS || up.level === 10);
+  }
   if (r.clanPoints) text += ` Klanen fick ${r.clanPoints} poäng.`;
   for (const q of r.quests || []) text += ` 📜 Uppdrag klart: ${q.name}! +${q.coins} mynt.`;
   if ((r.quests || []).length) setTimeout(Sound.quest, 600);

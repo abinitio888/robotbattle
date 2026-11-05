@@ -17,6 +17,7 @@
 //   tops:weekly:<vecka>  sorterad mängd: spelarnamn -> högsta klarade våningen i veckans torn
 //   tops:trophies        sorterad mängd: spelarnamn -> antal vunna turneringar
 //   tops:wins:<vecka>    sorterad mängd: spelarnamn -> antal vunna matcher den veckan
+//   tops:season:<id>     sorterad mängd: spelarnamn -> säsongsnivå den säsongen
 const crypto = require('crypto');
 const { dispatch, requireSession, sessionOf, redis, HttpError, S, tooMany, saveUser } = require('../_lib.js');
 
@@ -129,10 +130,12 @@ module.exports = dispatch({
       const session = await sessionOf(req);
       const me = session ? session.user.name : null;
       const week = S.weekOf(Date.now());
-      const [tower, weekly, trophies, wins] = await Promise.all([
+      const season = S.seasonOf(Date.now());
+      const [tower, weekly, trophies, wins, seasonTop] = await Promise.all([
         topList('tops:tower', me), topList(`tops:weekly:${week}`, me), topList('tops:trophies', me), topList(`tops:wins:${week}`, me),
+        topList(`tops:season:${season.id}`, me),
       ]);
-      return { loggedIn: !!session, week, tower, weekly, trophies, wins };
+      return { loggedIn: !!session, week, tower, weekly, trophies, wins, season: seasonTop, seasonName: season.name };
     },
   },
 

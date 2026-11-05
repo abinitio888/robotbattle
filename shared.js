@@ -884,6 +884,7 @@
     { id: 'kristall', name: 'Kristall', price: 750, color: '#bfefff', accent: '#7fd8ff', eye: '#ffffff', mat: { crystal: true } },
     { id: 'regnbage', name: 'Regnbåge', price: 1000, color: '#ff3b3b', accent: '#3ee8ff', eye: '#ffffff', mat: { rainbow: true } },
     { id: 'arsguld', name: 'Årsguld', price: null, color: '#fff3b0', accent: '#ffd93d', eye: '#ff5fd2', mat: { metalness: 0.6, roughness: 0.2, tint: 0.35, neon: true }, desc: 'Bara för den som har en årsstreak på 365 dagar.' },
+    { id: 'sasong', name: 'Säsongsmästare', price: null, color: '#2a1050', accent: '#ffd93d', eye: '#3ee8ff', mat: { metalness: 0.5, roughness: 0.3, neon: true }, desc: 'Bara för den som når nivå 20 i en säsong.' },
   ];
   const skinById = Object.fromEntries(SKINS.map((k) => [k.id, k]));
 
@@ -1339,6 +1340,11 @@
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
       acct.tower = Math.max(1, Math.min(TOWER_TOP + 1, Math.floor(Number(raw.tower)) || 1));
       if (Number.isInteger(raw.eventBeaten) && raw.eventBeaten > 0) acct.eventBeaten = raw.eventBeaten;
+      const se = raw.season;
+      if (se && typeof se.id === 'string' && /^\d{4}-[0-3]$/.test(se.id)) {
+        const level = Math.max(0, Math.min(SEASON_LEVELS, Math.floor(Number(se.level)) || 0));
+        acct.season = { id: se.id, level, xp: level >= SEASON_LEVELS ? 0 : Math.max(0, Math.min(SEASON_XP - 1, Math.floor(Number(se.xp)) || 0)) };
+      }
       const tr = raw.tourney;
       if (tr && Array.isArray(tr.field) && tr.field.length === 7 && tr.field.every((id) => robotById[id])) {
         acct.tourney = { round: Math.max(0, Math.min(TOURNEY_ROUNDS.length - 1, Math.floor(Number(tr.round)) || 0)), field: [...tr.field] };
@@ -1656,6 +1662,68 @@
   // Våningen man står på i veckans torn just nu (1 när en ny vecka börjat).
   const weeklyFloor = (acct, week) => (acct.weekly && acct.weekly.week === week ? acct.weekly.floor : 1);
 
+  // ---------- Säsonger ----------
+  // Var tredje månad en ny säsong (vinter dec–feb, vår mar–maj, sommar jun–aug, höst sep–nov,
+  // i UTC så att klient och server är överens). Varje match ger säsongs-XP (lika mycket som
+  // vanlig XP); SEASON_LEVELS nivåer med ett pris var, och allt börjar om nästa säsong.
+  const SEASON_LEVELS = 20;
+  const SEASON_XP = 100; // per säsongsnivå
+  const SEASON_NAMES = { 0: 'Vintern', 1: 'Våren', 2: 'Sommaren', 3: 'Hösten' };
+
+  function seasonOf(now) {
+    const d = new Date(now);
+    const m = d.getUTCMonth(); // 0 = januari
+    const q = Math.floor(((m + 1) % 12) / 3); // dec–feb = 0, mar–maj = 1, ...
+    const year = m === 11 ? d.getUTCFullYear() + 1 : d.getUTCFullYear(); // december hör till nästa års vinter
+    const endMonth = q * 3 + 2; // första månaden i nästa säsong, räknat från december året innan
+    const ends = Date.UTC(year, endMonth, 1);
+    return { id: `${year}-${q}`, name: `${SEASON_NAMES[q]} ${year}`, endsInMs: ends - now };
+  }
+
+  // Priset för en säsongsnivå: nivå 20 = säsongsskinnet, nivå 10 = en guldlåda, jämna nivåer en
+  // låda, udda nivåer mynt.
+  function seasonReward(level) {
+    if (level === SEASON_LEVELS) return { skin: 'sasong' };
+    if (level === 10) return { gold: 1 };
+    if (level % 2 === 0) return { boxes: 1 };
+    return { coins: 50 + level * 5 };
+  }
+
+  function seasonState(acct, now) {
+    const s = seasonOf(now);
+    if (!acct.season || acct.season.id !== s.id) acct.season = { id: s.id, xp: 0, level: 0 };
+    return acct.season;
+  }
+
+  // Lägger till säsongs-XP och delar ut priserna för de nivåer man når. Ger [{ level, reward }].
+  function addSeasonXp(acct, amount, now) {
+    const st = seasonState(acct, now);
+    const ups = [];
+    st.xp += amount;
+    while (st.level < SEASON_LEVELS && st.xp >= SEASON_XP) {
+      st.xp -= SEASON_XP;
+      st.level += 1;
+      const reward = seasonReward(st.level);
+      if (reward.coins) addCoins(acct, reward.coins);
+      if (reward.boxes) acct.boxes += reward.boxes;
+      if (reward.gold) { acct.boxes += 1; acct.goldBoxes = (acct.goldBoxes || 0) + 1; }
+      if (reward.skin) { acct.skins = acct.skins || []; if (!acct.skins.includes(reward.skin)) acct.skins.push(reward.skin); }
+      ups.push({ level: st.level, reward });
+    }
+    if (st.level >= SEASON_LEVELS) st.xp = 0;
+    return ups;
+  }
+
+  function seasonView(acct, now) {
+    const s = seasonOf(now);
+    const st = acct.season && acct.season.id === s.id ? acct.season : { xp: 0, level: 0 };
+    return {
+      id: s.id, name: s.name, daysLeft: Math.max(1, Math.ceil(s.endsInMs / 86400000)),
+      level: st.level, xp: st.xp, need: SEASON_XP, max: SEASON_LEVELS,
+      next: st.level < SEASON_LEVELS ? seasonReward(st.level + 1) : null,
+    };
+  }
+
   // ---------- Händelse: Jättebossen ----------
   // De första EVENT_OPEN_MS av varje EVENT_PERIOD_MS kommer en jättebosss till Robotstaden (samma
   // för alla, bestämd av tiden i UTC). Man slåss mot den tillsammans med fyra AI-kompisar (som
@@ -1905,6 +1973,7 @@
     ensureXp(acct);
     result.xp = xpFor(match, won);
     result.levelUps = addXp(acct, result.xp, rng);
+    result.seasonUps = addSeasonXp(acct, result.xp, Date.now());
     const weeklyDone = result.weekly === WEEKLY_TOP;
     result.medals = awardMedals(acct, { won, perfect: perfect === true, underdog: !!underdog, weeklyDone });
     return result;
@@ -2097,6 +2166,7 @@
       weekly: { week: weekOf(Date.now()), floor: weeklyFloor(acct, weekOf(Date.now())) },
       tourney: acct.tourney ? { round: acct.tourney.round, field: [...acct.tourney.field] } : null,
       eventBeaten: acct.eventBeaten || 0,
+      season: seasonView(acct, Date.now()),
       medals: [...(acct.medals || [])],
       stats: { ...(acct.stats || {}) },
       quests: questView(acct),
@@ -2225,6 +2295,7 @@
     WEEKLY_TOP, WEEKLY_TOP_COINS, WEEKLY_TOP_BOXES, weekOf, weeklyOpponent, weeklyFloor,
     TOURNEY_ROUNDS, TOURNEY_COINS, TOURNEY_WIN_COINS, TOURNEY_WIN_BOXES,
     EVENT_COINS, EVENT_BOXES, eventWindow, eventBoss,
+    SEASON_LEVELS, seasonOf, seasonReward, seasonView, addSeasonXp,
     ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
     SKINS, skinById, buySkin, setSkin,
     ITEM_LOOK, SETS, setsStatus, huntFor, HUNT_COINS, STREAK_MILESTONES,

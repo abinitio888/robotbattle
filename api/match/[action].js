@@ -49,6 +49,12 @@ module.exports = dispatch({
       const name = session.user.name;
       if (result.tower) await redis.zadd('tops:tower', { gt: true }, { score: result.tower, member: name }).catch(() => {});
       if (result.tourneyWon) await redis.zincrby('tops:trophies', 1, name).catch(() => {});
+      if (result.seasonUps && result.seasonUps.length) {
+        const season = session.user.acct.season;
+        const seasonKey = `tops:season:${season.id}`;
+        await redis.zadd(seasonKey, { gt: true }, { score: season.level, member: name }).catch(() => {});
+        await redis.expire(seasonKey, 120 * 24 * 3600).catch(() => {});
+      }
       if (result.won) {
         const winsKey = `tops:wins:${S.weekOf(Date.now())}`;
         await redis.zincrby(winsKey, 1, name).catch(() => {});
