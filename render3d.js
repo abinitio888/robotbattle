@@ -935,6 +935,12 @@
     M.eye.color.set(sil ? SIL_BODY : def.eye);
     M.gold.color.set(sil ? SIL_BODY : '#ffd93d');
     M.glow.color.set(def.eye);
+    // Mimik skimrar i alla färger.
+    if (def.mimic && !sil && !flash) {
+      const hue = ((p.time || 0) * 0.12) % 1;
+      M.body.color.setHSL(hue, 0.45, 0.68);
+      M.eye.color.setHSL((hue + 0.5) % 1, 0.9, 0.6);
+    }
     const alpha = p.alpha === undefined ? 1 : p.alpha;
     for (const k of ['body', 'dark', 'eye', 'gold']) {
       const op = alpha * (M[k].userData.baseOpacity || 1); // kristallskinnet är alltid lite genomskinligt

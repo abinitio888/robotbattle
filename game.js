@@ -1835,8 +1835,9 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   const aDef = game.event ? { ...tierDef, scale: tierDef.scale * GIANT_SCALE } : tierDef; // jättebossen är jättestor
   game.online = null;
   game.fighters = null;
-  game.player = new Fighter(pDef, W * 0.25, 1);
-  game.ai = new Fighter(aDef, W * 0.75, -1);
+  const [pMim, aMim] = mimicSpecials(pDef, aDef);
+  game.player = new Fighter(pMim, W * 0.25, 1);
+  game.ai = new Fighter(aMim, W * 0.75, -1);
   game.brain = makeBrain(game.bossTier ? game.bossTier.skill : skillForLevel(game.acct.level));
   game.allies = aDef.royal || game.event ? makeAllies() : [];
   game.foes = [];
@@ -1844,6 +1845,7 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   if (game.team) setupTeamFight(game.team, started.match.foes || []);
   game.training = null;
   resetArena();
+  announceMimic(game.player, game.ai);
   hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
   hud.nameAi.textContent = game.event ? `👹 JÄTTEBOSSEN · ${aDef.name}`
     : game.tourney ? `🏆 ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toUpperCase()} · ${aDef.name}`
@@ -1855,6 +1857,18 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   setHudType(hud.typePlayer, pDef);
   setHudType(hud.typeAi, aDef);
   showScreen(null);
+}
+
+// Mimik (def.mimic) tar motståndarens specialattack när matchen börjar. Ger [a, b] med
+// härmningen gjord (är båda Mimik härmar de bara varandras Härma).
+function mimicSpecials(a, b) {
+  return [a.mimic ? { ...a, special: b.special } : a, b.mimic ? { ...b, special: a.special } : b];
+}
+
+// Visar vad Mimik härmar, i början av matchen.
+function announceMimic(player, opp) {
+  if (player.def.mimic) game.superBanner = { name: `Mimik härmar: ${player.def.special.name}`, t: 2.2, mine: true };
+  else if (opp.def.mimic) game.superBanner = { name: `Mimik härmar din ${player.def.special.name}!`, t: 2.2, mine: false };
 }
 
 // Tömmer banan på alla attacker och effekter och startar nedräkningen till en ny match.
@@ -3907,7 +3921,7 @@ async function openBox() {
   }, 1150);
   setTimeout(() => {
     game.opening = false;
-    if (['legendary', 'divine', 'wildcard'].includes(def.rarity)) {
+    if (['legendary', 'divine', 'wildcard', 'mythic'].includes(def.rarity)) {
       const flash = el('div', 'box-flash');
       flash.style.setProperty('--rc', color);
       document.body.append(flash);
@@ -3918,7 +3932,7 @@ async function openBox() {
   }, 1450);
 }
 
-const RARITY_COLOR = { common: '#9aa7c7', rare: '#4da3ff', epic: '#b46bff', legendary: '#ffd93d', divine: '#3ee8ff', wildcard: '#ff5fd2', boss: '#ff1744', monster: '#ff7a1a' };
+const RARITY_COLOR = { common: '#9aa7c7', rare: '#4da3ff', epic: '#b46bff', legendary: '#ffd93d', divine: '#3ee8ff', wildcard: '#ff5fd2', mythic: '#c77dff', boss: '#ff1744', monster: '#ff7a1a' };
 const rarityColor = (def) => RARITY_COLOR[def.rarity] || '#5b6bd6';
 
 // isRename: true när man själv öppnar rutan igen för att byta namn (och därmed attack, se
@@ -4425,8 +4439,9 @@ function beginFriendMatch(isHost, payload) {
   game.friendLast = payload; // återanvänds av värden vid revansch
   game.arena = arenaById[payload.arenaId] || arenaById.classic;
   showArenaLabel(game.arena);
-  const hostF = new Fighter(payload.host.def, W * 0.25, 1);
-  const guestF = new Fighter(payload.guest.def, W * 0.75, -1);
+  const [hostDef, guestDef] = mimicSpecials(payload.host.def, payload.guest.def);
+  const hostF = new Fighter(hostDef, W * 0.25, 1);
+  const guestF = new Fighter(guestDef, W * 0.75, -1);
   game.fighters = [hostF, guestF];
   game.player = isHost ? hostF : guestF;
   game.ai = isHost ? guestF : hostF;
@@ -4452,6 +4467,7 @@ function beginFriendMatch(isHost, payload) {
   game.megabeams = [];
   game.bolts = [];
   game.superBanner = null;
+  announceMimic(game.player, game.ai);
   game.clocks = [];
   game.meteors = [];
   game.tides = [];

@@ -15,6 +15,7 @@
     divine: { label: 'Gudomlig', weight: 1, rank: 4 },
     boss: { label: 'Mystisk', weight: 0, rank: 5 },
     wildcard: { label: 'Joker', weight: 0, rank: 2 },
+    mythic: { label: 'Mytisk', weight: 0, rank: 4 }, // bara Mimik, se MIMIK_CHANCE
     monster: { label: 'Monster', weight: 0, rank: 6 },
   };
 
@@ -261,6 +262,14 @@
       color: '#dfe6ff', accent: '#9b59b6', eye: '#ffd93d', head: 'round', extra: 'question',
       scale: 1, hp: 100, speed: 235, punch: 8,
       special: WILDCARD_SPECIALS[0], // förval tills man döpt den, se wildcardSpecialFor()
+    },
+    // Mimik (mytisk, se MIMIK_CHANCE): härmar motståndarens specialattack i varje match (mimic,
+    // se startMatch i game.js) — en ny kraft varje gång. Skimrar i alla färger.
+    {
+      id: 'mimik', name: 'Mimik', rarity: 'mythic', types: ['normal'], mimic: true,
+      color: '#cfd6e6', accent: '#7a5aff', eye: '#3ee8ff', head: 'dome', extra: 'antenna',
+      scale: 1.05, hp: 115, speed: 240, punch: 9,
+      special: { type: 'projectile', name: 'Härma', dmg: 20, desc: 'Härmar motståndarens specialattack — varje match en ny kraft!' },
     },
     {
       id: 'boomer', name: 'Boomer', rarity: 'common', types: ['flygande'],
@@ -1455,9 +1464,12 @@
   // rullats — den föregår tiernvalet helt i stället för att blandas in i en viss tier (det
   // skulle göra den alldeles för vanlig, eftersom den vanliga tiern redan har flest robotar).
   const WILDCARD_CHANCE = 0.02;
+  // Mimik (mytisk) är ännu ovanligare och dyker också upp före sällsynthetsvalet.
+  const MIMIK_CHANCE = 0.015;
 
   function rollBoxFrom(rng, floor) {
     if (rng() < WILDCARD_CHANCE) return robotById.wildcard;
+    if (rng() < MIMIK_CHANCE) return robotById.mimik;
     const tiers = Object.keys(RARITY).slice(Object.keys(RARITY).indexOf(floor));
     let pick = rng() * tiers.reduce((sum, t) => sum + RARITY[t].weight, 0);
     let tier = tiers[tiers.length - 1];
@@ -1500,7 +1512,7 @@
   // legendarisk. Handlaren byter bort vilken vanlig/sällsynt/episk/legendarisk/gudomlig robot som
   // helst mot robotar man ger som tillsammans är värda minst lika mycket. Bossar går att ge
   // bort men aldrig att få; jokern och monstren går inte att byta alls.
-  const TRADE_VALUE = { common: 1, rare: 3, epic: 10, legendary: 100, divine: 500, boss: 150 };
+  const TRADE_VALUE = { common: 1, rare: 3, epic: 10, legendary: 100, divine: 500, boss: 150, mythic: 300 };
   const tradeValue = (id) => (robotById[id] ? TRADE_VALUE[robotById[id].rarity] || 0 : 0);
   const canTradeFor = (id) => !!robotById[id] && !robotById[id].boss && tradeValue(id) > 0;
 
@@ -1531,6 +1543,7 @@
   // rng är en funktion som ger ett tal i [0, 1).
   function rollBox(rng) {
     if (rng() < WILDCARD_CHANCE) return robotById.wildcard;
+    if (rng() < MIMIK_CHANCE) return robotById.mimik;
     const tiers = Object.keys(RARITY);
     let pick = rng() * tiers.reduce((sum, t) => sum + RARITY[t].weight, 0);
     let tier = tiers[tiers.length - 1];

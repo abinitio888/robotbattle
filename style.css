@@ -348,6 +348,10 @@ button:disabled {
 .card.reveal.legendary { border-color: var(--legendary); box-shadow: 0 0 34px rgba(255, 217, 61, 0.95); }
 .card.divine .rarity { color: var(--divine); }
 .card.reveal.divine { border-color: var(--divine); box-shadow: 0 0 42px rgba(62, 232, 255, 1); }
+@keyframes mythic-shimmer { 0% { filter: hue-rotate(0deg); } 100% { filter: hue-rotate(360deg); } }
+.card.mythic .rarity { color: #c77dff; animation: mythic-shimmer 3s linear infinite; }
+.card.mythic { border-color: #c77dff; }
+.card.reveal.mythic { border-color: #c77dff; box-shadow: 0 0 46px rgba(199, 125, 255, 1); animation: mythic-shimmer 3s linear infinite; }
 
 .card.compact { width: 84px; padding: 5px; gap: 0; }
 .card.compact canvas { width: 64px; height: 84px; }
