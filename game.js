@@ -2482,7 +2482,7 @@ function showShop(message) {
     const info = el('div', 'shop-info');
     info.append(el('div', 'name', skin.name), el('div', 'stats', skin.desc || (skin.mat.neon ? 'Lysande neonkanter.' : skin.mat.crystal ? 'Genomskinlig kristall.' : skin.mat.rainbow ? 'Byter färg hela tiden!' : 'En helt ny färg och yta.')));
     const btn = skin.price === null
-      ? worldButton(owned ? 'Din ✓' : '🔥 365 dagar', () => {}, { disabled: true })
+      ? worldButton(owned ? 'Din ✓' : skin.id === 'sasong' ? `🌟 Säsongsnivå ${Shared.SEASON_LEVELS}` : '🔥 365 dagar', () => {}, { disabled: true })
       : worldButton(owned ? 'Köpt ✓' : `Köp · ${skin.price} 🪙`, async () => {
         try { const r = await net.buySkin(skin.id); applyAcct(r.acct); } catch (e) { showShop(e.message); return; }
         showShop(`Du köpte skinnet ${skin.name}! Sätt på det i Garaget.`);
