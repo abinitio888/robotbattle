@@ -1904,20 +1904,21 @@ async function startMatch(modeOverride, monsterId, forceAi) {
     : game.tower ? `🗼 VÅNING ${game.tower}/${Shared.TOWER_TOP} · ${aDef.name}`
     : game.boss ? '??? · MYSTISK ROBOT' : game.champion ? `👑 ${aDef.name} · STADENS MÄSTARE`
     : `${game.elite ? '⭐ ' : ''}${aDef.name} · ${game.monster ? 'MONSTER' : game.elite ? 'ELIT' : 'AI'}`;
-  setHudType(hud.typePlayer, pDef);
-  setHudType(hud.typeAi, aDef);
+  setHudType(hud.typePlayer, game.player.def); // Mimik kan ha bytt typ (mimicSpecials)
+  setHudType(hud.typeAi, game.ai.def);
   showScreen(null);
 }
 
 // Mimik (def.mimic) tar motståndarens specialattack när matchen börjar. Ger [a, b] med
 // härmningen gjord (är båda Mimik härmar de bara varandras Härma).
+// Mimik byter också typ till motståndarens, eftersom typen hör ihop med attacken.
 function mimicSpecials(a, b) {
-  return [a.mimic ? { ...a, special: b.special } : a, b.mimic ? { ...b, special: a.special } : b];
+  return [a.mimic ? { ...a, special: b.special, types: b.types } : a, b.mimic ? { ...b, special: a.special, types: a.types } : b];
 }
 
 // Visar vad Mimik härmar, i början av matchen.
 function announceMimic(player, opp) {
-  if (player.def.mimic) game.superBanner = { name: `Mimik härmar: ${player.def.special.name}`, t: 2.2, mine: true };
+  if (player.def.mimic) game.superBanner = { name: `Mimik härmar: ${player.def.special.name} (${player.def.types.map((t) => Shared.TYPES[t].label).join('/')})`, t: 2.2, mine: true };
   else if (opp.def.mimic) game.superBanner = { name: `Mimik härmar din ${player.def.special.name}!`, t: 2.2, mine: false };
 }
 
@@ -1969,7 +1970,7 @@ function startTraining(moving) {
   game.introT = 0.8;
   hud.namePlayer.textContent = `DU · ${displayName(pDef, true)}`;
   hud.nameAi.textContent = moving ? 'Träningsdocka · RÖRLIG' : 'Träningsdocka · STILLA';
-  setHudType(hud.typePlayer, pDef);
+  setHudType(hud.typePlayer, game.player.def); // Mimik kan ha bytt typ (mimicSpecials)
   setHudType(hud.typeAi, DUMMY);
   byId('explore-bar').hidden = false;
   byId('btn-explore-back').hidden = false;
