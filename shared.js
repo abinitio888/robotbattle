@@ -1020,7 +1020,7 @@
   // Laserspår: ingen robot har den från början, men Mimik kan få den (se MIMIK_MECHANICS).
   TYPE_DEFAULTS.lasertrail = {
     type: 'lasertrail', name: 'Laserspår', dmg: 6,
-    desc: 'I fyra sekunder blir allt du går på ett laserfält som bränner motståndaren som kliver på det.',
+    desc: 'Resten av matchen blir allt du går på ett laserfält som ligger kvar och bränner motståndaren som kliver på det.',
   };
 
   // Enkel, stabil stränghash (FNV-1a) — bara till för att sprida ut namn över attackerna,

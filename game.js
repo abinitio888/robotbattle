@@ -336,14 +336,13 @@ const SPECIALS = {
       });
     },
   },
-  // Laserspår: i några sekunder lämnar roboten ett laserfält efter sig där den går (se updateTrails).
+  // Laserspår: resten av matchen lämnar roboten ett laserfält efter sig där den går (se updateTrails).
   lasertrail: {
     dur: 0.35, fires: [0.1],
     fire: (f, o, sp) => {
-      f.trailT = TRAIL_SECONDS;
+      if (!f.trailOn) f.trailCells = new Set();
+      f.trailOn = true;
       f.trailDmg = sp.dmg;
-      f.trailDrop = 0;
-      f.trailLast = null;
       sparks(f.x, f.y - 10, f.def.eye, 14, f.z);
     },
   },
@@ -1036,30 +1035,29 @@ function updateStrikes(dt) {
   game.strikes = game.strikes.filter((st) => st.t < st.delay + 0.25);
 }
 
-// Laserspåret: medan trailT räknar ner släpper roboten en bit laserfält där den står (bara
-// på marken), och en motståndare som står på en bit tar skada — högst en gång per TRAIL_HIT_EVERY.
-const TRAIL_SECONDS = 4;
-const TRAIL_LIFE = 3.5;      // hur länge en bit laserfält ligger kvar
-const TRAIL_DROP = 0.06;     // sekunder mellan bitarna
+// Laserspåret: när attacken väl använts lämnar roboten laserfält efter sig resten av matchen,
+// och fältet ligger kvar hela matchen. En motståndare som står på det tar skada — högst en gång
+// per TRAIL_HIT_EVERY. Fältet läggs i ett rutnät (en bit per ruta), med ett tak på antalet bitar
+// så att spelet inte blir segt; blir det för många försvinner de äldsta.
+const TRAIL_CELL = 14;        // rutornas storlek
+const TRAIL_MAX = 700;        // högst så många bitar laserfält på banan
 const TRAIL_HIT_EVERY = 0.45;
 
 function updateTrails(dt, fighters) {
   for (const f of fighters) {
     if (!f) continue;
     f.trailHitT = Math.max(0, (f.trailHitT || 0) - dt);
-    if (!(f.trailT > 0) || f.dead) continue;
-    f.trailT -= dt;
-    f.trailDrop -= dt;
-    // En ny bit bara när roboten flyttat sig (står den still räcker biten som redan ligger där).
-    const last = f.trailLast;
-    if (f.trailDrop <= 0 && f.onGround && (!last || Math.hypot(f.x - last.x, f.z - last.z) > 10)) {
-      f.trailDrop = TRAIL_DROP;
-      f.trailLast = { x: f.x, z: f.z };
-      game.trails.push({ owner: f, x: f.x, z: f.z, life: TRAIL_LIFE, dmg: f.trailDmg, color: f.def.eye });
+    if (!f.trailOn || f.dead || !f.onGround) continue;
+    const cell = `${Math.round(f.x / TRAIL_CELL)},${Math.round(f.z / TRAIL_CELL)}`;
+    if (f.trailCells.has(cell)) continue;
+    f.trailCells.add(cell);
+    game.trails.push({ owner: f, x: f.x, z: f.z, cell, dmg: f.trailDmg, color: f.def.eye });
+    if (game.trails.length > TRAIL_MAX) {
+      const old = game.trails.shift();
+      old.owner.trailCells.delete(old.cell);
     }
   }
   for (const s of game.trails) {
-    s.life -= dt;
     const target = enemyOf(s.owner);
     if (!target || target.dead || target.trailHitT > 0 || target.y < FLOOR - 10) continue;
     if (Math.abs(target.x - s.x) < 14 + target.w * 0.3 && inLane(target, s.z, 14)) {
@@ -1068,7 +1066,6 @@ function updateTrails(dt, fighters) {
       sparks(target.x, FLOOR - 6, s.color, 8, target.z);
     }
   }
-  game.trails = game.trails.filter((s) => s.life > 0);
 }
 
 function updateMines(dt) {

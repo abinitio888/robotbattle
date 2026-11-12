@@ -1740,7 +1740,7 @@
         const m = pools.trail.get();
         m.position.set(wx(tr.x), 2, tr.z || 0);
         m.material.color.set(tr.color);
-        m.material.opacity = clamp(tr.life / 1.2, 0, 1) * (0.55 + 0.25 * Math.sin(tr.life * 20));
+        m.material.opacity = 0.55 + 0.25 * Math.sin(performance.now() / 120 + (tr.x + tr.z) * 0.05); // pulserar längs spåret
       }
       for (const mi of s.mines || []) {
         const m = pools.mine.get();
