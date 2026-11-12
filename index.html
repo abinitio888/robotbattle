@@ -185,6 +185,7 @@
         <div id="garage-panel" class="garage-panel"></div>
         <button id="btn-rename-wildcard" type="button" class="linklike" hidden>Döp om jokern</button>
         <button id="btn-choose-wildcard-attack" type="button" class="linklike" hidden>Beskriv jokerns attack</button>
+        <button id="btn-mimik" type="button" class="linklike" hidden>🪞 Bygg Mimik</button>
         <p id="select-error" class="error"></p>
         <div class="buttons">
           <button id="btn-boxes" type="button" class="secondary">Öppna låda</button>
@@ -291,6 +292,23 @@
         <p class="hint">Du och fyra AI-robotar mot en kung eller drottningen. Långt svårare än vanliga monster — välj en robot med rätt typ!</p>
         <div id="royals-list" class="royals-list"></div>
         <button id="btn-royals-back" type="button" class="linklike">Tillbaka till staden</button>
+      </section>
+
+      <section id="screen-mimik" hidden>
+        <h2>🪞 Bygg Mimik</h2>
+        <p class="hint">Välj hur stor Mimik är, fördela styrkepoängen och välj vilken specialattack den har.</p>
+        <div class="mimik-builder">
+          <label class="mimik-row">Storlek <input id="mimik-scale" type="range" min="0" max="6" step="1"> <b id="mimik-scale-val"></b></label>
+          <div id="mimik-stats"></div>
+          <p id="mimik-points" class="hint"></p>
+          <label class="mimik-row">Specialattack <select id="mimik-special"></select></label>
+          <p id="mimik-preview" class="mimik-preview"></p>
+        </div>
+        <p id="mimik-error" class="hint"></p>
+        <div class="buttons">
+          <button id="btn-mimik-save" type="button">💾 Spara Mimik</button>
+        </div>
+        <button id="btn-mimik-back" type="button" class="linklike">Tillbaka till Garaget</button>
       </section>
 
       <section id="screen-tops" hidden>

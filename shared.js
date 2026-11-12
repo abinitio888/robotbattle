@@ -1321,6 +1321,8 @@
       }
       acct.wildcardColor = cleanColor(raw.wildcardColor);
       if (typeof raw.wildcardHead === 'string' && HEAD_SHAPES.includes(raw.wildcardHead)) acct.wildcardHead = raw.wildcardHead;
+      const mc = cleanMimik(raw.mimikCustom);
+      if (mc) acct.mimikCustom = mc;
       if (typeof raw.wildcardExtra === 'string' && EXTRA_FEATURES.includes(raw.wildcardExtra)) acct.wildcardExtra = raw.wildcardExtra;
       const equipmentInv = raw.equipmentInv && typeof raw.equipmentInv === 'object' ? raw.equipmentInv : {};
       for (const e of EQUIPMENT) {
@@ -2170,6 +2172,7 @@
       wildcardColor: acct.wildcardColor || null,
       wildcardHead: acct.wildcardHead || null,
       wildcardExtra: acct.wildcardExtra || null,
+      mimikCustom: acct.mimikCustom || null,
       equipmentInv: { ...(acct.equipmentInv || {}) },
       equippedItem: acct.equippedItem || null,
       superPieces: { ...(acct.superPieces || {}) },
@@ -2235,6 +2238,51 @@
 
   // Sätter hur jokern (och därmed dess attackeffekter, som ärver robotens egen färg) ser ut.
   // hex === null återställer till standardfärgen.
+  // ---------- Mimik: bygg din egen ----------
+  // Den som äger Mimik väljer själv storlek, hur bra den är och vilken specialattack den har.
+  // "Hur bra" är MIMIK_POINTS poäng att fördela mellan liv, fart och slag (högst MIMIK_MAX_STAT
+  // i varje), så man väljer en stil i stället för att få allt — annars vore den orättvis i
+  // vänmatcher. special: en annan robots id (då får Mimik dess specialattack) eller 'mimic'
+  // (härma motståndaren, som från början).
+  const MIMIK_POINTS = 12;
+  const MIMIK_MAX_STAT = 8;
+  const MIMIK_SCALES = [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4];
+  const MIMIK_DEFAULT = { scale: 1, hp: 4, speed: 4, punch: 4, special: 'mimic' };
+  const mimikSpecialIds = () => ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard' && r.id !== 'mimik').map((r) => r.id);
+
+  // Ett giltigt bygge, eller null.
+  function cleanMimik(c) {
+    if (!c || typeof c !== 'object') return null;
+    const stat = (v) => (Number.isInteger(v) && v >= 0 && v <= MIMIK_MAX_STAT ? v : null);
+    const hp = stat(c.hp);
+    const speed = stat(c.speed);
+    const punch = stat(c.punch);
+    if (hp === null || speed === null || punch === null || hp + speed + punch > MIMIK_POINTS) return null;
+    if (!MIMIK_SCALES.includes(c.scale)) return null;
+    if (c.special !== 'mimic' && !mimikSpecialIds().includes(c.special)) return null;
+    return { scale: c.scale, hp, speed, punch, special: c.special };
+  }
+
+  // Mimiks def med bygget: poängen blir liv, fart och slag, och specialen byts om man valt en.
+  function mimikDef(base, custom) {
+    const c = custom || MIMIK_DEFAULT;
+    const out = { ...base, scale: c.scale * 1.05, hp: 80 + c.hp * 8, speed: 190 + c.speed * 12, punch: 5 + c.punch };
+    if (c.special !== 'mimic' && robotById[c.special]) {
+      out.special = robotById[c.special].special;
+      out.types = robotById[c.special].types;
+      out.mimic = false;
+    }
+    return out;
+  }
+
+  function setMimikCustom(acct, c) {
+    if (count(acct, 'mimik') < 1) return { error: 'Du äger inte Mimik än.' };
+    const clean = cleanMimik(c);
+    if (!clean) return { error: `Ogiltigt bygge: högst ${MIMIK_POINTS} poäng totalt och ${MIMIK_MAX_STAT} i varje.` };
+    acct.mimikCustom = clean;
+    return { mimik: clean };
+  }
+
   function setWildcardColor(acct, hex) {
     if (count(acct, 'wildcard') < 1) return { error: 'Du äger inte den roboten än.' };
     if (hex === null) {
@@ -2298,6 +2346,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
+    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_SCALES, MIMIK_DEFAULT, mimikSpecialIds, mimikDef, setMimikCustom,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,

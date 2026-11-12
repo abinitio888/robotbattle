@@ -1666,6 +1666,7 @@ const screens = {
   team: document.getElementById('screen-team'),
   tourney: document.getElementById('screen-tourney'),
   tops: document.getElementById('screen-tops'),
+  mimik: document.getElementById('screen-mimik'),
   travel: document.getElementById('screen-travel'),
   royals: document.getElementById('screen-royals'),
   shop: document.getElementById('screen-shop'),
@@ -2195,6 +2196,7 @@ function myDef(def) {
     const types = special.types || def.types;
     out = { ...def, special, color, head, extra, types };
   }
+  if (def.id === 'mimik') out = Shared.mimikDef(def, acct && acct.mimikCustom); // eget bygge, se showMimik()
   // Robotens nivå (uppgraderad med dubbletter) och skin (valt i Garaget).
   const lv = acct && acct.robotLv ? acct.robotLv[def.id] || 1 : 1;
   out = Shared.levelUpDef(out, lv);
@@ -2346,6 +2348,7 @@ function showSelect() {
   renderGaragePanel();
   byId('btn-rename-wildcard').hidden = invCount('wildcard') < 1;
   byId('btn-choose-wildcard-attack').hidden = invCount('wildcard') < 1;
+  byId('btn-mimik').hidden = invCount('mimik') < 1;
   byId('collection').textContent = `Robotar: ${totalRobots()} st · Lådor: ${game.acct.boxes} · 🪙 ${game.acct.coins || 0} mynt`;
   byId('level-info').textContent = `Nivå ${game.acct.level} · ${game.acct.xp}/${game.acct.xpNeeded} XP till nästa nivå`;
   byId('xp-fill').style.width = `${(100 * game.acct.xp) / game.acct.xpNeeded}%`;
@@ -2834,6 +2837,55 @@ function renderWeekly() {
 }
 
 // Topplistan kommer från servern och kräver konto. Gäster ser en uppmaning i stället.
+// ---------- Bygg Mimik ----------
+// Ett utkast (mimikDraft) som man ändrar på skärmen och sparar med net.setMimikCustom.
+const MIMIK_STATS = [['hp', '❤️ Liv'], ['speed', '💨 Fart'], ['punch', '👊 Slag']];
+let mimikDraft = null;
+
+function showMimik() {
+  game.phase = 'mimikbuild';
+  mimikDraft = { ...(game.acct.mimikCustom || Shared.MIMIK_DEFAULT) };
+  byId('mimik-error').textContent = '';
+  const sel = byId('mimik-special');
+  sel.replaceChildren();
+  const add = (value, text) => { const o = document.createElement('option'); o.value = value; o.textContent = text; sel.append(o); };
+  add('mimic', '🪞 Härma motståndaren (som från början)');
+  for (const id of Shared.mimikSpecialIds()) add(id, `${robotById[id].special.name} (från ${robotById[id].name})`);
+  sel.value = mimikDraft.special;
+  byId('mimik-scale').value = String(Shared.MIMIK_SCALES.indexOf(mimikDraft.scale));
+  renderMimik();
+  showScreen('mimik');
+}
+
+function renderMimik() {
+  const d = mimikDraft;
+  const used = d.hp + d.speed + d.punch;
+  byId('mimik-scale-val').textContent = d.scale < 1 ? `${d.scale} (liten)` : d.scale > 1 ? `${d.scale} (stor)` : '1 (vanlig)';
+  const box = byId('mimik-stats');
+  box.replaceChildren();
+  for (const [key, label] of MIMIK_STATS) {
+    const row = el('div', 'mimik-row');
+    const minus = worldButton('−', () => { d[key] -= 1; renderMimik(); }, { disabled: d[key] <= 0 });
+    const plus = worldButton('+', () => { d[key] += 1; renderMimik(); }, { disabled: d[key] >= Shared.MIMIK_MAX_STAT || used >= Shared.MIMIK_POINTS });
+    row.append(el('span', 'mimik-label', label), minus, el('b', 'mimik-val', `${d[key]}`), plus, el('span', 'mimik-pips', '■'.repeat(d[key]) + '□'.repeat(Shared.MIMIK_MAX_STAT - d[key])));
+    box.append(row);
+  }
+  byId('mimik-points').textContent = `Styrkepoäng kvar: ${Shared.MIMIK_POINTS - used} av ${Shared.MIMIK_POINTS} (högst ${Shared.MIMIK_MAX_STAT} i varje)`;
+  const def = Shared.mimikDef(robotById.mimik, d);
+  byId('mimik-preview').textContent = `Så blir Mimik: liv ${def.hp} · fart ${def.speed} · slag ${def.punch} · ${d.special === 'mimic' ? 'härmar motståndarens specialattack' : `${def.special.name}: ${def.special.desc}`}`;
+}
+
+async function saveMimik() {
+  try {
+    const r = await net.setMimikCustom(mimikDraft);
+    applyAcct(r.acct);
+  } catch (e) {
+    byId('mimik-error').textContent = e.message;
+    return;
+  }
+  showSelect();
+}
+
 function showTops() {
   game.phase = 'tops';
   showScreen('tops');
@@ -3639,6 +3691,11 @@ byId('btn-tower-back').addEventListener('click', showHub);
 byId('btn-team-back').addEventListener('click', showHub);
 byId('btn-tourney-back').addEventListener('click', showHub);
 byId('btn-tops-back').addEventListener('click', showHub);
+byId('btn-mimik').addEventListener('click', showMimik);
+byId('btn-mimik-back').addEventListener('click', showSelect);
+byId('btn-mimik-save').addEventListener('click', saveMimik);
+byId('mimik-scale').addEventListener('input', (e) => { mimikDraft.scale = Shared.MIMIK_SCALES[Number(e.target.value)]; renderMimik(); });
+byId('mimik-special').addEventListener('change', (e) => { mimikDraft.special = e.target.value; renderMimik(); });
 byId('btn-tourney-play').addEventListener('click', () => startMatch('tourney'));
 byId('btn-team-3').addEventListener('click', () => startMatch('team', '3'));
 byId('btn-team-5').addEventListener('click', () => startMatch('team', '5'));
@@ -5081,7 +5138,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);

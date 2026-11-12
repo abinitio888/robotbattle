@@ -104,6 +104,11 @@ module.exports = dispatch({
     method: 'POST',
     handler: acctAction((acct, body) => S.buyItem(acct, typeof body.itemId === 'string' ? body.itemId : null)),
   },
+  // Mimik: storlek, styrkepoäng och specialattack — se setMimikCustom() i shared.js.
+  'mimik-custom': {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.setMimikCustom(acct, body.mimik)),
+  },
   'buy-box': {
     method: 'POST',
     handler: acctAction((acct, body) => S.buyBox(acct, typeof body.kind === 'string' ? body.kind : null)),
