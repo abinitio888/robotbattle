@@ -336,12 +336,12 @@ const SPECIALS = {
       });
     },
   },
-  // Laserspår: resten av matchen lämnar roboten ett laserfält efter sig där den går (se updateTrails).
+  // Laserspår: i några sekunder lämnar roboten ett laserfält efter sig, som ligger kvar hela matchen (se updateTrails).
   lasertrail: {
     dur: 0.35, fires: [0.1],
     fire: (f, o, sp) => {
-      if (!f.trailOn) f.trailCells = new Set();
-      f.trailOn = true;
+      if (!f.trailCells) f.trailCells = new Set();
+      f.trailT = TRAIL_SECONDS; // attacken varar en stund, men fältet den lägger ligger kvar hela matchen
       f.trailDmg = sp.dmg;
       sparks(f.x, f.y - 10, f.def.eye, 14, f.z);
     },
@@ -1035,10 +1035,11 @@ function updateStrikes(dt) {
   game.strikes = game.strikes.filter((st) => st.t < st.delay + 0.25);
 }
 
-// Laserspåret: när attacken väl använts lämnar roboten laserfält efter sig resten av matchen,
-// och fältet ligger kvar hela matchen. En motståndare som står på det tar skada — högst en gång
+// Laserspåret: i TRAIL_SECONDS efter attacken lämnar roboten laserfält efter sig där den går,
+// och fältet ligger kvar resten av matchen. En motståndare som står på det tar skada — högst en gång
 // per TRAIL_HIT_EVERY. Fältet läggs i ett rutnät (en bit per ruta), med ett tak på antalet bitar
 // så att spelet inte blir segt; blir det för många försvinner de äldsta.
+const TRAIL_SECONDS = 4;      // så länge attacken lägger laserfält
 const TRAIL_CELL = 14;        // rutornas storlek
 const TRAIL_MAX = 700;        // högst så många bitar laserfält på banan
 const TRAIL_HIT_EVERY = 0.45;
@@ -1047,7 +1048,9 @@ function updateTrails(dt, fighters) {
   for (const f of fighters) {
     if (!f) continue;
     f.trailHitT = Math.max(0, (f.trailHitT || 0) - dt);
-    if (!f.trailOn || f.dead || !f.onGround) continue;
+    if (!(f.trailT > 0) || f.dead) continue;
+    f.trailT -= dt;
+    if (!f.onGround) continue;
     const cell = `${Math.round(f.x / TRAIL_CELL)},${Math.round(f.z / TRAIL_CELL)}`;
     if (f.trailCells.has(cell)) continue;
     f.trailCells.add(cell);
