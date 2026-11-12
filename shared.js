@@ -2280,6 +2280,26 @@
     [/karate|kampsport|slåss/, 'strid'], [/insekt|spindel|kryp/, 'kryp'],
   ];
 
+  // Egna attacker: ett ord om hur attacken fungerar väljer en av spelets attacksorter
+  // (TYPE_DEFAULTS), med vanlig skada för den sorten. [ord, attacksort, ord att bygga namnet av]
+  const MIMIK_MECHANICS = [
+    [/laser|stråle/, 'beam', 'stråle'], [/kulspruta|maskingevär|snabba skott/, 'burst', 'kulspruta'],
+    [/hagel|solfjäder|tre skott/, 'spread', 'hagel'], [/prickskytt|krypskytt|siktar/, 'snipe', 'prickskott'],
+    [/stötvåg|markvåg/, 'shockwave', 'stötvåg'], [/granat|kastar/, 'lob', 'granat'], [/\bmina\b|minor|fälla/, 'mine', 'mina'],
+    [/giftmoln|gasmoln|\bmoln\b/, 'poison', 'moln'], [/bumerang|skiva/, 'boomerang', 'bumerang'], [/krok|drar in/, 'grapple', 'krok'],
+    [/meteorregn|meteorer/, 'meteor', 'meteorregn'], [/meteor|jättesmäll/, 'meteorslam', 'meteor'],
+    [/svart hål|virvel/, 'blackhole', 'virvel'], [/vargar|hundar/, 'wolves', 'vargar'], [/rötter|lianer/, 'roots', 'rötter'],
+    [/jordbävning/, 'quake', 'bävning'], [/tidvatten|vattenvägg/, 'tide', 'flod'], [/ljuspelare|pelare från himlen/, 'orbital', 'pelare'],
+    [/ljusring/, 'halo', 'ring'], [/rusar|tacklar|stormar fram/, 'dash', 'rusning'], [/teleport|försvinner/, 'teleport', 'steg'],
+    [/fryser|isar fast/, 'freeze', 'frysning'], [/suger liv|vampyr|blodsug/, 'drain', 'sug'],
+    [/slagstorm|många slag|slagserie/, 'flurry', 'slagstorm'], [/krossar|hammare|tungt slag/, 'smash', 'krossare'],
+    [/kraftfält|skyddsbubbla/, 'barrier', 'skydd'], [/skott|skjuter|kula|klot|boll/, 'projectile', 'klot'],
+  ];
+  const ELEMENT_PREFIX = {
+    eld: 'Eld', is: 'Is', elektrisk: 'Blixt', vatten: 'Vatten', gräs: 'Löv', gift: 'Gift', sten: 'Sten', mark: 'Jord',
+    mörk: 'Skugg', spöke: 'Spök', flygande: 'Vind', stål: 'Stål', psykisk: 'Tanke', fe: 'Glitter', strid: 'Kamp', kryp: 'Insekts', normal: 'Energi',
+  };
+
   function cleanMimikText(raw) {
     if (typeof raw !== 'string') return '';
     return raw.replace(/[\u0000-\u001f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MIMIK_TEXT_MAX);
@@ -2338,8 +2358,23 @@
       .filter(([, at]) => at >= 0)
       .sort((a, b) => a[1] - b[1])
       .map(([type]) => [null, type])[0];
+    const mech = MIMIK_MECHANICS
+      .map(([re, type, noun]) => ({ type, noun, at: t.search(re) }))
+      .filter((m) => m.at >= 0)
+      .sort((a, b) => a.at - b.at)[0];
+    const attackName = text.match(/attack(?:en)?\s+(?:som\s+)?heter\s+([A-Za-zÅÄÖåäö]{2,16}(?:\s[A-Za-zÅÄÖåäö]{2,16})?)/i);
     if (/härma/.test(t)) {
       understood.push('härmar motståndarens attack');
+    } else if (mech) {
+      // En helt egen attack: sorten från ordet, elementet (om det finns) och ett namn.
+      const type = element ? element[1] : 'normal';
+      const name = attackName
+        ? attackName[1][0].toUpperCase() + attackName[1].slice(1)
+        : ELEMENT_PREFIX[type] + mech.noun;
+      const base = TYPE_DEFAULTS[mech.type];
+      build.special = 'custom';
+      build.customSpecial = customWildcardSpecial(mech.type, name, base.desc, base.dmg, base.heal, [type]);
+      understood.push(`ny attack: ${name} (${TYPES[type].label})`);
     } else if (byName) {
       build.special = byName;
       understood.push(`attack: ${robotById[byName].special.name}`);
@@ -2367,7 +2402,7 @@
     part('tail', true, /svans/, 'svans');
     if (Object.keys(parts).length) build.parts = parts;
 
-    const named = text.match(/heter\s+([A-Za-zÅÄÖåäö]{2,16})/);
+    const named = text.match(/(?<!attack\S*\s+(?:som\s+)?)heter\s+([A-Za-zÅÄÖåäö]{2,16})/); // inte attackens namn
     if (named) { build.name = named[1][0].toUpperCase() + named[1].slice(1); understood.push(`heter ${build.name}`); }
     return { build, understood };
   }
@@ -2385,7 +2420,11 @@
       shimmer: !c.color, // egen färg = ingen regnbåge
       parts: c.parts || null,
     };
-    if (c.special !== 'mimic' && robotById[c.special]) {
+    if (c.special === 'custom' && c.customSpecial) {
+      out.special = c.customSpecial; // en egen, påhittad attack
+      out.types = c.customSpecial.types || base.types;
+      out.mimic = false;
+    } else if (c.special !== 'mimic' && robotById[c.special]) {
       out.special = robotById[c.special].special;
       out.types = robotById[c.special].types;
       out.mimic = false;
