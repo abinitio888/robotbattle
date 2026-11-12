@@ -2158,7 +2158,7 @@ function weeklyFloorNow() {
 }
 
 function onEnter() {
-  if (game.phase === 'menu') showHub();
+  if (game.phase === 'menu') showSelect();
   else if (game.phase === 'select') showHub();
   else if (game.phase === 'teleport') startMatch();
   else if (game.phase === 'over' && !screens.result.hidden && !game.online) fightAgain();
@@ -5037,7 +5037,7 @@ byId('btn-leave-friend').addEventListener('click', () => {
   if (fromChallenge) showWorld(); else backToTeleport();
 });
 
-byId('btn-play').addEventListener('click', showHub);
+byId('btn-play').addEventListener('click', showSelect); // först väljer man robot, sedan staden
 byId('btn-fight').addEventListener('click', () => startMatch());
 byId('btn-again').addEventListener('click', fightAgain);
 byId('btn-change').addEventListener('click', showHub);
