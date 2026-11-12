@@ -296,12 +296,11 @@
 
       <section id="screen-mimik" hidden>
         <h2>🪞 Bygg Mimik</h2>
-        <p class="hint">Välj hur stor Mimik är, fördela styrkepoängen och välj vilken specialattack den har.</p>
+        <p class="hint">Beskriv din Mimik med egna ord — hur den ser ut, hur stor den är, hur den slåss och vad den heter.</p>
         <div class="mimik-builder">
-          <label class="mimik-row">Storlek <input id="mimik-scale" type="range" min="0" max="6" step="1"> <b id="mimik-scale-val"></b></label>
-          <div id="mimik-stats"></div>
-          <p id="mimik-points" class="hint"></p>
-          <label class="mimik-row">Specialattack <select id="mimik-special"></select></label>
+          <textarea id="mimik-text" rows="4" maxlength="200" placeholder="T.ex. en jättestor röd robot med krona, kanon och gula ögon som är snabb och skjuter eld och heter Flamman"></textarea>
+          <p class="hint mimik-tips">Ord spelet förstår: färger (röd, blå, guld, svart…), "gula ögon", huvud (rund, fyrkantig, kupol, horn, krona, ett öga, huva), extra (kanon, jetpack, taggar, mantel, antenn, sköld, fenor), storlek (jättestor, stor, liten, pytteliten), styrka (tålig, snabb, stark), attack (eld, is, blixt, vatten, gift, sten, skugga, vind… eller namnet på en attack, eller "härma") och "heter …".</p>
+          <div id="mimik-understood" class="mimik-understood"></div>
           <p id="mimik-preview" class="mimik-preview"></p>
         </div>
         <p id="mimik-error" class="hint"></p>

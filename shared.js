@@ -266,7 +266,7 @@
     // Mimik (mytisk, se MIMIK_CHANCE): härmar motståndarens specialattack i varje match (mimic,
     // se startMatch i game.js) — en ny kraft varje gång. Skimrar i alla färger.
     {
-      id: 'mimik', name: 'Mimik', rarity: 'mythic', types: ['normal'], mimic: true,
+      id: 'mimik', name: 'Mimik', rarity: 'mythic', types: ['normal'], mimic: true, shimmer: true,
       color: '#cfd6e6', accent: '#7a5aff', eye: '#3ee8ff', head: 'dome', extra: 'antenna',
       scale: 1.05, hp: 115, speed: 240, punch: 9,
       special: { type: 'projectile', name: 'Härma', dmg: 20, desc: 'Härmar motståndarens specialattack — varje match en ny kraft!' },
@@ -2238,35 +2238,136 @@
 
   // Sätter hur jokern (och därmed dess attackeffekter, som ärver robotens egen färg) ser ut.
   // hex === null återställer till standardfärgen.
-  // ---------- Mimik: bygg din egen ----------
-  // Den som äger Mimik väljer själv storlek, hur bra den är och vilken specialattack den har.
-  // "Hur bra" är MIMIK_POINTS poäng att fördela mellan liv, fart och slag (högst MIMIK_MAX_STAT
-  // i varje), så man väljer en stil i stället för att få allt — annars vore den orättvis i
-  // vänmatcher. special: en annan robots id (då får Mimik dess specialattack) eller 'mimic'
-  // (härma motståndaren, som från början).
+  // ---------- Mimik: beskriv din egen ----------
+  // Den som äger Mimik beskriver den med egna ord ("en jättestor röd robot med krona och gula
+  // ögon som är snabb och skjuter eld"), och describeMimik() läser ut utseende, storlek, styrka
+  // och specialattack ur orden. Bara texten sparas; servern läser den på samma sätt, så det går
+  // inte att fuska till mer än MIMIK_POINTS styrkepoäng (högst MIMIK_MAX_STAT i varje).
   const MIMIK_POINTS = 12;
   const MIMIK_MAX_STAT = 8;
-  const MIMIK_SCALES = [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4];
-  const MIMIK_DEFAULT = { scale: 1, hp: 4, speed: 4, punch: 4, special: 'mimic' };
+  const MIMIK_TEXT_MAX = 200;
   const mimikSpecialIds = () => ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard' && r.id !== 'mimik').map((r) => r.id);
 
-  // Ett giltigt bygge, eller null.
-  function cleanMimik(c) {
-    if (!c || typeof c !== 'object') return null;
-    const stat = (v) => (Number.isInteger(v) && v >= 0 && v <= MIMIK_MAX_STAT ? v : null);
-    const hp = stat(c.hp);
-    const speed = stat(c.speed);
-    const punch = stat(c.punch);
-    if (hp === null || speed === null || punch === null || hp + speed + punch > MIMIK_POINTS) return null;
-    if (!MIMIK_SCALES.includes(c.scale)) return null;
-    if (c.special !== 'mimic' && !mimikSpecialIds().includes(c.special)) return null;
-    return { scale: c.scale, hp, speed, punch, special: c.special };
+  const MIMIK_COLORS = [
+    [/röd|rött|röda/, 'röd', '#ff3b3b'], [/blå/, 'blå', '#3b7bff'], [/grön/, 'grön', '#3ddc84'],
+    [/gul(?!d)|gult|gula/, 'gul', '#ffd93d'], [/lila|violett/, 'lila', '#b46bff'], [/rosa/, 'rosa', '#ff8ac0'],
+    [/orange/, 'orange', '#ff8a1a'], [/svart/, 'svart', '#1e1e28'], [/vit(?!t?en)|vitt|vita/, 'vit', '#f2f4f8'],
+    [/guld|gyllene/, 'guld', '#ffcf3a'], [/silver/, 'silver', '#c8ccd4'], [/turkos/, 'turkos', '#3ee8ff'],
+    [/brun/, 'brun', '#8a5a2a'], [/grå/, 'grå', '#8a92a6'],
+  ];
+  const MIMIK_HEADS = [
+    [/krona|kung|drottning/, 'crown', 'krona'], [/horn/, 'horn', 'horn'], [/ett öga|enögd|cyklop/, 'cyclops', 'ett stort öga'],
+    [/kupol|glashuvud|glaskupa/, 'dome', 'kupol'], [/huva|luva|kåpa/, 'hood', 'huva'],
+    [/fyrkant|kantig|låd/, 'box', 'fyrkantigt huvud'], [/rund/, 'round', 'runt huvud'],
+  ];
+  const MIMIK_EXTRAS = [
+    [/kanon/, 'cannon', 'kanon'], [/jetpack|raket|jetmotor/, 'jet', 'jetpack'], [/tagg|pigg/, 'spikes', 'taggar'],
+    [/cape|mantel|slänga/, 'cape', 'mantel'], [/antenn/, 'antenna', 'antenn'], [/sköld/, 'shield', 'sköld'],
+    [/fena|fenor|haj/, 'fins', 'fenor'], [/axelskydd|stora axlar|axlar/, 'shoulders', 'stora axlar'],
+    [/frågetecken/, 'question', 'frågetecken'],
+  ];
+  const MIMIK_SIZES = [[/jätte|enorm|gigant|gigantisk/, 1.4, 'jättestor'], [/stor(?!m)/, 1.2, 'stor'], [/pytte|mini|minimal/, 0.8, 'pytteliten'], [/liten|små/, 0.9, 'liten']];
+  const MIMIK_STAT_WORDS = {
+    hp: /tålig|tank|tjock|pansar|hållbar|mycket liv|seg/g,
+    speed: /snabb|kvick|flink|rapp|blixtsnabb/g,
+    punch: /stark|slår hårt|kraftig|muskl|krossa|farlig|dödlig/g,
+  };
+  const MIMIK_ATTACK_TYPES = [
+    [/eld|brinn|flamm|lava|\bhet\b|hetta/, 'eld'], [/is\b|isig|frost|snö|kyla|frys/, 'is'], [/blixt|åsk|elektr|ström|\bel\b/, 'elektrisk'],
+    [/vatten|våg|hav|regn/, 'vatten'], [/gräs|växt|blad|skog|träd/, 'gräs'], [/gift/, 'gift'], [/sten|klipp|berg/, 'sten'],
+    [/jord|sand|mark/, 'mark'], [/skugg|mörk|natt/, 'mörk'], [/spöke/, 'spöke'], [/flyg|vind|storm|luft/, 'flygande'],
+    [/stål|metall|järn/, 'stål'], [/magi|psyk|tanke|hjärn/, 'psykisk'], [/glitter|regnbåg|älva|\bfe\b/, 'fe'],
+    [/karate|kampsport|slåss/, 'strid'], [/insekt|spindel|kryp/, 'kryp'],
+  ];
+
+  function cleanMimikText(raw) {
+    if (typeof raw !== 'string') return '';
+    return raw.replace(/[\u0000-\u001f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MIMIK_TEXT_MAX);
   }
 
-  // Mimiks def med bygget: poängen blir liv, fart och slag, och specialen byts om man valt en.
-  function mimikDef(base, custom) {
-    const c = custom || MIMIK_DEFAULT;
-    const out = { ...base, scale: c.scale * 1.05, hp: 80 + c.hp * 8, speed: 190 + c.speed * 12, punch: 5 + c.punch };
+  // Läser en beskrivning. Ger bygget och en lista över vad som förstods (för att visa).
+  function describeMimik(rawText) {
+    const text = cleanMimikText(rawText);
+    const t = ` ${text.toLowerCase()} `;
+    const understood = [];
+    const build = { text, scale: 1, hp: 4, speed: 4, punch: 4, special: 'mimic', color: null, accent: null, eye: null, head: null, extra: null, name: null };
+
+    // Färger: "<färg> ögon" blir ögonen, den första andra färgen kroppen och nästa detaljerna.
+    const eyeMatch = t.match(/(\S+)\s+ögon/);
+    const eyeColor = eyeMatch && MIMIK_COLORS.find(([re]) => re.test(eyeMatch[1]));
+    if (eyeColor) { build.eye = eyeColor[2]; understood.push(`${eyeColor[1]}a ögon`); }
+    const rest = eyeMatch ? t.replace(eyeMatch[0], ' ') : t;
+    const colors = MIMIK_COLORS
+      .map(([re, name, hex]) => ({ name, hex, at: rest.search(re) }))
+      .filter((c) => c.at >= 0)
+      .sort((a, b) => a.at - b.at);
+    if (colors[0]) { build.color = colors[0].hex; understood.push(`${colors[0].name} kropp`); }
+    if (colors[1]) { build.accent = colors[1].hex; understood.push(`${colors[1].name} detaljer`); }
+
+    const head = MIMIK_HEADS.find(([re]) => re.test(t));
+    if (head) { build.head = head[1]; understood.push(head[2]); }
+    const extra = MIMIK_EXTRAS.find(([re]) => re.test(t));
+    if (extra) { build.extra = extra[1]; understood.push(extra[2]); }
+    const size = MIMIK_SIZES.find(([re]) => re.test(t));
+    if (size) { build.scale = size[1]; understood.push(size[2]); }
+
+    // Styrka: varje ord om liv, fart eller slag väger lite mer; tolv poäng fördelas efter det.
+    const weight = { hp: 1, speed: 1, punch: 1 };
+    let any = false;
+    for (const k of Object.keys(weight)) {
+      const n = (t.match(MIMIK_STAT_WORDS[k]) || []).length;
+      weight[k] += n * 2;
+      if (n) any = true;
+    }
+    if (any) {
+      const sum = weight.hp + weight.speed + weight.punch;
+      for (const k of Object.keys(weight)) build[k] = Math.min(MIMIK_MAX_STAT, Math.round((MIMIK_POINTS * weight[k]) / sum));
+      while (build.hp + build.speed + build.punch > MIMIK_POINTS) {
+        const k = ['hp', 'speed', 'punch'].sort((a, b) => build[b] - build[a])[0];
+        build[k] -= 1;
+      }
+      understood.push(['tålig', 'snabb', 'slår hårt'].filter((w, i) => build[['hp', 'speed', 'punch'][i]] >= 5).join(' och ') || 'jämn styrka');
+    }
+
+    // Specialattack: "härma", namnet på en specialattack, eller ett element (eld, is, blixt...).
+    const ids = mimikSpecialIds();
+    const byName = ids.find((id) => t.includes(robotById[id].special.name.toLowerCase()));
+    // Elementet som nämns först i texten (inte först i listan).
+    const element = MIMIK_ATTACK_TYPES
+      .map(([re, type]) => [type, t.search(re)])
+      .filter(([, at]) => at >= 0)
+      .sort((a, b) => a[1] - b[1])
+      .map(([type]) => [null, type])[0];
+    if (/härma/.test(t)) {
+      understood.push('härmar motståndarens attack');
+    } else if (byName) {
+      build.special = byName;
+      understood.push(`attack: ${robotById[byName].special.name}`);
+    } else if (element) {
+      const fits = ids.filter((id) => robotById[id].types.includes(element[1]));
+      if (fits.length) {
+        build.special = fits[hashName(text) % fits.length];
+        understood.push(`attack: ${robotById[build.special].special.name} (${TYPES[element[1]].label})`);
+      }
+    }
+
+    const named = text.match(/heter\s+([A-Za-zÅÄÖåäö]{2,16})/);
+    if (named) { build.name = named[1][0].toUpperCase() + named[1].slice(1); understood.push(`heter ${build.name}`); }
+    return { build, understood };
+  }
+
+  // Ett sparat bygge läses alltid om från texten (så att ingen kan spara egna siffror).
+  const cleanMimik = (c) => (c && typeof c.text === 'string' && c.text.trim() ? describeMimik(c.text).build : null);
+
+  // Mimiks def med bygget: utseende, namn, storlek, styrka och specialattack.
+  function mimikDef(base, c) {
+    if (!c) return base;
+    const out = {
+      ...base, scale: c.scale * 1.05, hp: 80 + c.hp * 8, speed: 190 + c.speed * 12, punch: 5 + c.punch,
+      color: c.color || base.color, accent: c.accent || base.accent, eye: c.eye || base.eye,
+      head: c.head || base.head, extra: c.extra || base.extra, name: c.name || base.name,
+      shimmer: !c.color, // egen färg = ingen regnbåge
+    };
     if (c.special !== 'mimic' && robotById[c.special]) {
       out.special = robotById[c.special].special;
       out.types = robotById[c.special].types;
@@ -2275,12 +2376,13 @@
     return out;
   }
 
-  function setMimikCustom(acct, c) {
+  function setMimikCustom(acct, text) {
     if (count(acct, 'mimik') < 1) return { error: 'Du äger inte Mimik än.' };
-    const clean = cleanMimik(c);
-    if (!clean) return { error: `Ogiltigt bygge: högst ${MIMIK_POINTS} poäng totalt och ${MIMIK_MAX_STAT} i varje.` };
-    acct.mimikCustom = clean;
-    return { mimik: clean };
+    const clean = cleanMimikText(text);
+    if (!clean) return { error: 'Skriv en beskrivning av din Mimik först.' };
+    const { build, understood } = describeMimik(clean);
+    acct.mimikCustom = build;
+    return { mimik: build, understood };
   }
 
   function setWildcardColor(acct, hex) {
@@ -2346,7 +2448,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
-    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_SCALES, MIMIK_DEFAULT, mimikSpecialIds, mimikDef, setMimikCustom,
+    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,

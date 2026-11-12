@@ -911,3 +911,7 @@ button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-sha
 .mimik-val { width: 20px; text-align: center; }
 .mimik-pips { color: #c77dff; letter-spacing: 2px; }
 .mimik-preview { margin: 0; color: #e8d8ff; line-height: 1.4; }
+.mimik-builder textarea { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 8px; border: 1px solid #33406a; background: #0e1424; color: #e8ecff; font: inherit; resize: vertical; }
+.mimik-tips { font-size: 11px; line-height: 1.4; margin: 0; }
+.mimik-understood { display: flex; flex-wrap: wrap; gap: 6px; }
+.mimik-chip { padding: 3px 8px; border-radius: 10px; background: #2a1a44; border: 1px solid #c77dff; color: #f0e2ff; font-size: 12px; }

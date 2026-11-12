@@ -1551,6 +1551,9 @@ function triggerSpecial() { specialBuffer = 0.15; }
 function triggerSuper() { superBuffer = 0.15; }
 
 window.addEventListener('keydown', (e) => {
+  // Skriver man i en textruta (Mimiks beskrivning, jokerns namn, klannamnet...) ska spelets
+  // tangenter inte göra något — annars försvinner mellanslagen och M/V/F slår av ljud m.m.
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
   const handled = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
   if (handled.includes(e.code)) e.preventDefault();
   if (guideStep >= 0) { // guiden är öppen: Enter/mellanslag bläddrar, Escape stänger, inget annat händer
@@ -2838,46 +2841,35 @@ function renderWeekly() {
 
 // Topplistan kommer från servern och kräver konto. Gäster ser en uppmaning i stället.
 // ---------- Bygg Mimik ----------
-// Ett utkast (mimikDraft) som man ändrar på skärmen och sparar med net.setMimikCustom.
-const MIMIK_STATS = [['hp', '❤️ Liv'], ['speed', '💨 Fart'], ['punch', '👊 Slag']];
-let mimikDraft = null;
-
+// Man beskriver Mimik med egna ord. Medan man skriver visas vad spelet förstod (samma
+// Shared.describeMimik som servern använder), och "Spara" skickar texten.
 function showMimik() {
   game.phase = 'mimikbuild';
-  mimikDraft = { ...(game.acct.mimikCustom || Shared.MIMIK_DEFAULT) };
   byId('mimik-error').textContent = '';
-  const sel = byId('mimik-special');
-  sel.replaceChildren();
-  const add = (value, text) => { const o = document.createElement('option'); o.value = value; o.textContent = text; sel.append(o); };
-  add('mimic', '🪞 Härma motståndaren (som från början)');
-  for (const id of Shared.mimikSpecialIds()) add(id, `${robotById[id].special.name} (från ${robotById[id].name})`);
-  sel.value = mimikDraft.special;
-  byId('mimik-scale').value = String(Shared.MIMIK_SCALES.indexOf(mimikDraft.scale));
+  byId('mimik-text').value = (game.acct.mimikCustom && game.acct.mimikCustom.text) || '';
   renderMimik();
   showScreen('mimik');
+  byId('mimik-text').focus();
 }
 
 function renderMimik() {
-  const d = mimikDraft;
-  const used = d.hp + d.speed + d.punch;
-  byId('mimik-scale-val').textContent = d.scale < 1 ? `${d.scale} (liten)` : d.scale > 1 ? `${d.scale} (stor)` : '1 (vanlig)';
-  const box = byId('mimik-stats');
+  const { build, understood } = Shared.describeMimik(byId('mimik-text').value);
+  const box = byId('mimik-understood');
   box.replaceChildren();
-  for (const [key, label] of MIMIK_STATS) {
-    const row = el('div', 'mimik-row');
-    const minus = worldButton('−', () => { d[key] -= 1; renderMimik(); }, { disabled: d[key] <= 0 });
-    const plus = worldButton('+', () => { d[key] += 1; renderMimik(); }, { disabled: d[key] >= Shared.MIMIK_MAX_STAT || used >= Shared.MIMIK_POINTS });
-    row.append(el('span', 'mimik-label', label), minus, el('b', 'mimik-val', `${d[key]}`), plus, el('span', 'mimik-pips', '■'.repeat(d[key]) + '□'.repeat(Shared.MIMIK_MAX_STAT - d[key])));
-    box.append(row);
+  if (!build.text) {
+    box.append(el('span', 'hint', 'Skriv något så visar spelet vad det förstår.'));
+  } else if (!understood.length) {
+    box.append(el('span', 'hint', 'Spelet förstod inga ord än — prova med en färg, ett huvud eller ett element.'));
+  } else {
+    for (const u of understood) box.append(el('span', 'mimik-chip', `✓ ${u}`));
   }
-  byId('mimik-points').textContent = `Styrkepoäng kvar: ${Shared.MIMIK_POINTS - used} av ${Shared.MIMIK_POINTS} (högst ${Shared.MIMIK_MAX_STAT} i varje)`;
-  const def = Shared.mimikDef(robotById.mimik, d);
-  byId('mimik-preview').textContent = `Så blir Mimik: liv ${def.hp} · fart ${def.speed} · slag ${def.punch} · ${d.special === 'mimic' ? 'härmar motståndarens specialattack' : `${def.special.name}: ${def.special.desc}`}`;
+  const def = Shared.mimikDef(robotById.mimik, build);
+  byId('mimik-preview').textContent = `Så blir ${def.name}: storlek ${build.scale} · liv ${def.hp} · fart ${def.speed} · slag ${def.punch} · ${build.special === 'mimic' ? 'härmar motståndarens specialattack' : `${def.special.name}: ${def.special.desc}`}`;
 }
 
 async function saveMimik() {
   try {
-    const r = await net.setMimikCustom(mimikDraft);
+    const r = await net.setMimikCustom(byId('mimik-text').value);
     applyAcct(r.acct);
   } catch (e) {
     byId('mimik-error').textContent = e.message;
@@ -3694,8 +3686,7 @@ byId('btn-tops-back').addEventListener('click', showHub);
 byId('btn-mimik').addEventListener('click', showMimik);
 byId('btn-mimik-back').addEventListener('click', showSelect);
 byId('btn-mimik-save').addEventListener('click', saveMimik);
-byId('mimik-scale').addEventListener('input', (e) => { mimikDraft.scale = Shared.MIMIK_SCALES[Number(e.target.value)]; renderMimik(); });
-byId('mimik-special').addEventListener('change', (e) => { mimikDraft.special = e.target.value; renderMimik(); });
+byId('mimik-text').addEventListener('input', renderMimik);
 byId('btn-tourney-play').addEventListener('click', () => startMatch('tourney'));
 byId('btn-team-3').addEventListener('click', () => startMatch('team', '3'));
 byId('btn-team-5').addEventListener('click', () => startMatch('team', '5'));

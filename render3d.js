@@ -936,7 +936,7 @@
     M.gold.color.set(sil ? SIL_BODY : '#ffd93d');
     M.glow.color.set(def.eye);
     // Mimik skimrar i alla färger.
-    if (def.mimic && !sil && !flash) {
+    if (def.shimmer && !sil && !flash) {
       const hue = ((p.time || 0) * 0.12) % 1;
       M.body.color.setHSL(hue, 0.45, 0.68);
       M.eye.color.setHSL((hue + 0.5) % 1, 0.9, 0.6);
