@@ -1748,8 +1748,8 @@
   // De första EVENT_OPEN_MS av varje EVENT_PERIOD_MS kommer en jättebosss till Robotstaden (samma
   // för alla, bestämd av tiden i UTC). Man slåss mot den tillsammans med fyra AI-kompisar (som
   // i en kungastrid, se game.js). Den går bara att besegra en gång per besök (eventBeaten).
-  const EVENT_PERIOD_MS = 60 * 60 * 1000;
-  const EVENT_OPEN_MS = 20 * 60 * 1000;
+  const EVENT_PERIOD_MS = 10 * 60 * 1000; // kommer var tionde minut
+  const EVENT_OPEN_MS = 5 * 60 * 1000;    // ... och stannar i fem minuter
   const EVENT_COINS = 400;
   const EVENT_BOXES = 3;
 
@@ -1885,7 +1885,7 @@
     if (mode === 'event') {
       const ev = eventWindow(now);
       if (!ev.open) return { error: 'Jättebossen är inte i staden just nu.' };
-      if (acct.eventBeaten === ev.id) return { error: 'Du har redan besegrat jättebossen den här gången — den kommer tillbaka nästa timme!' };
+      if (acct.eventBeaten === ev.id) return { error: 'Du har redan besegrat jättebossen den här gången — den kommer tillbaka om några minuter!' };
       acct.selected = robotId;
       return { robot: robotId, stake: false, opp: eventBoss(ev.id), event: ev.id };
     }
