@@ -336,6 +336,17 @@ const SPECIALS = {
       });
     },
   },
+  // Laserspår: i några sekunder lämnar roboten ett laserfält efter sig där den går (se updateTrails).
+  lasertrail: {
+    dur: 0.35, fires: [0.1],
+    fire: (f, o, sp) => {
+      f.trailT = TRAIL_SECONDS;
+      f.trailDmg = sp.dmg;
+      f.trailDrop = 0;
+      f.trailLast = null;
+      sparks(f.x, f.y - 10, f.def.eye, 14, f.z);
+    },
+  },
   mine: {
     dur: 0.5, fires: [0.15],
     fire: (f, o, sp) => {
@@ -1023,6 +1034,41 @@ function updateStrikes(dt) {
     }
   }
   game.strikes = game.strikes.filter((st) => st.t < st.delay + 0.25);
+}
+
+// Laserspåret: medan trailT räknar ner släpper roboten en bit laserfält där den står (bara
+// på marken), och en motståndare som står på en bit tar skada — högst en gång per TRAIL_HIT_EVERY.
+const TRAIL_SECONDS = 4;
+const TRAIL_LIFE = 3.5;      // hur länge en bit laserfält ligger kvar
+const TRAIL_DROP = 0.06;     // sekunder mellan bitarna
+const TRAIL_HIT_EVERY = 0.45;
+
+function updateTrails(dt, fighters) {
+  for (const f of fighters) {
+    if (!f) continue;
+    f.trailHitT = Math.max(0, (f.trailHitT || 0) - dt);
+    if (!(f.trailT > 0) || f.dead) continue;
+    f.trailT -= dt;
+    f.trailDrop -= dt;
+    // En ny bit bara när roboten flyttat sig (står den still räcker biten som redan ligger där).
+    const last = f.trailLast;
+    if (f.trailDrop <= 0 && f.onGround && (!last || Math.hypot(f.x - last.x, f.z - last.z) > 10)) {
+      f.trailDrop = TRAIL_DROP;
+      f.trailLast = { x: f.x, z: f.z };
+      game.trails.push({ owner: f, x: f.x, z: f.z, life: TRAIL_LIFE, dmg: f.trailDmg, color: f.def.eye });
+    }
+  }
+  for (const s of game.trails) {
+    s.life -= dt;
+    const target = enemyOf(s.owner);
+    if (!target || target.dead || target.trailHitT > 0 || target.y < FLOOR - 10) continue;
+    if (Math.abs(target.x - s.x) < 14 + target.w * 0.3 && inLane(target, s.z, 14)) {
+      target.trailHitT = TRAIL_HIT_EVERY;
+      hurt(target, s.dmg, Math.sign(target.x - s.x) || 1, 60, s.owner);
+      sparks(target.x, FLOOR - 6, s.color, 8, target.z);
+    }
+  }
+  game.trails = game.trails.filter((s) => s.life > 0);
 }
 
 function updateMines(dt) {
@@ -1877,7 +1923,7 @@ function announceMimic(player, opp) {
 
 // Tömmer banan på alla attacker och effekter och startar nedräkningen till en ny match.
 function resetArena() {
-  for (const k of ['projectiles', 'waves', 'beams', 'strikes', 'mines', 'clouds', 'halos', 'quakes', 'holes',
+  for (const k of ['projectiles', 'waves', 'beams', 'strikes', 'mines', 'trails', 'clouds', 'halos', 'quakes', 'holes',
     'wolves', 'roots', 'tethers', 'megabeams', 'bolts', 'clocks', 'meteors', 'tides', 'particles']) game[k] = [];
   game.superBanner = null;
   game.winner = null;
@@ -4505,6 +4551,7 @@ function beginFriendMatch(isHost, payload) {
   game.beams = [];
   game.strikes = [];
   game.mines = [];
+  game.trails = [];
   game.clouds = [];
   game.halos = [];
   game.quakes = [];
@@ -4696,6 +4743,7 @@ function updateFriendMatch(dt) {
       updateBeams(dt);
       updateStrikes(dt);
       updateMines(dt);
+      updateTrails(dt, [f0, f1]);
       updateClouds(dt);
       updateHalos(dt);
       updateQuakes(dt);
@@ -5169,6 +5217,7 @@ function update(dt) {
     updateBeams(dt);
     updateStrikes(dt);
     updateMines(dt);
+    updateTrails(dt, [player, ai, ...game.allies.map((a) => a.f), ...game.foes.map((x) => x.f)]);
     updateClouds(dt);
     updateHalos(dt);
     updateQuakes(dt);
@@ -5730,7 +5779,7 @@ function draw() {
       megabeams: fighting ? game.megabeams : none, bolts: fighting ? game.bolts : none,
       projectiles: fighting ? game.projectiles : none, beams: fighting ? game.beams : none,
       strikes: fighting ? game.strikes : none, waves: fighting ? game.waves : none,
-      clouds: fighting ? game.clouds : none, mines: fighting ? game.mines : none,
+      clouds: fighting ? game.clouds : none, mines: fighting ? game.mines : none, trails: fighting ? game.trails : none,
       particles: fighting ? game.particles : none,
       halos: fighting ? game.halos : none, quakes: fighting ? game.quakes : none,
       holes: fighting ? game.holes : none,

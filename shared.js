@@ -1017,6 +1017,11 @@
   const TYPE_DEFAULTS = {};
   for (const r of ROBOTS) if (!TYPE_DEFAULTS[r.special.type]) TYPE_DEFAULTS[r.special.type] = r.special;
   for (const s of WILDCARD_SPECIALS) if (!TYPE_DEFAULTS[s.type]) TYPE_DEFAULTS[s.type] = s;
+  // Laserspår: ingen robot har den från början, men Mimik kan få den (se MIMIK_MECHANICS).
+  TYPE_DEFAULTS.lasertrail = {
+    type: 'lasertrail', name: 'Laserspår', dmg: 6,
+    desc: 'I fyra sekunder blir allt du går på ett laserfält som bränner motståndaren som kliver på det.',
+  };
 
   // Enkel, stabil stränghash (FNV-1a) — bara till för att sprida ut namn över attackerna,
   // ingen säkerhetsanvändning. Gemener så att "Rex" och "rex" ger samma attack.
@@ -2283,6 +2288,7 @@
   // Egna attacker: ett ord om hur attacken fungerar väljer en av spelets attacksorter
   // (TYPE_DEFAULTS), med vanlig skada för den sorten. [ord, attacksort, ord att bygga namnet av]
   const MIMIK_MECHANICS = [
+    [/laserfält|laserspår|lasermatta/, 'lasertrail', 'laserspår'], // före "laser" (stråle)
     [/laser|stråle/, 'beam', 'stråle'], [/kulspruta|maskingevär|snabba skott/, 'burst', 'kulspruta'],
     [/hagel|solfjäder|tre skott/, 'spread', 'hagel'], [/prickskytt|krypskytt|siktar/, 'snipe', 'prickskott'],
     [/stötvåg|markvåg/, 'shockwave', 'stötvåg'], [/granat|kastar/, 'lob', 'granat'], [/\bmina\b|minor|fälla/, 'mine', 'mina'],

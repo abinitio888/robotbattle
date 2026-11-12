@@ -1478,6 +1478,8 @@
       cloud: makePool(scene, () => new THREE.Mesh(sphere(1), basic('#8fe05a', 0.5))),
       mine: makePool(scene, () => new THREE.Mesh(cyl(14, 14, 6, 16), new THREE.MeshStandardMaterial({ color: '#888888' }))),
       mineLight: makePool(scene, () => new THREE.Mesh(sphere(4), basic('#ffd93d'))),
+      // Laserspåret: en glödande platta per bit laserfält, i robotens ögonfärg.
+      trail: makePool(scene, () => new THREE.Mesh(box(26, 3, 26), new THREE.MeshBasicMaterial({ color: '#ff3b3b', transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }))),
       particle: makePool(scene, () => new THREE.Mesh(box(5, 5, 5), basic('#ffffff', 1))),
       halo: makePool(scene, () => { const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 8, 64), basic('#fff3b0', 0.9, true)); m.rotation.x = -Math.PI / 2; return m; }),
       haloWall: makePool(scene, () => new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 64, 1, true), fadeUp('#ffe36b'))),
@@ -1733,6 +1735,12 @@
         m.position.set(wx(c.x), 30, c.z || 0);
         m.scale.set(c.r, 34, c.r * 0.8);
         m.material.opacity = clamp(c.life / 3, 0.25, 0.7) * 0.75;
+      }
+      for (const tr of s.trails || []) {
+        const m = pools.trail.get();
+        m.position.set(wx(tr.x), 2, tr.z || 0);
+        m.material.color.set(tr.color);
+        m.material.opacity = clamp(tr.life / 1.2, 0, 1) * (0.55 + 0.25 * Math.sin(tr.life * 20));
       }
       for (const mi of s.mines || []) {
         const m = pools.mine.get();
