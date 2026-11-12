@@ -2351,6 +2351,22 @@
       }
     }
 
+    // Hur den är byggd (ritas i render3d.js buildRobot): kropp, ben, armar, vingar, svans.
+    const parts = {};
+    const part = (key, value, re, label) => { if (!parts[key] && re.test(t)) { parts[key] = value; understood.push(label); } };
+    part('arms', 'four', /fyra armar|många armar|fler armar/, 'fyra armar');
+    part('arms', 'long', /långa armar/, 'långa armar');
+    part('arms', 'short', /korta armar/, 'korta armar');
+    part('legs', 'wheels', /hjul/, 'hjul');
+    part('legs', 'tracks', /larvband|bandvagn/, 'larvband');
+    part('legs', 'long', /långa ben|\blång\b|\bhög\b/, 'lång (långa ben)');
+    part('legs', 'short', /korta ben|\bkort\b|\blåg\b/, 'kort (korta ben)');
+    part('body', 'thin', /smal|tunn|mager/, 'smal kropp');
+    part('body', 'wide', /tjock|bred|fet|klumpig/, 'tjock kropp');
+    part('wings', true, /vinge|vingar/, 'vingar');
+    part('tail', true, /svans/, 'svans');
+    if (Object.keys(parts).length) build.parts = parts;
+
     const named = text.match(/heter\s+([A-Za-zÅÄÖåäö]{2,16})/);
     if (named) { build.name = named[1][0].toUpperCase() + named[1].slice(1); understood.push(`heter ${build.name}`); }
     return { build, understood };
@@ -2367,6 +2383,7 @@
       color: c.color || base.color, accent: c.accent || base.accent, eye: c.eye || base.eye,
       head: c.head || base.head, extra: c.extra || base.extra, name: c.name || base.name,
       shimmer: !c.color, // egen färg = ingen regnbåge
+      parts: c.parts || null,
     };
     if (c.special !== 'mimic' && robotById[c.special]) {
       out.special = robotById[c.special].special;

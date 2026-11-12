@@ -761,6 +761,12 @@
     const root = new THREE.Group();
     const inner = new THREE.Group(); // skala + tippning (skadad, död)
     root.add(inner);
+    // Hur roboten är byggd (bara Mimik har det, se describeMimik i shared.js): kropp smal/tjock,
+    // ben långa/korta/hjul/larvband, armar långa/korta/fyra, vingar och svans.
+    const parts = def.parts || {};
+    const legScale = parts.legs === 'long' ? 1.35 : parts.legs === 'short' ? 0.7 : 1;
+    const bodyW = parts.body === 'wide' ? 1.3 : parts.body === 'thin' ? 0.75 : 1;
+    const armMul = parts.arms === 'long' ? 1.4 : parts.arms === 'short' ? 0.7 : 1;
 
     const legs = [];
     for (const side of [-1, 1]) {
@@ -781,19 +787,44 @@
       ring.rotation.x = Math.PI / 2;
       thrust.add(flameCone, ring);
       thrust.visible = false;
+      if (parts.legs === 'wheels' || parts.legs === 'tracks') {
+        pivot.clear(); // hjul eller larvband i stället för ben och fötter
+        pivot.add(mesh(box(10, 20, 10), M.dark, 0, -10, 0));
+        if (parts.legs === 'wheels') {
+          const wheel = mesh(cyl(16, 16, 10, 20), M.dark, 0, -24, 0);
+          wheel.rotation.x = Math.PI / 2;
+          const hub = mesh(cyl(6, 6, 11, 12), M.line, 0, -24, 0);
+          hub.rotation.x = Math.PI / 2;
+          pivot.add(wheel, hub);
+        } else {
+          pivot.add(mesh(box(46, 22, 14), M.dark, 2, -29, 0));
+          for (const x of [-16, 2, 20]) {
+            const roller = mesh(cyl(7, 7, 15, 12), M.body, x, -29, 0);
+            roller.rotation.x = Math.PI / 2;
+            pivot.add(roller);
+          }
+        }
+      }
       pivot.add(thrust);
+      // Långa eller korta ben: benet sträcks från höften, och resten av roboten flyttas upp/ner.
+      pivot.scale.y = legScale;
+      pivot.position.y = 40 * legScale;
       inner.add(pivot);
       legs.push({ pivot, side, thrust });
     }
 
     const upper = new THREE.Group(); // allt ovanför benen, gungar lite när den står still
     inner.add(upper);
-    upper.add(mesh(box(44, 58, 34), M.body, 0, 67, 0));
-    upper.add(mesh(box(4, 22, 24), M.dark, 22, 77, 0));
-    const core = mesh(sphere(5), M.eye, 24, 77, 0);
+    const torso = mesh(box(44, 58, 34), M.body, 0, 67, 0);
+    torso.scale.set(bodyW, 1, bodyW);
+    upper.add(torso);
+    upper.add(mesh(box(4, 22, 24), M.dark, 22 * bodyW, 77, 0));
+    const core = mesh(sphere(5), M.eye, 24 * bodyW, 77, 0);
     upper.add(core);
     // Bälte med ett lysande spänne, energilinjer på bröstet och lysande ventiler på sidorna.
-    upper.add(mesh(box(47, 7, 37), M.dark, 0, 42, 0));
+    const belt = mesh(box(47, 7, 37), M.dark, 0, 42, 0);
+    belt.scale.set(bodyW, 1, bodyW);
+    upper.add(belt);
     upper.add(mesh(box(2, 4, 10), M.line, 24, 42, 0));
     for (const z of [-9, 9]) upper.add(mesh(box(1.4, 14, 2.6), M.line, 22.4, 56, z));
     upper.add(mesh(box(1.4, 2.6, 28), M.line, 22.4, 92, 0));
@@ -801,12 +832,14 @@
       for (const y of [62, 68, 74]) upper.add(mesh(box(18, 2, 1.2), M.line, -4, y, z));
     }
 
-    const arm = (z, mat) => {
+    const arm = (z, mat, y = 88) => {
       const pivot = new THREE.Group();
-      pivot.position.set(2, 88, z);
-      const limb = mesh(cyl(5, 5, 40, 10), mat, 0, -20, 0);
+      pivot.position.set(2, y, z * bodyW);
+      const len = 40 * armMul;
+      const limb = mesh(cyl(5, 5, 40, 10), mat, 0, -len / 2, 0);
+      limb.scale.y = armMul;
       limb.add(mesh(box(1.4, 26, 1.4), M.line, 5, 0, 0)); // följer med när armen sträcks
-      const fist = mesh(sphere(7), mat, 0, -40, 0);
+      const fist = mesh(sphere(7), mat, 0, -len, 0);
       fist.add(mesh(new THREE.TorusGeometry(7.2, 1.2, 6, 18), M.line));
       pivot.add(limb, fist);
       upper.add(pivot);
@@ -823,6 +856,31 @@
     }
     const back = arm(-24, M.dark);
     const front = arm(24, M.body);
+    // Fyra armar: ett extra par lite längre ner, som rör sig som de vanliga.
+    const extraArms = parts.arms === 'four' ? [{ arm: arm(-26, M.dark, 66), like: 'back' }, { arm: arm(26, M.body, 66), like: 'front' }] : [];
+    // Vingar på ryggen och en svans, som rör sig lite (se poseRobot).
+    let wings = null;
+    if (parts.wings) {
+      wings = [];
+      for (const side of [-1, 1]) {
+        const w = new THREE.Group();
+        w.position.set(-22 * bodyW, 88, side * 10);
+        const blade = mesh(box(4, 22, 60), M.dark, 0, 6, side * 30);
+        blade.rotation.x = side * -0.35;
+        const tip = mesh(box(3, 12, 30), M.body, 0, 18, side * 54);
+        w.add(blade, tip, mesh(box(1.4, 2.4, 50), M.line, 2.4, 10, side * 30));
+        upper.add(w);
+        wings.push({ w, side });
+      }
+    }
+    let tail = null;
+    if (parts.tail) {
+      tail = new THREE.Group();
+      tail.position.set(-20 * bodyW, 46, 0);
+      for (let k = 0; k < 5; k++) tail.add(mesh(sphere(6 - k * 0.8), k % 2 ? M.dark : M.body, -8 - k * 9, -k * 4, 0));
+      tail.add(mesh(cone(5, 12, 8), M.line, -56, -20, 0));
+      upper.add(tail);
+    }
 
     switch (def.extra) {
       case 'cannon': {
@@ -917,7 +975,9 @@
 
     root.traverse((o) => { if (o.isMesh) o.castShadow = o.material.blending !== THREE.AdditiveBlending; });
     glow.castShadow = false;
-    return { def, root, inner, upper, legs, back, front, core, cape, flame, glow, shield, divine, gear, neck, M };
+    const upperBase = 40 * (legScale - 1); // långa/korta ben flyttar upp/ner allt ovanför
+    upper.position.y = upperBase;
+    return { def, root, inner, upper, upperBase, armMul, extraArms, wings, tail, legs, back, front, core, cape, flame, glow, shield, divine, gear, neck, M };
   }
 
   const SIL_BODY = new THREE.Color('#232c4a');
@@ -984,16 +1044,16 @@
     const swing = air ? 0.5 : p.moving ? Math.sin((p.walkT || 0) * 12) * 0.6 : 0;
     const bob = p.moving || air ? 0 : Math.sin(t * 3) * 1.5;
     for (const leg of rig.legs) leg.pivot.rotation.z = -swing * leg.side;
-    rig.upper.position.y = bob;
+    rig.upper.position.y = rig.upperBase + bob;
 
     let front = -0.15 - swing * 0.8;
     let back = 0.15 + swing * 0.8;
-    let frontLen = 40;
+    let frontLen = 40 * rig.armMul;
     let glow = 0;
     if (p.actKind === 'punch') {
       const ext = Math.sin(Math.PI * clamp(p.actT / (p.actDur * 0.9), 0, 1));
       front = lerp(-0.15, -1.55, ext);
-      frontLen = 40 + 24 * ext;
+      frontLen = 40 * rig.armMul + 24 * ext;
     } else if (p.actKind === 'special') {
       front = -1.5;
       back = -1.3;
@@ -1010,6 +1070,10 @@
     rig.front.limb.scale.y = frontLen / 40;
     rig.front.limb.position.y = -frontLen / 2;
     rig.front.fist.position.y = -frontLen;
+    // Fyra armar: det extra paret gör som de vanliga. Vingarna flaxar och svansen viftar.
+    for (const x of rig.extraArms) x.arm.pivot.rotation.z = x.like === 'front' ? -front : -back;
+    if (rig.wings) for (const { w, side } of rig.wings) w.rotation.x = side * (air ? 0.5 + Math.sin(t * 18) * 0.4 : 0.15 + Math.sin(t * 2.5) * 0.08);
+    if (rig.tail) rig.tail.rotation.y = Math.sin(t * (p.moving ? 8 : 2.2)) * 0.35;
 
     rig.core.scale.setScalar(p.ready ? 1.4 : 1);
     if (rig.cape) rig.cape.rotation.z = 0.35 + Math.sin(t * 6) * 0.06;
@@ -1034,7 +1098,7 @@
   }
 
   // Roboten byggs om bara när något som syns i modellen ändras (t.ex. jokerns huvud).
-  const rigKey = (def) => [def.id, def.head, def.extra, def.color, def.accent, def.eye, def.scale, def.skin && def.skin.id, def.gear && def.gear.look, def.gear && def.gear.color].join('|');
+  const rigKey = (def) => [def.id, def.head, def.extra, def.color, def.accent, def.eye, def.scale, def.skin && def.skin.id, def.gear && def.gear.look, def.gear && def.gear.color, JSON.stringify(def.parts || null)].join('|');
 
   // ---------- Arenan ----------
   function gradientTexture(top, bottom) {
