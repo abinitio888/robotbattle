@@ -43,6 +43,7 @@
     gift: { label: 'Gift', color: '#a040d0' },
     mörk: { label: 'Mörk', color: '#5a5366' },
     fe: { label: 'Fe', color: '#ffb3d9' },
+    drake: { label: 'Drake', color: '#7b5cff' },
   };
   const TYPE_ADVANTAGES = [
     ['eld', 'gräs'], ['eld', 'is'], ['eld', 'kryp'], ['eld', 'stål'],
@@ -61,6 +62,8 @@
     ['gift', 'gräs'], ['gift', 'fe'],
     ['mörk', 'spöke'], ['mörk', 'psykisk'],
     ['fe', 'strid'], ['fe', 'mörk'],
+    // Drakar: starka mot andra drakar, svaga mot is och fe.
+    ['drake', 'drake'], ['is', 'drake'], ['fe', 'drake'],
   ];
   const TYPE_STRONG_MUL = 1.5;
   const TYPE_WEAK_MUL = 1 / 1.5; // ungefär så att en vinst + en förlust tar ut varandra
@@ -375,6 +378,31 @@
       scale: 1.15, hp: 118, speed: 235, punch: 10,
       special: { type: 'annihilate', name: 'Vikingaslag', dmg: 30, desc: 'Ett förödande yxslag med enorm knockback.' },
     },
+    // ---------- Drakarna ----------
+    {
+      id: 'odla', name: 'Ödla', rarity: 'common', types: ['drake'],
+      color: '#5fbf5a', accent: '#1f4a1c', eye: '#ffd93d', head: 'horn', extra: 'spikes',
+      scale: 0.95, hp: 98, speed: 230, punch: 8, parts: { tail: true },
+      special: { type: 'projectile', name: 'Drakgnista', dmg: 20, desc: 'Spottar ett drakklot rakt fram.' },
+    },
+    {
+      id: 'glodvinge', name: 'Glödvinge', rarity: 'rare', types: ['drake', 'eld'],
+      color: '#ff7a2a', accent: '#5a1a08', eye: '#fff36b', head: 'horn', extra: 'fins',
+      scale: 1.05, hp: 100, speed: 235, punch: 8, parts: { wings: true, tail: true },
+      special: { type: 'spread', name: 'Eldandedräkt', dmg: 9, desc: 'Andas tre eldklot i solfjäder.' },
+    },
+    {
+      id: 'stormdrake', name: 'Stormdrake', rarity: 'epic', types: ['drake', 'flygande'],
+      color: '#4a8cff', accent: '#e8f4ff', eye: '#ffffff', head: 'horn', extra: 'jet',
+      scale: 1.1, hp: 104, speed: 265, punch: 9, parts: { wings: true, tail: true, body: 'thin' },
+      special: { type: 'dash', name: 'Dykattack', dmg: 28, desc: 'Dyker fram genom luften och slår till.' },
+    },
+    {
+      id: 'nattdrake', name: 'Nattdraken', rarity: 'legendary', types: ['drake', 'mörk'],
+      color: '#2a1f4a', accent: '#b07bff', eye: '#ff3b6b', head: 'crown', extra: 'spikes',
+      scale: 1.25, hp: 116, speed: 240, punch: 10, parts: { wings: true, tail: true, body: 'wide' },
+      special: { type: 'meteorslam', name: 'Drakstörtning', dmg: 31, desc: 'Störtar ner från himlen där motståndaren står.' },
+    },
     {
       id: 'seraph', name: 'Seraph', rarity: 'divine', types: ['fe', 'flygande'],
       color: '#fffbe8', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'jet',
@@ -470,7 +498,7 @@
       special: { type: 'freeze', name: 'Frostbett', dmg: 12, desc: 'Fryser motståndaren i 1,1 sekunder.' },
     },
     {
-      id: 'sumpdrake', name: 'Sumpdrake', rarity: 'monster', monster: true, types: ['gift', 'vatten'], drop: 'drakfjallet',
+      id: 'sumpdrake', name: 'Sumpdrake', rarity: 'monster', monster: true, types: ['drake', 'gift'], drop: 'drakfjallet',
       color: '#4a7a5a', accent: '#1a3a28', eye: '#c8ff6b', head: 'horn', extra: 'fins',
       scale: 1.15, hp: 130, speed: 190, punch: 9,
       special: { type: 'poison', name: 'Giftmoln', dmg: 12, desc: 'Släpper ett moln som skadar över tid.' },
@@ -524,7 +552,7 @@
     // (se ROYAL_TIER i game.js). De ger var sitt eget kungligt föremål och alltid en
     // supervapendel.
     {
-      id: 'drakkungen', name: 'Drakkungen', rarity: 'monster', monster: true, royal: 'king', types: ['eld', 'flygande'], drop: 'drakkronan',
+      id: 'drakkungen', name: 'Drakkungen', rarity: 'monster', monster: true, royal: 'king', types: ['drake', 'eld'], drop: 'drakkronan',
       color: '#b3261e', accent: '#ffd93d', eye: '#ffb347', head: 'crown', extra: 'cape',
       scale: 1.8, hp: 1150, speed: 230, punch: 14,
       special: { type: 'annihilate', name: 'Kungseld', dmg: 34, desc: 'Ett förödande eldslag med enorm knockback.' },
@@ -2302,7 +2330,7 @@
     [/vatten|våg|hav|regn/, 'vatten'], [/gräs|växt|blad|skog|träd/, 'gräs'], [/gift/, 'gift'], [/sten|klipp|berg/, 'sten'],
     [/jord|sand|mark/, 'mark'], [/skugg|mörk|natt/, 'mörk'], [/spöke/, 'spöke'], [/flyg|vind|storm|luft/, 'flygande'],
     [/stål|metall|järn/, 'stål'], [/magi|psyk|tanke|hjärn/, 'psykisk'], [/glitter|regnbåg|älva|\bfe\b/, 'fe'],
-    [/karate|kampsport|slåss/, 'strid'], [/insekt|spindel|kryp/, 'kryp'],
+    [/karate|kampsport|slåss/, 'strid'], [/insekt|spindel|kryp/, 'kryp'], [/drak/, 'drake'],
   ];
 
   // Mimiks egna attacker: ett ord om hur attacken fungerar väljer en av spelets attacksorter
@@ -2350,7 +2378,7 @@
   const MIMIK_ATTACKS = MIMIK_MECHANICS.map(({ re, mech, word, desc }) => ({ re, mech, word, desc }));
   const ELEMENT_PREFIX = {
     eld: 'Eld', is: 'Is', elektrisk: 'Blixt', vatten: 'Vatten', gräs: 'Löv', gift: 'Gift', sten: 'Sten', mark: 'Jord',
-    mörk: 'Skugg', spöke: 'Spök', flygande: 'Vind', stål: 'Stål', psykisk: 'Tanke', fe: 'Glitter', strid: 'Kamp', kryp: 'Insekts', normal: 'Energi',
+    mörk: 'Skugg', spöke: 'Spök', flygande: 'Vind', stål: 'Stål', psykisk: 'Tanke', fe: 'Glitter', strid: 'Kamp', kryp: 'Insekts', drake: 'Drak', normal: 'Energi',
   };
 
   function cleanMimikText(raw) {
