@@ -914,4 +914,9 @@ button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-sha
 .mimik-builder textarea { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 8px; border: 1px solid #33406a; background: #0e1424; color: #e8ecff; font: inherit; resize: vertical; }
 .mimik-tips { font-size: 11px; line-height: 1.4; margin: 0; }
 .mimik-understood { display: flex; flex-wrap: wrap; gap: 6px; }
+.mimik-attacks { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; max-height: 220px; overflow-y: auto; margin-bottom: 10px; }
+.mimik-attack { text-align: left; padding: 6px 8px; border-radius: 8px; background: #161a2e; border: 1px solid #3a3f66; color: #e6e9ff; font: inherit; font-size: 12px; cursor: pointer; }
+.mimik-attack b { display: block; font-size: 13px; color: #c77dff; }
+.mimik-attack:hover { border-color: #c77dff; }
+.mimik-attack.chosen { background: #2a1a44; border-color: #ffd93d; box-shadow: 0 0 0 1px #ffd93d; }
 .mimik-chip { padding: 3px 8px; border-radius: 10px; background: #2a1a44; border: 1px solid #c77dff; color: #f0e2ff; font-size: 12px; }

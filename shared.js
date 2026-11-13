@@ -2272,7 +2272,6 @@
   const MIMIK_POINTS = 12;
   const MIMIK_MAX_STAT = 8;
   const MIMIK_TEXT_MAX = 200;
-  const mimikSpecialIds = () => ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard' && r.id !== 'mimik').map((r) => r.id);
 
   const MIMIK_COLORS = [
     [/röd|rött|röda/, 'röd', '#ff3b3b'], [/blå/, 'blå', '#3b7bff'], [/grön/, 'grön', '#3ddc84'],
@@ -2306,22 +2305,49 @@
     [/karate|kampsport|slåss/, 'strid'], [/insekt|spindel|kryp/, 'kryp'],
   ];
 
-  // Egna attacker: ett ord om hur attacken fungerar väljer en av spelets attacksorter
-  // (TYPE_DEFAULTS), med vanlig skada för den sorten. [ord, attacksort, ord att bygga namnet av]
+  // Mimiks egna attacker: ett ord om hur attacken fungerar väljer en av spelets attacksorter
+  // (TYPE_DEFAULTS), med vanlig skada för den sorten. Mimik får aldrig en annan robots attack —
+  // antingen härmar den, eller så får den en egen. word = ordet listan i byggaren skriver in,
+  // noun = det attackens namn byggs av ("Eld" + "klot"), desc = vad den gör.
+  // Ordningen spelar roll när två ord börjar på samma ställe (laserspår före laser).
   const MIMIK_MECHANICS = [
-    [/laserfält|laserspår|lasermatta/, 'lasertrail', 'laserspår'], // före "laser" (stråle)
-    [/laser|stråle/, 'beam', 'stråle'], [/kulspruta|maskingevär|snabba skott/, 'burst', 'kulspruta'],
-    [/hagel|solfjäder|tre skott/, 'spread', 'hagel'], [/prickskytt|krypskytt|siktar/, 'snipe', 'prickskott'],
-    [/stötvåg|markvåg/, 'shockwave', 'stötvåg'], [/granat|kastar/, 'lob', 'granat'], [/\bmina\b|minor|fälla/, 'mine', 'mina'],
-    [/giftmoln|gasmoln|\bmoln\b/, 'poison', 'moln'], [/bumerang|skiva/, 'boomerang', 'bumerang'], [/krok|drar in/, 'grapple', 'krok'],
-    [/meteorregn|meteorer/, 'meteor', 'meteorregn'], [/meteor|jättesmäll/, 'meteorslam', 'meteor'],
-    [/svart hål|virvel/, 'blackhole', 'virvel'], [/vargar|hundar/, 'wolves', 'vargar'], [/rötter|lianer/, 'roots', 'rötter'],
-    [/jordbävning/, 'quake', 'bävning'], [/tidvatten|vattenvägg/, 'tide', 'flod'], [/ljuspelare|pelare från himlen/, 'orbital', 'pelare'],
-    [/ljusring/, 'halo', 'ring'], [/rusar|tacklar|stormar fram/, 'dash', 'rusning'], [/teleport|försvinner/, 'teleport', 'steg'],
-    [/fryser|isar fast/, 'freeze', 'frysning'], [/suger liv|vampyr|blodsug/, 'drain', 'sug'],
-    [/slagstorm|många slag|slagserie/, 'flurry', 'slagstorm'], [/krossar|hammare|tungt slag/, 'smash', 'krossare'],
-    [/kraftfält|skyddsbubbla/, 'barrier', 'skydd'], [/skott|skjuter|kula|klot|boll/, 'projectile', 'klot'],
+    { re: /laserfält|laserspår|lasermatta/, mech: 'lasertrail', word: 'laserspår', noun: 'laserspår', desc: 'Allt du går på i fyra sekunder blir ett laserfält som bränner.' },
+    { re: /laser|stråle/, mech: 'beam', word: 'stråle', noun: 'stråle', desc: 'En blixtsnabb stråle långt fram.' },
+    { re: /kulspruta|maskingevär|snabba skott/, mech: 'burst', word: 'kulspruta', noun: 'kulspruta', desc: 'Tre snabba skott i rad.' },
+    { re: /hagel|solfjäder|tre skott/, mech: 'spread', word: 'hagel', noun: 'hagel', desc: 'Tre skott i solfjäder.' },
+    { re: /prickskott|prickskytt|krypskytt|siktar/, mech: 'snipe', word: 'prickskott', noun: 'prickskott', desc: 'Siktar med laser och träffar hårt.' },
+    { re: /stötvåg|markvåg/, mech: 'shockwave', word: 'stötvåg', noun: 'stötvåg', desc: 'Stötvågor längs marken.' },
+    { re: /granat|kastar/, mech: 'lob', word: 'granat', noun: 'granat', desc: 'En granat i en båge som exploderar.' },
+    { re: /\bmina\b|minor|fälla/, mech: 'mine', word: 'mina', noun: 'mina', desc: 'En mina som smäller när motståndaren kommer nära.' },
+    { re: /giftmoln|gasmoln|\bmoln\b/, mech: 'poison', word: 'giftmoln', noun: 'moln', desc: 'Ett moln som skadar hela tiden.' },
+    { re: /bumerang|skiva/, mech: 'boomerang', word: 'bumerang', noun: 'bumerang', desc: 'En skiva som svänger tillbaka.' },
+    { re: /krok|drar in/, mech: 'grapple', word: 'krok', noun: 'krok', desc: 'Drar in motståndaren och slår till.' },
+    { re: /meteorregn|meteorer/, mech: 'meteor', word: 'meteorregn', noun: 'meteorregn', desc: 'Sju meteorer faller där motståndaren står.' },
+    { re: /meteor|jättesmäll/, mech: 'meteorslam', word: 'meteor', noun: 'meteor', desc: 'En jättesmäll ovanifrån där motståndaren står.' },
+    { re: /svart hål|virvel/, mech: 'blackhole', word: 'svart hål', noun: 'virvel', desc: 'Suger in motståndaren och imploderar.' },
+    { re: /vargar|hundar/, mech: 'wolves', word: 'vargar', noun: 'vargar', desc: 'Tre vargar jagar motståndaren.' },
+    { re: /rötter|lianer/, mech: 'roots', word: 'rötter', noun: 'rötter', desc: 'Rötter håller fast motståndaren.' },
+    { re: /jordbävning/, mech: 'quake', word: 'jordbävning', noun: 'bävning', desc: 'Tre skalv över hela banan — den som står på marken tar skada.' },
+    { re: /tidvatten|vattenvägg/, mech: 'tide', word: 'tidvatten', noun: 'flod', desc: 'Vattenväggar sköljer över banan.' },
+    { re: /ljuspelare|pelare från himlen/, mech: 'orbital', word: 'ljuspelare', noun: 'pelare', desc: 'Tre ljuspelare slår ner från himlen.' },
+    { re: /ljusring/, mech: 'halo', word: 'ljusring', noun: 'ring', desc: 'En ring längs golvet som skadar och läker dig.' },
+    { re: /rusar|tacklar|stormar fram/, mech: 'dash', word: 'rusar', noun: 'rusning', desc: 'Rusar fram och slår till.' },
+    { re: /teleport|försvinner/, mech: 'teleport', word: 'teleport', noun: 'steg', desc: 'Teleporterar bakom motståndaren.' },
+    { re: /fryser|isar fast/, mech: 'freeze', word: 'fryser', noun: 'frysning', desc: 'Fryser motståndaren en stund.' },
+    { re: /suger liv|vampyr|blodsug/, mech: 'drain', word: 'vampyr', noun: 'sug', desc: 'Ett slag som lagar dig.' },
+    { re: /slagstorm|många slag|slagserie/, mech: 'flurry', word: 'slagserie', noun: 'slagserie', desc: 'Fyra snabba slag i följd.' },
+    { re: /krossar|hammare|tungt slag/, mech: 'smash', word: 'hammare', noun: 'krossare', desc: 'Ett tungt slag med lång räckvidd.' },
+    { re: /utplån|förinta|superslag/, mech: 'annihilate', word: 'superslag', noun: 'superslag', desc: 'Ett förödande slag som kastar iväg motståndaren.' },
+    { re: /kraftfält|skyddsbubbla/, mech: 'barrier', word: 'skyddsbubbla', noun: 'skydd', desc: 'Osårbar en stund och lagar lite liv.' },
+    { re: /spegel|studsar tillbaka/, mech: 'reflect', word: 'spegel', noun: 'spegel', desc: 'Skickar tillbaka skott i två sekunder.' },
+    { re: /kontring|kontrar|motattack/, mech: 'counter', word: 'kontring', noun: 'kontring', desc: 'Osårbar en kort stund och slår tillbaka.' },
+    { re: /överladd|turbo/, mech: 'overdrive', word: 'turbo', noun: 'turbo', desc: 'Snabbare och starkare i fem sekunder.' },
+    { re: /tidsstopp|stoppar tiden|urverk/, mech: 'timestop', word: 'tidsstopp', noun: 'tidsstopp', desc: 'Tiden går långsamt för motståndaren i en cirkel.' },
+    { re: /kedja/, mech: 'tether', word: 'kedja', noun: 'kedja', desc: 'Binder fast motståndaren med en kedja.' },
+    { re: /skott|skjuter|kula|klot|boll/, mech: 'projectile', word: 'skjuter', noun: 'klot', desc: 'Ett stort skott rakt fram.' }, // sist: "skott" finns i andra ord
   ];
+  // Listan som visas i Mimik-byggaren.
+  const MIMIK_ATTACKS = MIMIK_MECHANICS.map(({ re, mech, word, desc }) => ({ re, mech, word, desc }));
   const ELEMENT_PREFIX = {
     eld: 'Eld', is: 'Is', elektrisk: 'Blixt', vatten: 'Vatten', gräs: 'Löv', gift: 'Gift', sten: 'Sten', mark: 'Jord',
     mörk: 'Skugg', spöke: 'Spök', flygande: 'Vind', stål: 'Stål', psykisk: 'Tanke', fe: 'Glitter', strid: 'Kamp', kryp: 'Insekts', normal: 'Energi',
@@ -2376,19 +2402,19 @@
       understood.push(['tålig', 'snabb', 'slår hårt'].filter((w, i) => build[['hp', 'speed', 'punch'][i]] >= 5).join(' och ') || 'jämn styrka');
     }
 
-    // Specialattack: "härma", namnet på en specialattack, eller ett element (eld, is, blixt...).
-    const ids = mimikSpecialIds();
-    const byName = ids.find((id) => t.includes(robotById[id].special.name.toLowerCase()));
+    // Specialattack: "härma", eller en egen attack av ett attackord och/eller ett element.
     // Elementet som nämns först i texten (inte först i listan).
     const element = MIMIK_ATTACK_TYPES
       .map(([re, type]) => [type, t.search(re)])
       .filter(([, at]) => at >= 0)
       .sort((a, b) => a[1] - b[1])
       .map(([type]) => [null, type])[0];
-    const mech = MIMIK_MECHANICS
-      .map(([re, type, noun]) => ({ type, noun, at: t.search(re) }))
-      .filter((m) => m.at >= 0)
+    const found = MIMIK_MECHANICS
+      .map((m) => ({ m, at: t.search(m.re) }))
+      .filter((x) => x.at >= 0)
       .sort((a, b) => a.at - b.at)[0];
+    // Bara ett element ("eld") blir ett eget skott av det elementet.
+    const mech = found ? found.m : element ? MIMIK_MECHANICS[MIMIK_MECHANICS.length - 1] : null;
     const attackName = text.match(/attack(?:en)?\s+(?:som\s+)?heter\s+([A-Za-zÅÄÖåäö]{2,16}(?:\s[A-Za-zÅÄÖåäö]{2,16})?)/i);
     if (/härma/.test(t)) {
       understood.push('härmar motståndarens attack');
@@ -2398,19 +2424,10 @@
       const name = attackName
         ? attackName[1][0].toUpperCase() + attackName[1].slice(1)
         : ELEMENT_PREFIX[type] + mech.noun;
-      const base = TYPE_DEFAULTS[mech.type];
+      const base = TYPE_DEFAULTS[mech.mech];
       build.special = 'custom';
-      build.customSpecial = customWildcardSpecial(mech.type, name, base.desc, base.dmg, base.heal, [type]);
-      understood.push(`ny attack: ${name} (${TYPES[type].label})`);
-    } else if (byName) {
-      build.special = byName;
-      understood.push(`attack: ${robotById[byName].special.name}`);
-    } else if (element) {
-      const fits = ids.filter((id) => robotById[id].types.includes(element[1]));
-      if (fits.length) {
-        build.special = fits[hashName(text) % fits.length];
-        understood.push(`attack: ${robotById[build.special].special.name} (${TYPES[element[1]].label})`);
-      }
+      build.customSpecial = customWildcardSpecial(mech.mech, name, mech.desc, base.dmg, base.heal, [type]);
+      understood.push(`egen attack: ${name} (${TYPES[type].label})`);
     }
 
     // Hur den är byggd (ritas i render3d.js buildRobot): kropp, ben, armar, vingar, svans.
@@ -2450,10 +2467,6 @@
     if (c.special === 'custom' && c.customSpecial) {
       out.special = c.customSpecial; // en egen, påhittad attack
       out.types = c.customSpecial.types || base.types;
-      out.mimic = false;
-    } else if (c.special !== 'mimic' && robotById[c.special]) {
-      out.special = robotById[c.special].special;
-      out.types = robotById[c.special].types;
       out.mimic = false;
     }
     return out;
@@ -2531,7 +2544,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
-    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom,
+    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,

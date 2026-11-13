@@ -2935,7 +2935,33 @@ function renderMimik() {
     for (const u of understood) box.append(el('span', 'mimik-chip', `✓ ${u}`));
   }
   const def = Shared.mimikDef(robotById.mimik, build);
+  renderMimikAttacks(build);
   byId('mimik-preview').textContent = `Så blir ${def.name}: storlek ${build.scale} · liv ${def.hp} · fart ${def.speed} · slag ${def.punch} · ${build.special === 'mimic' ? 'härmar motståndarens specialattack' : `${def.special.name}: ${def.special.desc}`}`;
+}
+
+// Alla attacker Mimik kan få, som knappar. Ett klick byter ut attackordet i texten.
+function renderMimikAttacks(build) {
+  const box = byId('mimik-attacks');
+  box.replaceChildren();
+  const chosen = build.special === 'mimic' ? 'mimic' : build.customSpecial && build.customSpecial.type;
+  const add = (mech, word, title, desc) => {
+    const b = el('button', `mimik-attack${chosen === mech ? ' chosen' : ''}`);
+    b.type = 'button';
+    b.append(el('b', '', title), el('span', '', desc));
+    b.addEventListener('click', () => pickMimikAttack(word));
+    box.append(b);
+  };
+  add('mimic', 'härma', '🪞 härma', 'Härmar motståndarens attack och typ.');
+  for (const a of Shared.MIMIK_ATTACKS) add(a.mech, a.word, a.word, a.desc);
+}
+
+function pickMimikAttack(word) {
+  const ta = byId('mimik-text');
+  let text = ta.value.replace(/härma\S*/gi, '');
+  for (const a of Shared.MIMIK_ATTACKS) text = text.replace(new RegExp(a.re.source, 'gi'), '');
+  text = text.replace(/\s+([,.])/g, '$1').replace(/([,.])\s*[,.]+/g, '$1').replace(/\s+/g, ' ').trim().replace(/[,.]$/, '');
+  ta.value = `${text}${text ? ', ' : ''}${word}`.slice(0, Shared.MIMIK_TEXT_MAX);
+  renderMimik();
 }
 
 async function saveMimik() {
