@@ -100,6 +100,7 @@ function hurt(target, dmg, dirX, knock, source) {
   if (source.dragonT > 0 && source.act && source.act.kind === 'punch') dmg *= 2; // Drakhjärtats Drakvrede
   if (target.dragonT > 0) knock = 0; // ...och då kan ingenting knuffa en
   if (game.training && target === game.ai) trainingHit(dmg);
+  if (game.training && target === game.player) game.training.taken += dmg;
   target.hp = Math.max(0, target.hp - dmg);
   // Taggrustningen: den som slår tar en del av skadan själv.
   if (target.def.thorns && punching && source !== target && !source.dead) {
@@ -1953,7 +1954,14 @@ const DUMMY = {
   special: { type: 'none', name: '—', desc: '' },
 };
 
-function startTraining(moving) {
+// Kampdockan slår och skjuter tillbaka (lätt), så man kan öva på att blockera och undvika.
+const FIGHT_DUMMY = {
+  ...DUMMY, name: 'Kampdocka', punch: 4, speed: 190, color: '#d98a5a', eye: '#ffd93d',
+  special: { ...ROBOTS.find((r) => r.special.type === 'projectile').special, name: 'Träningsskott', desc: 'Ett skott rakt fram.' },
+};
+
+// moving: dockan går omkring. attacking: dockan anfaller dig också (Kampdockan).
+function startTraining(moving, attacking = false) {
   if (friendRoom) leaveFriendRoom();
   game.matchToken = null;
   game.stake = false;
@@ -1969,25 +1977,29 @@ function startTraining(moving) {
   showArenaLabel(game.arena);
   const pDef = applyEquipment(myDef(robotById[game.selectedId]));
   game.player = new Fighter(pDef, W * 0.3, 1);
-  game.ai = new Fighter(DUMMY, W * 0.65, -1);
+  const dummy = attacking ? FIGHT_DUMMY : DUMMY;
+  game.ai = new Fighter(dummy, W * 0.65, -1);
   game.brain = makeBrain(SKILL_EASY);
-  game.training = { moving, total: 0, last: 0, hits: [], time: 0, moveT: 0, dir: 0, depth: 0 };
+  game.training = { moving, attacking, total: 0, last: 0, hits: [], taken: 0, blocked: 0, time: 0, moveT: 0, dir: 0, depth: 0 };
   resetArena();
   game.introT = 0.8;
   hud.namePlayer.textContent = `DU · ${displayName(pDef, true)}`;
-  hud.nameAi.textContent = moving ? 'Träningsdocka · RÖRLIG' : 'Träningsdocka · STILLA';
+  hud.nameAi.textContent = attacking ? 'Kampdocka · ANFALLER' : moving ? 'Träningsdocka · RÖRLIG' : 'Träningsdocka · STILLA';
   setHudType(hud.typePlayer, game.player.def); // Mimik kan ha bytt typ (mimicSpecials)
-  setHudType(hud.typeAi, DUMMY);
+  setHudType(hud.typeAi, dummy);
   byId('explore-bar').hidden = false;
   byId('btn-explore-back').hidden = false;
   byId('btn-travel').hidden = true;
-  byId('explore-hint').textContent = 'Träning — prova dina attacker. Dockan slår aldrig tillbaka.';
+  byId('explore-hint').textContent = attacking
+    ? 'Träning — Kampdockan slår tillbaka! Öva på att blockera (håll F) och kliva undan. Du kan inte förlora.'
+    : 'Träning — prova dina attacker. Dockan slår aldrig tillbaka.';
   showScreen(null);
 }
 
 // Dockans "AI": står still, eller vandrar fram och tillbaka (även i djupled) — men anfaller aldrig.
 function trainingInput(dt) {
   const tr = game.training;
+  if (tr.attacking) return aiInput(game.ai, game.player, game.brain, dt);
   if (!tr.moving) return IDLE;
   tr.moveT -= dt;
   if (tr.moveT <= 0) {
@@ -2004,6 +2016,7 @@ function updateTraining(dt) {
   const { player, ai } = game;
   if (ai.hp < ai.maxHp * 0.5) ai.hp = ai.maxHp; // dockan lagar sig själv
   ai.dead = false;
+  if (player.hp < player.maxHp * 0.35) { player.hp = player.maxHp; player.dead = false; } // du lagas också — ingen förlust i träningen
   if (player.def.superPower && !player.superReady) {
     // I träningen laddas superkraften om efter fem sekunder, så man kan öva på den.
     tr.superT = (tr.superT || 5) - dt;
@@ -2025,13 +2038,17 @@ function drawTrainingStats() {
   const dps = tr.hits.reduce((a, h) => a + h.dmg, 0) / 5;
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.fillRect(W / 2 - 170, 60, 340, 62);
+  ctx.fillRect(W / 2 - 170, 60, 340, tr.attacking ? 86 : 62);
   ctx.font = 'bold 15px ui-monospace, Menlo, monospace';
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ffd93d';
   ctx.fillText(`Senaste träff: ${Math.round(tr.last)}   Totalt: ${Math.round(tr.total)}`, W / 2, 84);
   ctx.fillStyle = '#9fe8ff';
   ctx.fillText(`Skada per sekund: ${dps.toFixed(1)}`, W / 2, 108);
+  if (tr.attacking) {
+    ctx.fillStyle = '#ff9a8a';
+    ctx.fillText(`Skada du tagit: ${Math.round(tr.taken)}`, W / 2, 132);
+  }
   ctx.restore();
 }
 
@@ -3134,6 +3151,7 @@ byId('btn-clan').addEventListener('click', () => { game.fromHub = false; showCla
 byId('btn-clan-back').addEventListener('click', () => (game.fromHub ? showHub() : showSelect()));
 byId('btn-train-still').addEventListener('click', () => startTraining(false));
 byId('btn-train-moving').addEventListener('click', () => startTraining(true));
+byId('btn-train-attack').addEventListener('click', () => startTraining(true, true));
 
 // ---------- Robotstaden: en värld att gå omkring i ----------
 // I stället för en meny går man runt med sin robot bland portaler. Gå fram till en och tryck
@@ -3779,7 +3797,9 @@ byId('btn-tourney-play').addEventListener('click', () => startMatch('tourney'));
 byId('btn-team-3').addEventListener('click', () => startMatch('team', '3'));
 byId('btn-arena-normal').addEventListener('click', () => { game.mode = 'normal'; startMatch(); });
 byId('btn-arena-stake').addEventListener('click', () => { if (canStake()) { game.mode = 'stake'; startMatch(); } });
+byId('btn-arena-train-still').addEventListener('click', () => startTraining(false));
 byId('btn-arena-training').addEventListener('click', () => startTraining(true));
+byId('btn-arena-train-attack').addEventListener('click', () => startTraining(true, true));
 byId('btn-team-5').addEventListener('click', () => startMatch('team', '5'));
 byId('btn-tower-climb').addEventListener('click', () => startMatch('tower'));
 byId('btn-weekly-climb').addEventListener('click', () => startMatch('weekly'));
