@@ -634,6 +634,7 @@
   // ---------- Mynt ----------
   // Tjänas i matcher (se finishMatch) och på den dagliga lådan, och används bara i Butiken.
   const COINS = { win: 10, loss: 2, stakeWin: 20, bossWin: 30, monsterWin: 15, royalWin: 100, daily: 20, team3Win: 25, team5Win: 40 };
+  const WINS_PER_BOX = 2; // en låda varannan vinst (stadsrobotar och monster ger annat i stället)
   const TEAM_SIZES = [3, 5];
   const MAX_COINS = 10000000;
   const addCoins = (acct, n) => { acct.coins = Math.min(MAX_COINS, (acct.coins || 0) + n); return n; };
@@ -935,7 +936,7 @@
   // Lådor går alltid att köpa, så att mynten aldrig blir värdelösa när man köpt allt annat.
   // En guldlåda räknas som en vanlig låda i acct.boxes, men acct.goldBoxes säger hur många
   // av dem som är guld — de öppnas först och ger minst en episk robot (se openBox).
-  const BOX_PRICES = { box: 150, gold: 600 };
+  const BOX_PRICES = { box: 250, gold: 900 };
 
   function buyBox(acct, kind) {
     const price = BOX_PRICES[kind];
@@ -1357,6 +1358,7 @@
       acct.tower = Math.max(1, Math.min(TOWER_TOP + 1, Math.floor(Number(raw.tower)) || 1));
       if (Number.isInteger(raw.eventBeaten) && raw.eventBeaten > 0) acct.eventBeaten = raw.eventBeaten;
       if (Number.isInteger(raw.tourneyStarted) && raw.tourneyStarted > 0) acct.tourneyStarted = raw.tourneyStarted;
+      acct.winsToBox = Math.max(0, Math.min(1, Math.floor(Number(raw.winsToBox)) || 0));
       const se = raw.season;
       if (se && typeof se.id === 'string' && /^\d{4}-[0-3]$/.test(se.id)) {
         const level = Math.max(0, Math.min(SEASON_LEVELS, Math.floor(Number(se.level)) || 0));
@@ -1426,7 +1428,7 @@
 
   // Hur mycket erfarenhet (XP) som krävs för att gå från en viss nivå till nästa. Växer sakta
   // så att det aldrig tar orimligt lång tid, men ändå känns som framsteg.
-  const xpNeeded = (level) => (level + 2) * 10;
+  const xpNeeded = (level) => (level + 2) * 20;
 
   // XP för en match: svårare motståndare ger mer, och även en förlust ger lite (man lär sig
   // något varje gång). En vanlig vinst ger 10.
@@ -1445,8 +1447,8 @@
     if (match.boss) return XP.boss;
     if (match.stake) return XP.stake;
     if (match.team) return match.team === 5 ? XP.team5 : XP.team3;
-    if (match.tourney) return 20 + match.tourney * 20; // kvartsfinal 40, semifinal 60, final 80
-    if (match.event !== undefined) return 120;
+    if (match.tourney) return 15 + match.tourney * 15; // kvartsfinal 30, semifinal 45, final 60
+    if (match.event !== undefined) return 80;
     return XP.win;
   }
 
@@ -1581,7 +1583,7 @@
   // mynt när man vinner. Från CHAMPION_LEVEL kommer en elitrobot till, och stadens mästare:
   // minst legendarisk, med mycket mer liv och den skarpaste AI:n — och ett stort pris.
   const STREET_SLOT_MS = 10 * 60 * 1000;
-  const STREET_COUNT = 8;
+  const STREET_COUNT = 3;
   const ELITE_COUNT = 2;
   const ELITE_LEVEL = 20;
   const ELITE_COINS = 100;
@@ -1751,8 +1753,8 @@
   // i en kungastrid, se game.js). Den går bara att besegra en gång per besök (eventBeaten).
   const EVENT_PERIOD_MS = 10 * 60 * 1000; // kommer var tionde minut
   const EVENT_OPEN_MS = 5 * 60 * 1000;    // ... och stannar i fem minuter
-  const EVENT_COINS = 400;
-  const EVENT_BOXES = 3;
+  const EVENT_COINS = 150;
+  const EVENT_BOXES = 1;
 
   function eventWindow(now) {
     const id = Math.floor(now / EVENT_PERIOD_MS);
@@ -1771,9 +1773,9 @@
   // tourneyTier i game.js) — man möter field[0], field[1] och field[2] i tur och ordning, resten
   // finns med i lottningen. Förlorar man är turneringen slut; vinner man finalen får man pokalen.
   const TOURNEY_ROUNDS = ['Kvartsfinal', 'Semifinal', 'Final'];
-  const TOURNEY_COINS = [60, 120]; // för att vinna kvartsfinalen och semifinalen
-  const TOURNEY_WIN_COINS = 600;
-  const TOURNEY_WIN_BOXES = 3; // plus en guldlåda
+  const TOURNEY_COINS = [40, 80]; // för att vinna kvartsfinalen och semifinalen
+  const TOURNEY_WIN_COINS = 400;
+  const TOURNEY_WIN_BOXES = 2;
   // En ny turnering kan bara startas en gång per TOURNEY_EVERY_MS (samma för alla, i UTC);
   // en som redan pågår kan man spela klart.
   const TOURNEY_EVERY_MS = 5 * 60 * 1000;
@@ -1806,11 +1808,10 @@
       result.coins += addCoins(acct, TOURNEY_COINS[match.tourney - 1]);
       return;
     }
-    let prize = rollBoxFrom(rng, 'divine'); // pokalen: alltid en gudomlig robot (eller Mimik)
-    while (prize.id === 'wildcard') prize = rollBoxFrom(rng, 'divine');
+    let prize = rollBoxFrom(rng, 'legendary'); // pokalen: en legendarisk eller gudomlig robot
+    while (prize.id === 'wildcard') prize = rollBoxFrom(rng, 'legendary');
     addRobot(acct, prize.id);
-    acct.boxes += TOURNEY_WIN_BOXES + 1;
-    acct.goldBoxes = (acct.goldBoxes || 0) + 1;
+    acct.boxes += TOURNEY_WIN_BOXES;
     result.coins += addCoins(acct, TOURNEY_WIN_COINS);
     result.gained = prize.id;
     result.tourneyWon = true;
@@ -2056,11 +2057,15 @@
       }
       return result;
     }
-    const result = { won, stake: match.stake, gained: null, lost: null, box: won, levelUps: [], bossWon: null, itemWon: null, coins: 0 };
+    const result = { won, stake: match.stake, gained: null, lost: null, box: won && match.street === undefined, levelUps: [], bossWon: null, itemWon: null, coins: 0 };
     const teamWin = match.team === 5 ? COINS.team5Win : COINS.team3Win;
     result.coins = addCoins(acct, !won ? COINS.loss : match.boss ? COINS.bossWin : match.stake ? COINS.stakeWin : match.team ? teamWin : COINS.win);
     if (won) {
-      acct.boxes += 1;
+      // En låda varannan vinst (winsToBox räknar). Stadsrobotarna ger roboten i stället.
+      if (match.street === undefined) {
+        acct.winsToBox = (acct.winsToBox || 0) + 1;
+        if (acct.winsToBox >= WINS_PER_BOX) { acct.winsToBox = 0; acct.boxes += 1; } else result.box = false;
+      }
       if (match.weekly) {
         // Bara om man står på den våningen samma vecka (en gammal match räknas inte två gånger).
         const { week, floor } = match.weekly;
@@ -2202,6 +2207,7 @@
       tourney: acct.tourney ? { round: acct.tourney.round, field: [...acct.tourney.field] } : null,
       eventBeaten: acct.eventBeaten || 0,
       tourneyStarted: acct.tourneyStarted || 0,
+      winsToBox: acct.winsToBox || 0,
       season: seasonView(acct, Date.now()),
       medals: [...(acct.medals || [])],
       stats: { ...(acct.stats || {}) },
@@ -2536,7 +2542,8 @@
     WEEKLY_TOP, WEEKLY_TOP_COINS, WEEKLY_TOP_BOXES, weekOf, weeklyOpponent, weeklyFloor,
     TOURNEY_ROUNDS, TOURNEY_COINS, TOURNEY_WIN_COINS, TOURNEY_WIN_BOXES,
     TOURNEY_EVERY_MS, tourneySlot,
-    EVENT_COINS, EVENT_BOXES, eventWindow, eventBoss,
+    WINS_PER_BOX,
+    EVENT_COINS, EVENT_BOXES, eventWindow, eventBoss, CHAMPION_BOXES,
     SEASON_LEVELS, seasonOf, seasonReward, seasonView, addSeasonXp,
     ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
     SKINS, skinById, buySkin, setSkin,

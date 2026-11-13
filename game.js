@@ -3808,12 +3808,14 @@ function showResult() {
   const r = game.result;
   const friend = !!r.friend;
   byId('result-title').textContent = r.won ? 'DU VANN!' : 'DU FÖRLORADE';
+  // En låda varannan vinst: säg om man fick en nu eller får en nästa gång.
+  const boxLine = (res) => res.box ? 'Du fick en låda!' : 'Vinn en match till så får du en låda!';
   byId('reward').replaceChildren();
 
   let text;
   if (r.ranked && !r.error) {
     // En riktig match räknas som en vanlig match: låda och erfarenhet vid vinst.
-    text = `${r.won ? `Du besegrade ${r.oppName} — en riktig spelare!` : `${r.oppName} vann — en riktig spelare.`} ${r.won ? 'Du fick en låda!' : 'Vinn en match för att få en låda.'}`;
+    text = `${r.won ? `Du besegrade ${r.oppName} — en riktig spelare!` : `${r.oppName} vann — en riktig spelare.`} ${r.won ? boxLine(r) : 'Vinn två matcher för att få en låda.'}`;
   } else if (r.challenge) {
     const name = continentName(r.challenge.continent);
     const leader = r.challenge.role === 'leader';
@@ -3828,7 +3830,7 @@ function showResult() {
   } else if (game.boss) {
     if (r.bossWon) {
       byId('result-title').textContent = 'BOSSEN BESEGRAD!';
-      text = 'Den mystiska roboten är din — och du fick en låda!';
+      text = `Den mystiska roboten är din! ${boxLine(r)}`;
       rewardItem('AVSLÖJAD!', robotById[r.bossWon], { isNew: true, n: invCount(r.bossWon) });
     } else {
       text = 'Den mystiska roboten var för stark den här gången. Den väntar kvar — försök igen.';
@@ -3856,12 +3858,12 @@ function showResult() {
     }
   } else if (r.won && game.event) {
     text = r.eventWon
-      ? `👹 Ni besegrade jättebossen! Du fick ${Shared.EVENT_COINS} 🪙 och ${Shared.EVENT_BOXES} extra lådor!`
+      ? `👹 Ni besegrade jättebossen! Du fick ${Shared.EVENT_COINS} 🪙 och ${Shared.EVENT_BOXES === 1 ? 'en extra låda' : `${Shared.EVENT_BOXES} extra lådor`}!`
       : '👹 Ni besegrade jättebossen igen!';
-    if (r.eventWon) celebrate('👹 JÄTTEBOSSEN ÄR BESEGRAD!', `${Shared.EVENT_COINS} 🪙 + ${Shared.EVENT_BOXES} lådor!`, true);
+    if (r.eventWon) celebrate('👹 JÄTTEBOSSEN ÄR BESEGRAD!', `${Shared.EVENT_COINS} 🪙 + ${Shared.EVENT_BOXES === 1 ? 'en låda' : `${Shared.EVENT_BOXES} lådor`}!`, true);
   } else if (r.won && r.tourney) {
     if (r.tourneyWon) {
-      text = `🏆 Du vann turneringen! ${robotById[r.gained].name} är din, och du fick ${Shared.TOURNEY_WIN_BOXES} extra lådor!`;
+      text = `🏆 Du vann turneringen! ${robotById[r.gained].name} är din, och du fick ${Shared.TOURNEY_WIN_COINS} 🪙 och ${Shared.TOURNEY_WIN_BOXES} extra lådor!`;
       rewardItem('POKALEN!', robotById[r.gained], { isNew: true, n: invCount(r.gained) });
       celebrate('🏆 TURNERINGSSEGRARE!', `Pokalen, ${robotById[r.gained].name} och ${Shared.TOURNEY_WIN_COINS} 🪙!`, true);
     } else {
@@ -3888,11 +3890,11 @@ function showResult() {
       top ? `Alla ${Shared.TOWER_TOP} våningar — du är en legend!` : r.gained ? `Pris: ${robotById[r.gained].name} + en låda!` : `Upp till våning ${r.tower + 1}!`,
       top || !!r.gained);
   } else if (r.won) {
-    text = game.team ? `👥 Ditt lag vann ${game.team} mot ${game.team}! Du fick en låda!`
-      : r.champion ? `👑 Du besegrade stadens mästare! ${robotById[r.gained].name} är din nu, och du fick 3 lådor!`
-      : r.elite ? `Du besegrade elitroboten! ${robotById[r.gained].name} är din nu — och du fick en låda!`
-      : r.street ? `${robotById[r.gained].name} från staden är din nu — och du fick en låda!`
-      : r.gained ? 'Du vann motståndarens robot och fick en låda!' : 'Du fick en låda!';
+    text = game.team ? `👥 Ditt lag vann ${game.team} mot ${game.team}! ${boxLine(r)}`
+      : r.champion ? `👑 Du besegrade stadens mästare! ${robotById[r.gained].name} är din nu, och du fick ${Shared.CHAMPION_BOXES} lådor!`
+      : r.elite ? `Du besegrade elitroboten! ${robotById[r.gained].name} är din nu!`
+      : r.street ? `${robotById[r.gained].name} från staden är din nu!`
+      : r.gained ? `Du vann motståndarens robot! ${boxLine(r)}` : boxLine(r);
     if (r.gained) rewardItem('DU VANN ROBOTEN!', robotById[r.gained], { isNew: true, n: invCount(r.gained) });
   } else if (r.lost) {
     text = 'Du tappade din insats.';
