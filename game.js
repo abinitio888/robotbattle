@@ -2119,10 +2119,20 @@ function renderTourney() {
   const round = t ? t.round : 0;
   // slot: 'du', ett index i field, eller '?' för en plats som inte är avgjord än.
   const name = (slot) => (slot === 'du' ? `🤖 Du (${robotById[game.selectedId].name})` : slot === '?' ? '?' : robotById[t.field[slot]].name);
+  // En ny turnering kan bara startas en gång per fem minuter (Shared.TOURNEY_EVERY_MS).
+  const now = Date.now();
+  const slot = Shared.tourneySlot(now);
+  const waitMs = !t && game.acct.tourneyStarted === slot ? (slot + 1) * Shared.TOURNEY_EVERY_MS - now : 0;
+  const waitS = Math.ceil(waitMs / 1000);
+  const wait = `${Math.floor(waitS / 60)}:${String(waitS % 60).padStart(2, '0')}`;
   byId('tourney-status').textContent = t
     ? `Du är i ${Shared.TOURNEY_ROUNDS[round].toLowerCase()}en! Nästa motståndare: ${robotById[t.field[round]].name} (${RARITY[robotById[t.field[round]].rarity].label}).`
-    : 'Åtta robotar, tre matcher till pokalen. En ny lottning görs när du startar.';
-  byId('btn-tourney-play').textContent = t ? `⚔ Spela ${Shared.TOURNEY_ROUNDS[round].toLowerCase()}en` : '🏆 Starta en ny turnering';
+    : waitMs > 0 ? `⏳ Nästa turnering börjar om ${wait}. Det går en turnering var femte minut.`
+      : 'Åtta robotar, tre matcher till pokalen. En ny lottning görs när du startar — det går en turnering var femte minut.';
+  const btn = byId('btn-tourney-play');
+  btn.textContent = t ? `⚔ Spela ${Shared.TOURNEY_ROUNDS[round].toLowerCase()}en` : waitMs > 0 ? `⏳ Nästa turnering om ${wait}` : '🏆 Starta en ny turnering';
+  btn.disabled = waitMs > 0;
+  if (waitMs > 0) setTimeout(() => { if (game.phase === 'tourneypick') renderTourney(); }, 1000); // räkna ner
   const box = byId('tourney-bracket');
   box.replaceChildren();
   if (!t) return;
@@ -3890,7 +3900,7 @@ function showResult() {
   } else if (game.event) {
     text = '👹 Jättebossen var för stark den här gången. Försök igen medan den är kvar i staden!';
   } else if (game.tourney) {
-    text = `🏆 Du åkte ut i ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toLowerCase()}en. Starta en ny turnering och försök igen!`;
+    text = `🏆 Du åkte ut i ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toLowerCase()}en. Det går en ny turnering var femte minut — försök igen då!`;
   } else if (game.weekly) {
     text = `📅 Våning ${game.weekly} i veckans torn var för svår. Du står kvar där — försök igen!`;
   } else if (game.tower) {

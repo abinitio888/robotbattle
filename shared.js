@@ -1356,6 +1356,7 @@
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
       acct.tower = Math.max(1, Math.min(TOWER_TOP + 1, Math.floor(Number(raw.tower)) || 1));
       if (Number.isInteger(raw.eventBeaten) && raw.eventBeaten > 0) acct.eventBeaten = raw.eventBeaten;
+      if (Number.isInteger(raw.tourneyStarted) && raw.tourneyStarted > 0) acct.tourneyStarted = raw.tourneyStarted;
       const se = raw.season;
       if (se && typeof se.id === 'string' && /^\d{4}-[0-3]$/.test(se.id)) {
         const level = Math.max(0, Math.min(SEASON_LEVELS, Math.floor(Number(se.level)) || 0));
@@ -1444,7 +1445,7 @@
     if (match.boss) return XP.boss;
     if (match.stake) return XP.stake;
     if (match.team) return match.team === 5 ? XP.team5 : XP.team3;
-    if (match.tourney) return 15 + match.tourney * 10; // kvartsfinal 25, semifinal 35, final 45
+    if (match.tourney) return 20 + match.tourney * 20; // kvartsfinal 40, semifinal 60, final 80
     if (match.event !== undefined) return 120;
     return XP.win;
   }
@@ -1770,9 +1771,13 @@
   // tourneyTier i game.js) — man möter field[0], field[1] och field[2] i tur och ordning, resten
   // finns med i lottningen. Förlorar man är turneringen slut; vinner man finalen får man pokalen.
   const TOURNEY_ROUNDS = ['Kvartsfinal', 'Semifinal', 'Final'];
-  const TOURNEY_COINS = [30, 60]; // för att vinna kvartsfinalen och semifinalen
-  const TOURNEY_WIN_COINS = 300;
-  const TOURNEY_WIN_BOXES = 2;
+  const TOURNEY_COINS = [60, 120]; // för att vinna kvartsfinalen och semifinalen
+  const TOURNEY_WIN_COINS = 600;
+  const TOURNEY_WIN_BOXES = 3; // plus en guldlåda
+  // En ny turnering kan bara startas en gång per TOURNEY_EVERY_MS (samma för alla, i UTC);
+  // en som redan pågår kan man spela klart.
+  const TOURNEY_EVERY_MS = 5 * 60 * 1000;
+  const tourneySlot = (now) => Math.floor(now / TOURNEY_EVERY_MS);
 
   function newTourney(robotId, rng) {
     const field = [];
@@ -1801,10 +1806,11 @@
       result.coins += addCoins(acct, TOURNEY_COINS[match.tourney - 1]);
       return;
     }
-    let prize = rollBoxFrom(rng, 'legendary');
-    while (prize.id === 'wildcard') prize = rollBoxFrom(rng, 'legendary');
+    let prize = rollBoxFrom(rng, 'divine'); // pokalen: alltid en gudomlig robot (eller Mimik)
+    while (prize.id === 'wildcard') prize = rollBoxFrom(rng, 'divine');
     addRobot(acct, prize.id);
-    acct.boxes += TOURNEY_WIN_BOXES;
+    acct.boxes += TOURNEY_WIN_BOXES + 1;
+    acct.goldBoxes = (acct.goldBoxes || 0) + 1;
     result.coins += addCoins(acct, TOURNEY_WIN_COINS);
     result.gained = prize.id;
     result.tourneyWon = true;
@@ -1890,7 +1896,15 @@
       return { robot: robotId, stake: false, opp: eventBoss(ev.id), event: ev.id };
     }
     if (mode === 'tourney') {
-      if (!acct.tourney) acct.tourney = newTourney(robotId, rng);
+      if (!acct.tourney) {
+        const slot = tourneySlot(now);
+        if (acct.tourneyStarted === slot) {
+          const min = Math.ceil(((slot + 1) * TOURNEY_EVERY_MS - now) / 60000);
+          return { error: `Nästa turnering börjar om ${min} ${min === 1 ? 'minut' : 'minuter'}.` };
+        }
+        acct.tourneyStarted = slot;
+        acct.tourney = newTourney(robotId, rng);
+      }
       const t = acct.tourney;
       acct.selected = robotId;
       return { robot: robotId, stake: false, opp: t.field[t.round], tourney: t.round + 1 };
@@ -2187,6 +2201,7 @@
       weekly: { week: weekOf(Date.now()), floor: weeklyFloor(acct, weekOf(Date.now())) },
       tourney: acct.tourney ? { round: acct.tourney.round, field: [...acct.tourney.field] } : null,
       eventBeaten: acct.eventBeaten || 0,
+      tourneyStarted: acct.tourneyStarted || 0,
       season: seasonView(acct, Date.now()),
       medals: [...(acct.medals || [])],
       stats: { ...(acct.stats || {}) },
@@ -2520,6 +2535,7 @@
     MEDALS, awardMedals,
     WEEKLY_TOP, WEEKLY_TOP_COINS, WEEKLY_TOP_BOXES, weekOf, weeklyOpponent, weeklyFloor,
     TOURNEY_ROUNDS, TOURNEY_COINS, TOURNEY_WIN_COINS, TOURNEY_WIN_BOXES,
+    TOURNEY_EVERY_MS, tourneySlot,
     EVENT_COINS, EVENT_BOXES, eventWindow, eventBoss,
     SEASON_LEVELS, seasonOf, seasonReward, seasonView, addSeasonXp,
     ROBOT_MAX_LV, upgradeCost, levelUpDef, upgradeRobot,
