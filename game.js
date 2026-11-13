@@ -1381,6 +1381,12 @@ const ROYAL_TIERS = {
 // Jättebossen i staden: drottningens AI, sex gånger så mycket liv och en ilska som växer
 // långsamt — du och fyra kompisar behöver hjälpas åt (se startMatch, game.event).
 const GIANT_TIER = { skill: ROYAL_TIERS.queen.skill, enrageMax: 2.5, enrageSeconds: 90, hpMul: 6 };
+// Spela tillsammans (vänmatch): du och en kompis mot en stark robot med tre gånger så mycket liv.
+const COOP_TIER = { skill: ROYAL_TIERS.king.skill, enrageMax: 2, enrageSeconds: 90, hpMul: 3 };
+function pickCoopBoss() {
+  const pool = ROBOTS.filter((r) => !r.monster && !r.boss && !r.mimic && r.id !== 'wildcard' && (r.rarity === 'legendary' || r.rarity === 'divine'));
+  return pool[Math.floor(Math.random() * pool.length)].id;
+}
 
 // AI:n blir svårare ju högre nivå du är — lätt i början, nästan SKILL_HARD från nivå 10.
 function skillForLevel(level) {
@@ -2153,8 +2159,12 @@ function renderTourney() {
   );
 }
 
-function showTeamPick() {
+// Arenan: vanlig match, insatsmatch, lagstrid och träning — en portal i staden i stället för fyra.
+function showArenaPick() {
   game.phase = 'teampick';
+  const stake = byId('btn-arena-stake');
+  stake.disabled = !canStake();
+  stake.textContent = canStake() ? '💰 Insatsmatch · sätt en robot på spel' : '💰 Insatsmatch · kräver minst 2 robotar';
   showScreen('team');
 }
 
@@ -2782,15 +2792,19 @@ function renderMedals(box) {
 // Visas automatiskt första gången man kommer till staden (minns det i webbläsaren), och går
 // att öppna igen med ❔ Guide. Medan den är öppen står spelaren still i staden.
 const GUIDE = [
-  { icon: '🤖', title: 'Välkommen till Robotstaden!', text: 'Här bor alla robotar. Du styr din egen robot och går runt i staden mellan portalerna.' },
-  { icon: '👀', title: 'Du är roboten', text: 'Du ser allt genom din robots ögon. W går framåt, S bakåt och A/D svänger. I en match tittar du alltid på motståndaren och A/D kliver åt sidan. Gå fram till en portal och tryck MELLANSLAG eller J för att gå in. V byter till vyn från sidan.' },
-  { icon: '⚔️', title: 'Slåss', text: 'I en match: J eller MELLANSLAG slår, Shift eller L hoppar, E är din specialattack (när linjerna på roboten pulserar starkt är den laddad) och Q är ditt supervapen om du bär ett.' },
-  { icon: '🛡', title: 'Blockera och undvik', text: 'Håll F för att blockera: du tar bara en fjärdedel av skadan, men blocket går sönder om du tar för många slag i rad — då står du stilla en stund. Du kan också gå undan i djupled — skott och vågor flyger längs en linje, så ett steg åt sidan räddar dig ofta.' },
+  { icon: '🤖', title: 'Välkommen till Robotstaden!', text: 'Staden har fyra kvarter: 🏠 Hemma (garaget, lådor, utrustning, uppdrag), ⚔ Matcher, 🛒 Handel och 👾 Äventyr. Gå fram till en portal och tryck MELLANSLAG eller J för att gå in. T teleporterar dig snabbt.' },
+  { icon: '👀', title: 'Du är roboten', text: 'Du ser allt genom din robots ögon. W går framåt, S bakåt och A/D svänger. I en match tittar du alltid på motståndaren och A/D kliver åt sidan. V byter till vyn från sidan.' },
+  { icon: '⚔️', title: 'Slåss', text: 'J eller MELLANSLAG slår, Shift eller L hoppar, E är din specialattack (när linjerna på roboten lyser starkt är den laddad) och Q är ditt supervapen om du bär ett.' },
+  { icon: '🛡', title: 'Blockera och undvik', text: 'Håll F för att blockera: du tar bara en fjärdedel av skadan, men blocket går sönder om du tar för många slag i rad. Ett steg åt sidan räddar dig ofta — skott flyger längs en linje.' },
+  { icon: '🎁', title: 'Lådor, mynt och nivåer', text: 'Varannan vinst ger en låda. Lådor kan också köpas i Butiken för mynt. Vinster ger XP så att du går upp i nivå — det tar ett tag, så kämpa på! Uppdragstavlan ger mynt, och var tredje uppdrag ger en bonuslåda.' },
   { icon: '🚶', title: 'Robotarna på gatan', text: 'Robotarna som går omkring kan du utmana: gå fram och tryck J. Vinner du får du roboten! Från nivå 20 kommer elitrobotar och från nivå 30 stadens mästare.' },
-  { icon: '📜', title: 'Uppdrag och lådor', text: 'På Uppdragstavlan finns uppdrag hela tiden — de ger mynt, och var tredje ger en bonuslåda. Vinner du matcher går du upp i nivå och får nya robotar.' },
+  { icon: '⚔', title: 'Arenan', text: 'I Arenan väljer du vanlig match, insatsmatch (sätt en robot på spel och vinn motståndarens), lagstrid 3 mot 3 eller 5 mot 5, eller träning på en docka.' },
+  { icon: '🏆', title: 'Turnering och jätteboss', text: `Var femte minut går en turnering: vinn tre matcher i rad och ta pokalen. Var tionde minut kommer jättebossen till staden — du och fyra robotkompisar mot en jätte. Den ger ${Shared.EVENT_COINS} mynt!` },
+  { icon: '🤝', title: 'Spela med en kompis', text: 'I Vänmatch skapar du ett rum och ger koden till din kompis. Välj "mot varandra" för att slåss mot varandra, eller "tillsammans" för att slåss sida vid sida mot en stark boss.' },
+  { icon: '🪞', title: 'Mimik', text: 'Mimik är den allra sällsyntaste roboten. Den härmar motståndarens specialattack och typ. Får du en kan du bygga den själv: skriv hur den ska se ut och vad den ska kunna, i garaget.' },
   { icon: '🗼', title: 'Utmaningstornet', text: 'Från nivå 20: klättra 50 våningar mot allt starkare robotar. Var femte våning ger ett pris, och högst upp väntar 1000 mynt. Lycka till!' },
 ];
-const GUIDE_SEEN = 'robotbattle-guide-seen';
+const GUIDE_SEEN = 'robotbattle-guide-v2'; // ny guide: alla får se den en gång till
 let guideStep = -1; // -1 = stängd
 
 function openGuide() {
@@ -3103,7 +3117,7 @@ const HUB_W = 2500; // Robotstaden är mycket bredare än en bana — kameran f�
 // Fyra kvarter längs gatan, med gott om plats emellan.
 const DISTRICTS = [
   { name: '🏠 Hemma', x: 310 },
-  { name: '⚔ Matcher', x: 910 },
+  { name: '⚔ Matcher', x: 1010 },
   { name: '🛒 Handel', x: 1510 },
   { name: '👾 Äventyr', x: 2110 },
 ];
@@ -3113,18 +3127,16 @@ const STATIONS = [
   { id: 'equipment', name: 'Utrustning', emoji: '🎒', color: '#5fd0ff', x: 420, z: -120 },
   { id: 'quests', name: 'Uppdragstavlan', emoji: '📜', color: '#e8d27a', x: 420, z: 120 },
 
-  { id: 'arena', name: 'Vanlig match', emoji: '⚔', color: '#35d0ff', x: 800, z: -120 },
-  { id: 'stake', name: 'Insatsmatch', emoji: '💰', color: '#ffd93d', x: 800, z: 120 },
-  { id: 'training', name: 'Träningsarenan', emoji: '🎯', color: '#c9a36b', x: 1020, z: -120 },
-  { id: 'tower', name: 'Utmaningstornet', emoji: '🗼', color: '#ff5ad1', x: 1210, z: 0 },
-  { id: 'team', name: 'Lagstrid', emoji: '👥', color: '#ff9a2a', x: 910, z: 0 },
-  { id: 'tourney', name: 'Turneringen', emoji: '🏆', color: '#ffd93d', x: 1110, z: 0 },
-  { id: 'tops', name: 'Topplistor', emoji: '📊', color: '#3ee8ff', x: 310, z: 0 },
-  { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 1020, z: 120 },
+  // Matcher: två rader med tre portaler, gatan i mitten är fri.
+  { id: 'arena', name: 'Arenan', emoji: '⚔', color: '#35d0ff', x: 800, z: -120 },
+  { id: 'tourney', name: 'Turneringen', emoji: '🏆', color: '#ffd93d', x: 1010, z: -120 },
+  { id: 'tower', name: 'Utmaningstornet', emoji: '🗼', color: '#ff5ad1', x: 1220, z: -120 },
+  { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 800, z: 120 },
+  { id: 'tops', name: 'Topplistor', emoji: '📊', color: '#3ee8ff', x: 1010, z: 120 },
 
   { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 1400, z: -120 },
   { id: 'trade', name: 'Handlaren', emoji: '🔁', color: '#ff9a2a', x: 1400, z: 120 },
-  { id: 'clan', name: 'Klanhuset', emoji: '🛡', color: '#a07bff', x: 1620, z: 0 },
+  { id: 'clan', name: 'Klanhuset', emoji: '🛡', color: '#a07bff', x: 1620, z: -120 },
 
   { id: 'monsters', name: 'Monstervärlden', emoji: '👾', color: '#ff7a1a', x: 2000, z: -120 },
   { id: 'boss', name: 'Mystiska robotar', emoji: '❓', color: '#ff1744', x: 2000, z: 120 },
@@ -3132,8 +3144,7 @@ const STATIONS = [
   { id: 'world', name: 'Världskartan', emoji: '🌍', color: '#3ddc84', x: 2220, z: 120 },
 ];
 const STATION_HINT = {
-  arena: 'vanlig match mot AI — vinn en låda',
-  stake: 'sätt en robot på spel — vinn motståndarens',
+  arena: 'vanlig match, insatsmatch, lagstrid eller träning',
   garage: 'välj vilken robot du spelar med',
   boxes: 'öppna lådor och hämta den dagliga',
   quests: 'nya uppdrag hela tiden',
@@ -3141,16 +3152,14 @@ const STATION_HINT = {
   boss: 'möt en mystisk robot',
   monsters: 'res till Monstervärlden',
   world: 'världsdelarna och deras beskyddare',
-  friend: 'spela mot en kompis',
+  friend: 'spela mot eller tillsammans med en kompis',
   tower: `${Shared.TOWER_TOP} våningar med allt starkare robotar, från nivå ${Shared.TOWER_LEVEL}`,
-  team: 'du och ditt lag mot ett annat lag — 3 mot 3 eller 5 mot 5',
   tourney: 'åtta robotar, tre matcher — vinn pokalen!',
   tops: 'se vem som är bäst: vinster, pokaler och tornen',
   shop: 'köp varor för mynt',
   trade: 'byt robotar med Handlaren',
   clan: 'gå med i en klan',
   royals: 'du och 4 robotar mot en kung eller drottningen',
-  training: 'öva på en träningsdocka',
 };
 const HUB_HINT = 'Gå med WASD eller piltangenterna. Gå fram till en portal och tryck MELLANSLAG/J.';
 
@@ -3309,7 +3318,6 @@ function towerProgress(id) {
 
 function enterStation(id) {
   const blocked = (msg) => { byId('explore-hint').textContent = msg; };
-  if (id === 'stake' && !canStake()) { blocked('💰 Insatsarenan kräver minst 2 robotar.'); return; }
   if (id === 'friend' && !roomCap) { blocked('Vänmatcher går inte att spela här just nu.'); return; }
   if (id === 'tower' && game.acct.level < Shared.TOWER_LEVEL) {
     blocked(`🗼 Utmaningstornet öppnar på nivå ${Shared.TOWER_LEVEL} — du är nivå ${game.acct.level}.`);
@@ -3318,8 +3326,7 @@ function enterStation(id) {
   if (id === 'tower' && game.acct.tower > Shared.TOWER_TOP) { blocked('🗼 Du har klarat hela Utmaningstornet! 🏆'); return; }
   byId('explore-bar').hidden = true;
   switch (id) {
-    case 'arena': game.mode = 'normal'; startMatch(); break;
-    case 'stake': game.mode = 'stake'; startMatch(); break;
+    case 'arena': showArenaPick(); break;
     case 'boss': startMatch('boss'); break;
     case 'monsters': showMonsters(); break;
     case 'world': showWorld(); break;
@@ -3327,9 +3334,7 @@ function enterStation(id) {
     case 'shop': showShop(); break;
     case 'trade': showTrade(); break;
     case 'clan': showClan(); break;
-    case 'training': startTraining(true); break;
     case 'tower': showTower(); break;
-    case 'team': showTeamPick(); break;
     case 'tourney': showTourney(); break;
     case 'tops': showTops(); break;
     case 'garage': game.fromHub = true; showSelect(); break;
@@ -3746,6 +3751,9 @@ byId('btn-mimik-save').addEventListener('click', saveMimik);
 byId('mimik-text').addEventListener('input', renderMimik);
 byId('btn-tourney-play').addEventListener('click', () => startMatch('tourney'));
 byId('btn-team-3').addEventListener('click', () => startMatch('team', '3'));
+byId('btn-arena-normal').addEventListener('click', () => { game.mode = 'normal'; startMatch(); });
+byId('btn-arena-stake').addEventListener('click', () => { if (canStake()) { game.mode = 'stake'; startMatch(); } });
+byId('btn-arena-training').addEventListener('click', () => startTraining(true));
 byId('btn-team-5').addEventListener('click', () => startMatch('team', '5'));
 byId('btn-tower-climb').addEventListener('click', () => startMatch('tower'));
 byId('btn-weekly-climb').addEventListener('click', () => startMatch('weekly'));
@@ -3813,7 +3821,11 @@ function showResult() {
   byId('reward').replaceChildren();
 
   let text;
-  if (r.ranked && !r.error) {
+  if (r.coop && !r.error) {
+    byId('result-title').textContent = r.won ? 'NI VANN!' : 'NI FÖRLORADE';
+    text = r.won ? `🤝 Du och ${r.oppName} besegrade ${r.bossName} tillsammans! ${r.box ? 'Du fick en låda!' : 'Vinn en gång till så får du en låda!'}`
+      : `${r.bossName} var för stark den här gången. Försök igen tillsammans!`;
+  } else if (r.ranked && !r.error) {
     // En riktig match räknas som en vanlig match: låda och erfarenhet vid vinst.
     text = `${r.won ? `Du besegrade ${r.oppName} — en riktig spelare!` : `${r.oppName} vann — en riktig spelare.`} ${r.won ? boxLine(r) : 'Vinn två matcher för att få en låda.'}`;
   } else if (r.challenge) {
@@ -4372,6 +4384,7 @@ let roomCap = null;        // claude.use('room') — null om vänmatcher inte g�
 // svämma över med anrop, se updateFriendMatch().
 let roomIsPolling = false;
 let friendRoom = null;      // det gemensamma "rummet" (NamedRoom) just nu, eller null
+let friendCoop = false;     // värden skapade ett rum för att spela TILLSAMMANS mot en boss
 let friendUnsubs = [];       // avregistreringsfunktioner för rummets lyssnare, körs vid "Lämna"
 
 function friendMessage(text) { byId('friend-status').textContent = text; }
@@ -4479,6 +4492,7 @@ async function createFriendRoom(opts = {}) {
   leaveFriendRoom();
   challenge = opts.challenge || null;
   ranked = opts.ranked || null;
+  friendCoop = !!opts.coop;
   friendMessage('Skapar rum...');
   const code = opts.challenge ? opts.challenge.id : opts.ranked ? opts.ranked.room : randomRoomCode();
   let room;
@@ -4495,6 +4509,7 @@ async function createFriendRoom(opts = {}) {
   byId('friend-code-text').textContent = code.toUpperCase();
   friendMessage(challenge
     ? `Väntar på att ${challenge.oppName} svarar på din utmaning om ${continentName(challenge.continent)}...`
+    : friendCoop ? 'Väntar på att din vän går med... Sedan slåss ni tillsammans mot en boss! 🤝'
     : 'Väntar på att din vän går med...');
   // Lyssnarna måste finnas INNAN presence() sätts — annars kan gästen (eller värden,
   // vid en snabb anslutning) i teorin hinna svara innan den egna sidan ens lyssnar.
@@ -4546,17 +4561,42 @@ function beginFriendMatch(isHost, payload) {
   game.friendLast = payload; // återanvänds av värden vid revansch
   game.arena = arenaById[payload.arenaId] || arenaById.classic;
   showArenaLabel(game.arena);
-  const [hostDef, guestDef] = mimicSpecials(payload.host.def, payload.guest.def);
-  const hostF = new Fighter(hostDef, W * 0.25, 1);
-  const guestF = new Fighter(guestDef, W * 0.75, -1);
-  game.fighters = [hostF, guestF];
-  game.player = isHost ? hostF : guestF;
-  game.ai = isHost ? guestF : hostF;
-  game.online = { isHost, oppName: challenge ? challenge.oppName : isHost ? payload.guest.name : payload.host.name, ended: false, frame: 0, lastGuestInput: { ...IDLE }, challenge, ranked, rankedToken: null };
-  // En riktig match ger låda och erfarenhet precis som mot AI — via samma matchbiljett.
-  if (ranked) {
+  const coop = payload.coop && robotById[payload.coop.boss] ? payload.coop : null;
+  const mateName = isHost ? payload.guest.name : payload.host.name;
+  game.allies = [];
+  game.bossTier = null;
+  if (coop) {
+    // Tillsammans: värden och gästen bredvid varandra till vänster, bossen till höger.
+    const base = robotById[coop.boss];
+    const bossDef = { ...base, hp: Math.round(base.hp * COOP_TIER.hpMul), scale: (base.scale || 1) * 1.35 };
+    const [hostDef] = mimicSpecials(payload.host.def, bossDef);
+    const [guestDef] = mimicSpecials(payload.guest.def, bossDef);
+    const hostF = new Fighter(hostDef, W * 0.2, 1);
+    const guestF = new Fighter(guestDef, W * 0.3, 1);
+    hostF.z = -0.4 * DEPTH;
+    guestF.z = 0.4 * DEPTH;
+    const bossF = new Fighter(bossDef, W * 0.78, -1);
+    game.fighters = [hostF, guestF, bossF];
+    game.player = isHost ? hostF : guestF;
+    game.ai = bossF;
+    game.allies = [{ f: isHost ? guestF : hostF, brain: null, label: `🤝 ${mateName}` }];
+    game.bossTier = COOP_TIER;
+    game.brain = makeBrain(COOP_TIER.skill);
+  } else {
+    const [hostDef, guestDef] = mimicSpecials(payload.host.def, payload.guest.def);
+    const hostF = new Fighter(hostDef, W * 0.25, 1);
+    const guestF = new Fighter(guestDef, W * 0.75, -1);
+    game.fighters = [hostF, guestF];
+    game.player = isHost ? hostF : guestF;
+    game.ai = isHost ? guestF : hostF;
+  }
+  game.bossTime = 0;
+  game.online = { isHost, oppName: challenge ? challenge.oppName : mateName, ended: false, frame: 0, lastGuestInput: { ...IDLE }, challenge, ranked, coop: !!coop, rankedToken: null };
+  // En riktig match (och ett samarbete) ger låda och erfarenhet precis som mot AI — via samma matchbiljett.
+  if (ranked || coop) {
+    const om0 = game.online;
     net.startMatch(game.selectedId, 'normal')
-      .then((r) => { if (game.online && game.online.ranked === ranked) game.online.rankedToken = r.match; })
+      .then((r) => { if (game.online === om0) om0.rankedToken = r.match; })
       .catch(() => {});
   }
   game.projectiles = [];
@@ -4583,7 +4623,6 @@ function beginFriendMatch(isHost, payload) {
   game.winner = null;
   game.result = null;
   game.mode = 'friend';
-  game.allies = [];
   game.foes = [];
   game.team = 0;
   game.training = null;
@@ -4595,7 +4634,8 @@ function beginFriendMatch(isHost, payload) {
   game.banner = 0;
   game.phase = 'intro';
   hud.namePlayer.textContent = `DU · ${displayName(game.player.def, true)}`;
-  hud.nameAi.textContent = `${game.ai.def.name} · ${game.online.oppName}`;
+  hud.nameAi.textContent = coop ? `🤝 BOSS · ${game.ai.def.name}` : `${game.ai.def.name} · ${game.online.oppName}`;
+  if (coop) hud.namePlayer.textContent = `DU + ${mateName} · ${displayName(game.player.def, true)}`;
   setHudType(hud.typePlayer, game.player.def);
   setHudType(hud.typeAi, game.ai.def);
   showScreen(null);
@@ -4608,6 +4648,7 @@ function hostStartMatch(room, guestPeer) {
     host: { name: myFriendName(), def: myFriendDef() },
     guest: { name: guestPeer.presence.name || 'Vän', def: guestPeer.presence.def },
   };
+  if (friendCoop) payload.coop = { boss: pickCoopBoss() };
   room.emit('start', payload).catch(() => {});
   beginFriendMatch(true, payload);
 }
@@ -4616,6 +4657,7 @@ function hostRestartMatch(room) {
   if (!game.friendLast) return;
   const arena = Shared.pickArena(Math.random);
   const payload = { ...game.friendLast, arenaId: arena.id };
+  if (payload.coop) payload.coop = { boss: pickCoopBoss() }; // en ny boss varje gång
   room.emit('start', payload).catch(() => {});
   beginFriendMatch(true, payload);
 }
@@ -4630,7 +4672,7 @@ function hostEndMatch(winnerIsHost) {
   game.phase = 'over';
   game.winner = winnerIsHost ? game.player : game.ai;
   game.overT = 1.6;
-  game.result = { won: winnerIsHost, friend: true, oppName: game.online.oppName };
+  game.result = { won: winnerIsHost, friend: true, coop: game.online.coop, oppName: game.online.oppName, bossName: game.ai.def.name };
   finishChallenge(winnerIsHost);
   finishRanked(winnerIsHost);
 }
@@ -4640,10 +4682,10 @@ function guestEndMatch(data) {
   if (!game.online) return;
   game.online.ended = true;
   game.phase = 'over';
-  const iWon = !(data && data.winnerIsHost);
+  const iWon = game.online.coop ? !!(data && data.winnerIsHost) : !(data && data.winnerIsHost); // tillsammans vinner båda
   game.winner = iWon ? game.player : game.ai;
   game.overT = 1.6;
-  game.result = { won: iWon, friend: true, oppName: game.online.oppName };
+  game.result = { won: iWon, friend: true, coop: game.online.coop, oppName: game.online.oppName, bossName: game.ai.def.name };
   finishChallenge(iWon);
   finishRanked(iWon);
 }
@@ -4711,9 +4753,10 @@ function applyFighterSnapshot(f, snap) {
 
 function applyFriendState(data) {
   if (!data || !game.fighters) return;
-  const [f0, f1] = game.fighters;
+  const [f0, f1, f2] = game.fighters;
   applyFighterSnapshot(f0, data.f0);
   applyFighterSnapshot(f1, data.f1);
+  if (f2) applyFighterSnapshot(f2, data.f2);
 }
 
 function sendFriendInput() {
@@ -4723,8 +4766,10 @@ function sendFriendInput() {
 
 function sendFriendState() {
   if (!friendRoom) return;
-  const [f0, f1] = game.fighters;
-  friendRoom.emit('state', { f0: fighterSnapshot(f0), f1: fighterSnapshot(f1) }).catch(() => {});
+  const [f0, f1, f2] = game.fighters;
+  const state = { f0: fighterSnapshot(f0), f1: fighterSnapshot(f1) };
+  if (f2) state.f2 = fighterSnapshot(f2);
+  friendRoom.emit('state', state).catch(() => {});
 }
 
 // Ett steg i en pågående vänmatch. Bara värden kör den riktiga fysiken (för BÅDA
@@ -4746,17 +4791,27 @@ function updateFriendMatch(dt) {
   const throttled = om.frame % everyN === 0;
 
   if (om.isHost) {
-    const [f0, f1] = game.fighters;
-    f0.step(dt, fighting ? playerInput() : IDLE, f1, fighting);
-    f1.step(dt, fighting ? om.lastGuestInput : IDLE, f0, fighting);
+    const [f0, f1, boss] = game.fighters;
+    if (boss) {
+      // Tillsammans: bossen väljer vem den anfaller, de två spelarna slåss mot bossen.
+      if (fighting) { chooseBossTarget(dt); updateBossEnrage(dt); }
+      const target = boss.target || f0;
+      f0.step(dt, fighting ? playerInput() : IDLE, boss, fighting);
+      f1.step(dt, fighting ? om.lastGuestInput : IDLE, boss, fighting);
+      boss.step(dt, fighting ? aiInput(boss, target, game.brain, dt) : IDLE, target, fighting);
+    } else {
+      f0.step(dt, fighting ? playerInput() : IDLE, f1, fighting);
+      f1.step(dt, fighting ? om.lastGuestInput : IDLE, f0, fighting);
+    }
     if (fighting) {
       separate(f0, f1);
+      if (boss) { separate(f0, boss); separate(f1, boss); }
       updateProjectiles(dt);
       updateWaves(dt);
       updateBeams(dt);
       updateStrikes(dt);
       updateMines(dt);
-      updateTrails(dt, [f0, f1]);
+      updateTrails(dt, game.fighters);
       updateClouds(dt);
       updateHalos(dt);
       updateQuakes(dt);
@@ -4767,11 +4822,12 @@ function updateFriendMatch(dt) {
       updateClocks(dt);
       updateMeteors(dt);
       updateTides(dt);
-      updateTraps(dt, [f0, f1]);
+      updateTraps(dt, game.fighters);
       updateSupers(dt);
-      if (!om.ended && (f0.hp <= 0 || f1.hp <= 0)) {
+      const over = boss ? boss.hp <= 0 || (f0.hp <= 0 && f1.hp <= 0) : f0.hp <= 0 || f1.hp <= 0;
+      if (!om.ended && over) {
         om.ended = true;
-        const winnerIsHost = f0.hp > 0;
+        const winnerIsHost = boss ? boss.hp <= 0 : f0.hp > 0; // tillsammans: "värden vann" = laget vann
         if (friendRoom) friendRoom.emit('end', { winnerIsHost }).catch(() => {});
         hostEndMatch(winnerIsHost);
       }
@@ -4804,10 +4860,11 @@ function renderOnlineInfo() {
 // Matchen tar slut: hämta låda/erfarenhet med matchbiljetten, som i en AI-match.
 function finishRanked(iWon) {
   const om = game.online;
-  if (!om || !om.ranked) return;
+  if (!om || !(om.ranked || om.coop)) return;
   const oppName = om.oppName;
+  const bossName = om.coop ? game.ai.def.name : null;
   game.result = null; // resultatskärmen väntar tills servern svarat
-  const done = (extra) => { game.result = { won: iWon, ranked: true, oppName, ...extra }; };
+  const done = (extra) => { game.result = { won: iWon, ranked: !!om.ranked, coop: om.coop, oppName, bossName, ...extra }; };
   if (!om.rankedToken) { done({ error: 'Matchen hann inte registreras.' }); return; }
   net.finishMatch(om.rankedToken, iWon)
     .then((r) => { applyAcct(r.acct); done(r.result); })
@@ -5129,6 +5186,7 @@ async function pollWorld() {
 setInterval(pollWorld, 5000);
 
 byId('btn-create-room').addEventListener('click', () => createFriendRoom());
+byId('btn-create-coop').addEventListener('click', () => createFriendRoom({ coop: true }));
 byId('btn-join-room').addEventListener('click', () => joinFriendRoom());
 byId('friend-code-input').addEventListener('keydown', (e) => { if (e.code === 'Enter') joinFriendRoom(); });
 byId('btn-friend-cancel').addEventListener('click', () => { leaveFriendRoom(); backToTeleport(); });
@@ -5271,7 +5329,7 @@ function drawAllyBars(project) {
     ctx.fillStyle = text;
     ctx.fillText(label, at.x, at.y - 8);
   };
-  for (const a of game.allies) bar(a.f, '#3ddc84', '#cfe8d8', `🤖 ${a.f.def.name}`);
+  for (const a of game.allies) bar(a.f, '#3ddc84', '#cfe8d8', a.label || `🤖 ${a.f.def.name}`);
   if (!game.team) return;
   for (const f of teamB()) bar(f, '#ff4d4d', '#ffd0d0', `${f === game.player.target ? '🎯 ' : ''}${f.def.name}`);
 }

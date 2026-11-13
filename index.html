@@ -257,7 +257,8 @@
         <h2>Vänmatch</h2>
         <p id="friend-status" class="hint"></p>
         <div id="friend-create" class="buttons">
-          <button id="btn-create-room" type="button">Skapa rum</button>
+          <button id="btn-create-room" type="button">⚔ Skapa rum: mot varandra</button>
+          <button id="btn-create-coop" type="button">🤝 Skapa rum: tillsammans mot en boss</button>
         </div>
         <div id="friend-join" class="buttons">
           <input id="friend-code-input" type="text" placeholder="Rumskod" maxlength="4" autocapitalize="characters">
@@ -328,11 +329,20 @@
       </section>
 
       <section id="screen-team" hidden>
-        <h2>👥 Lagstrid</h2>
-        <p class="hint">Du och dina robotkompisar mot ett annat lag. Ditt lag vinner när hela motståndarlaget ligger ner — och förlorar när hela ditt lag gör det. Du siktar alltid på den närmaste motståndaren.</p>
-        <div class="buttons">
+        <h2>⚔ Arenan</h2>
+        <p class="hint">Välj vilken sorts match du vill spela.</p>
+        <div class="buttons arena-pick">
+          <button id="btn-arena-normal" type="button">⚔ Vanlig match · två vinster ger en låda</button>
+          <button id="btn-arena-stake" type="button">💰 Insatsmatch · sätt en robot på spel</button>
+        </div>
+        <h3>👥 Lagstrid</h3>
+        <p class="hint">Du och dina robotkompisar mot ett annat lag. Ni vinner när hela motståndarlaget ligger ner.</p>
+        <div class="buttons arena-pick">
           <button id="btn-team-3" type="button">3 mot 3 · +25 🪙 · 20 XP</button>
           <button id="btn-team-5" type="button">5 mot 5 · +40 🪙 · 30 XP</button>
+        </div>
+        <div class="buttons arena-pick">
+          <button id="btn-arena-training" type="button" class="secondary">🎯 Träna på en docka</button>
         </div>
         <button id="btn-team-back" type="button" class="linklike">Tillbaka till staden</button>
       </section>
