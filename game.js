@@ -86,6 +86,7 @@ function hurt(target, dmg, dirX, knock, source) {
   if (target.passive === 'rooted' && target.stillT >= 1) { dmg *= 0.6; knock = 0; } // Rotad
   if (source.passive === 'execute' && target.hp < target.maxHp * 0.3) dmg *= 1.5; // Själsfångst
   const punching = source.act && source.act.kind === 'punch';
+  if (target.passive === 'dragonscale' && !punching && source !== target) dmg *= 0.7; // Drakfjäll
   if (punching && source.passive === 'bloodrage' && source.hp < source.maxHp * 0.5) dmg *= 1.5; // Vargblod
   if (punching && source.def.crit && Math.random() < source.def.crit) {
     // Turchippet: en kritisk träff.
@@ -454,6 +455,31 @@ const SPECIALS = {
     dur: 0.6, fires: [0.25],
     fire: (f, o, sp) => {
       game.roots.push({ owner: f, x0: f.x, dir: o.x >= f.x ? 1 : -1, z: o.z, t: 0, dmg: sp.dmg, hit: false });
+    },
+  },
+  firebreath: {
+    // Tiamats Drakandning: en eldkägla framåt som bränner fem gånger. Kägla = ju längre bort,
+    // desto bredare i djupled. Kliv åt sidan (djupled) eller backa ur den.
+    dur: 1.55, fires: [0.15, 0.45, 0.75, 1.05, 1.35],
+    fire: (f, o, sp) => {
+      const reach = 280 * f.def.scale;
+      const x0 = f.x + f.facing * (f.w / 2);
+      const mouthY = f.y - f.h * 0.7;
+      for (let i = 0; i < 14; i++) {
+        const d = rand(0.1, 1) * reach;
+        game.particles.push({
+          x: x0 + f.facing * d * 0.2, y: mouthY, z: f.z,
+          vx: f.facing * rand(380, 620), vy: rand(-60, 40), vz: rand(-1, 1) * (40 + d * 0.5),
+          life: rand(0.3, 0.5), max: 0.5, color: ['#ff3b1f', '#ff8a2a', '#ffd93d'][i % 3],
+        });
+      }
+      const dx = (o.x - f.x) * f.facing;
+      const width = 26 + (dx / reach) * 70;
+      if (dx > 0 && dx < reach + o.w / 2 && Math.abs(o.z - f.z) < o.d / 2 + width && o.y > mouthY - 120) {
+        const energy = f.energy; // brännträffarna ger ingen energi tillbaka, annars kan den sprutas hela tiden
+        hurt(o, sp.dmg, f.facing, 80, f);
+        f.energy = energy;
+      }
     },
   },
   tether: {

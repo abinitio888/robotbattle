@@ -380,6 +380,13 @@
     },
     // ---------- Drakarna ----------
     {
+      id: 'tiamat', name: 'Tiamat', rarity: 'divine', types: ['drake', 'eld'],
+      color: '#b0201a', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'spikes',
+      scale: 1.3, hp: 138, speed: 250, punch: 11, parts: { wings: true, tail: true, body: 'wide' },
+      passive: { type: 'dragonscale', name: 'Drakfjäll', desc: 'Tar 30 % mindre skada av allt som inte är vanliga slag.' },
+      special: { type: 'firebreath', name: 'Drakandning', dmg: 7, desc: 'Sprutar en eldkägla framåt i en och en halv sekund — allt i den bränns om och om igen. Kliv åt sidan!' },
+    },
+    {
       id: 'odla', name: 'Ödla', rarity: 'common', types: ['drake'],
       color: '#5fbf5a', accent: '#1f4a1c', eye: '#ffd93d', head: 'horn', extra: 'spikes',
       scale: 0.95, hp: 98, speed: 230, punch: 8, parts: { tail: true },
@@ -2339,6 +2346,7 @@
   // noun = det attackens namn byggs av ("Eld" + "klot"), desc = vad den gör.
   // Ordningen spelar roll när två ord börjar på samma ställe (laserspår före laser).
   const MIMIK_MECHANICS = [
+    { re: /drakandning|andas eld|eldkägla|sprutar eld/, mech: 'firebreath', word: 'drakandning', noun: 'andning', desc: 'Sprutar en kägla framåt som bränner om och om igen.' },
     { re: /laserfält|laserspår|lasermatta/, mech: 'lasertrail', word: 'laserspår', noun: 'laserspår', desc: 'Allt du går på i fyra sekunder blir ett laserfält som bränner.' },
     { re: /laser|stråle/, mech: 'beam', word: 'stråle', noun: 'stråle', desc: 'En blixtsnabb stråle långt fram.' },
     { re: /kulspruta|maskingevär|snabba skott/, mech: 'burst', word: 'kulspruta', noun: 'kulspruta', desc: 'Tre snabba skott i rad.' },
