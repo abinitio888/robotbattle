@@ -126,6 +126,13 @@
       return { acct: this.view() };
     }
 
+    async setBygge(bygge) {
+      const result = S.setBygge(this.acct, bygge);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
     async setHome(show) {
       const result = S.setHome(this.acct, show);
       if (result.error) throw new Error(result.error);
@@ -303,6 +310,7 @@
     buyBox(kind) { return this.api('/api/buy-box', { kind }); }
     claimAlbum(type) { return this.api('/api/album-claim', { type }); }
     setHome(show) { return this.api('/api/home-set', { show }); }
+    setBygge(bygge) { return this.api('/api/bygge-set', { bygge }); }
     setMimikCustom(text) { return this.api('/api/mimik-custom', { text }); }
     upgradeRobot(robot) { return this.api('/api/upgrade', { robot }); }
     buySkin(skin) { return this.api('/api/buy-skin', { skin }); }
@@ -415,6 +423,13 @@
 
     async buyBox(kind) {
       const result = S.buyBox(this.acct, kind);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async setBygge(bygge) {
+      const result = S.setBygge(this.acct, bygge);
       if (result.error) throw new Error(result.error);
       await this.save();
       return { acct: this.view() };

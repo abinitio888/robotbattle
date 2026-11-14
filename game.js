@@ -1785,6 +1785,7 @@ const screens = {
   album: document.getElementById('screen-album'),
   daily: document.getElementById('screen-daily'),
   home: document.getElementById('screen-home'),
+  bygge: document.getElementById('screen-bygge'),
   mimik: document.getElementById('screen-mimik'),
   travel: document.getElementById('screen-travel'),
   royals: document.getElementById('screen-royals'),
@@ -2349,6 +2350,7 @@ function myDef(def) {
     out = { ...def, special, color, head, extra, types };
   }
   if (def.id === 'mimik') out = Shared.mimikDef(def, acct && acct.mimikCustom); // eget bygge, se showMimik()
+  if (def.id === 'bygge') out = Shared.byggeDef(acct && acct.bygge); // robotbygget, se showBygge()
   // Robotens nivå (uppgraderad med dubbletter) och skin (valt i Garaget).
   const lv = acct && acct.robotLv ? acct.robotLv[def.id] || 1 : 1;
   out = Shared.levelUpDef(out, lv);
@@ -2480,7 +2482,8 @@ function showSelect() {
   cards.replaceChildren();
   // Monster hör inte hemma i samlingen — de går aldrig att äga/spela som, bara att utmana i
   // Monstervärlden (se showMonsters), så de ska inte synas som ett permanent olåst "???"-kort.
-  for (const def of ROBOTS.filter((r) => !r.monster)) {
+  // Robotbygget (står inte i ROBOTS) visas först, om man har byggt ett.
+  for (const def of [...(invCount('bygge') > 0 ? [robotById.bygge] : []), ...ROBOTS.filter((r) => !r.monster)]) {
     const n = invCount(def.id);
     const card = createCard(myDef(def), { locked: n === 0, selected: n > 0 && def.id === game.selectedId, compact: true, n });
     if (n > 0) {
@@ -2879,6 +2882,7 @@ const GUIDE = [
   { icon: '⚔️', title: 'Slåss', text: 'J eller MELLANSLAG slår, Shift eller L hoppar, E är din specialattack (när linjerna på roboten lyser starkt är den laddad) och Q är ditt supervapen om du bär ett.' },
   { icon: '🛡', title: 'Blockera och undvik', text: 'Håll F för att blockera: du tar bara en fjärdedel av skadan, men blocket går sönder om du tar för många slag i rad. Ett steg åt sidan räddar dig ofta — skott flyger längs en linje.' },
   { icon: '💥', title: 'Kombinationer', text: 'Slå tre slag i rad som träffar snabbt: det tredje gör DUBBEL skada och knuffar iväg motståndaren. Eller slå två slag och tryck sedan E direkt — då gör specialattacken 50 % mer skada!' },
+  { icon: '🆕', title: 'Nytt i staden', text: '📖 Samlaralbumet: samla alla robotar av en typ och få ett pris. 🏠 Mitt hem: ställ upp dina favoritrobotar. 📅 Dagens utmaning: en ny stark robot varje dag. 🛡 Klankrig i Klanhuset varje vecka. 🔧 Robotbygge i garaget: sätt ihop din egen robot!' },
   { icon: '🎁', title: 'Lådor, mynt och nivåer', text: 'Varannan vinst ger en låda. Lådor kan också köpas i Butiken för mynt. Vinster ger XP så att du går upp i nivå — det tar ett tag, så kämpa på! Uppdragstavlan ger mynt, och var tredje uppdrag ger en bonuslåda.' },
   { icon: '🚶', title: 'Robotarna på gatan', text: 'Robotarna som går omkring kan du utmana: gå fram och tryck J. Vinner du får du roboten! Från nivå 20 kommer elitrobotar och från nivå 30 stadens mästare.' },
   { icon: '⚔', title: 'Arenan', text: 'I Arenan väljer du vanlig match, insatsmatch (sätt en robot på spel och vinn motståndarens), lagstrid 3 mot 3 eller 5 mot 5, eller träning på en docka.' },
@@ -3055,6 +3059,62 @@ async function saveMimik() {
     byId('mimik-error').textContent = e.message;
     return;
   }
+  showSelect();
+}
+
+// ---------- Robotbygget ----------
+// Tre listor med robotar man äger (huvud, kropp, attack) och ett namn; förhandsvisningen
+// ritas om vid varje ändring. Sparas med net.setBygge (servern kollar att man äger delarna).
+function byggeOwned() {
+  return ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard' && invCount(r.id) > 0)
+    .sort((a, b) => Shared.rankOf(b) - Shared.rankOf(a) || a.name.localeCompare(b.name));
+}
+
+function showBygge() {
+  game.phase = 'bygge';
+  byId('bygge-error').textContent = '';
+  const owned = byggeOwned();
+  const current = game.acct.bygge;
+  const fill = (id, pick) => {
+    const sel = byId(id);
+    sel.replaceChildren();
+    for (const r of owned) sel.append(new Option(`${r.name} (${RARITY[r.rarity].label})`, r.id, false, r.id === pick));
+  };
+  fill('bygge-head', current ? current.head : owned[0] && owned[0].id);
+  fill('bygge-body', current ? current.body : (owned[1] || owned[0] || {}).id);
+  fill('bygge-special', current ? current.special : (owned[2] || owned[0] || {}).id);
+  byId('bygge-name').value = current ? current.name : '';
+  byId('btn-bygge-save').textContent = current ? '🔧 Bygg om roboten' : '🔧 Bygg roboten!';
+  renderBygge();
+  showScreen('bygge');
+}
+
+function byggeChoice() {
+  return { head: byId('bygge-head').value, body: byId('bygge-body').value, special: byId('bygge-special').value, name: byId('bygge-name').value.trim() || 'Mitt bygge' };
+}
+
+function renderBygge() {
+  const box = byId('bygge-preview');
+  box.replaceChildren();
+  const b = byggeChoice();
+  if (!b.head || !b.body || !b.special) { byId('bygge-info').textContent = 'Du behöver minst en robot.'; return; }
+  const def = Shared.byggeDef(b);
+  box.append(createCard(def, {}));
+  byId('bygge-info').textContent = `Huvud: ${robotById[b.head].name} · Kropp: ${robotById[b.body].name} · Attack: ${robotById[b.special].special.name} (${robotById[b.special].name})`;
+}
+
+async function saveBygge() {
+  const first = invCount('bygge') < 1;
+  try {
+    const r = await net.setBygge(byggeChoice());
+    applyAcct(r.acct);
+  } catch (e) {
+    byId('bygge-error').textContent = e.message;
+    return;
+  }
+  game.selectedId = 'bygge';
+  net.select('bygge').then((r) => applyAcct(r.acct)).catch(() => {});
+  if (first) celebrate('🔧 DIN ROBOT ÄR BYGGD!', `${game.acct.bygge.name} står i garaget — och du spelar med den nu!`, true);
   showSelect();
 }
 
@@ -4059,6 +4119,11 @@ byId('btn-tops-back').addEventListener('click', showHub);
 byId('btn-album-back').addEventListener('click', showHub);
 byId('btn-daily-back').addEventListener('click', showHub);
 byId('btn-home-back').addEventListener('click', showHub);
+byId('btn-bygge').addEventListener('click', showBygge);
+byId('btn-bygge-back').addEventListener('click', showSelect);
+byId('btn-bygge-save').addEventListener('click', saveBygge);
+for (const id of ['bygge-head', 'bygge-body', 'bygge-special']) byId(id).addEventListener('change', renderBygge);
+byId('bygge-name').addEventListener('input', renderBygge);
 byId('btn-daily-fight').addEventListener('click', () => { const dc = game.acct.dailyChallenge; if (dc && !dc.won) startMatch('daily', dc.day); });
 byId('btn-mimik').addEventListener('click', showMimik);
 byId('btn-mimik-back').addEventListener('click', showSelect);
@@ -5571,7 +5636,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'daily' || game.phase === 'home' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'daily' || game.phase === 'home' || game.phase === 'bygge' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);

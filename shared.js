@@ -994,6 +994,16 @@
   }
 
   const robotById = Object.fromEntries(ROBOTS.map((r) => [r.id, r]));
+  // Robotbygget: ens egen robot, ihopsatt av delar från tre robotar man äger (se byggeDef).
+  // Den står med flit INTE i ROBOTS, så den hamnar aldrig i lådor, på gatan, i tornet eller som
+  // motståndare — men den går att äga (inv.bygge) och spela med som vilken robot som helst.
+  const BYGGE_BASE = {
+    id: 'bygge', name: 'Mitt bygge', rarity: 'epic', types: ['normal'],
+    color: '#9aa7c7', accent: '#2f3646', eye: '#3ee8ff', head: 'box', extra: 'none',
+    scale: 1, hp: 100, speed: 230, punch: 8,
+    special: { type: 'projectile', name: 'Energiskott', dmg: 20, desc: 'Ett stort skott rakt fram.' },
+  };
+  robotById.bygge = BYGGE_BASE;
 
   // Hur ett föremål syns på roboten: [form, färg]. Formerna ritas i render3d.js.
   const ITEM_LOOK = {
@@ -1317,6 +1327,38 @@
     return pool[hashName(`dag-${day}`) % pool.length].id;
   }
 
+  // ---------- Robotbygget ----------
+  // Tre robotar man äger: huvudet (huvudform, ögon, tillbehör), kroppen (färger, storlek, liv,
+  // fart, slag) och attacken (specialattack och typ). Plus ett eget namn.
+  const BYGGE_PARTS = ['head', 'body', 'special'];
+  const byggeSource = (id) => typeof id === 'string' && id !== 'bygge' && id !== 'wildcard' && ROBOTS.some((r) => r.id === id && !r.monster && !r.boss);
+  function cleanBygge(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    if (!BYGGE_PARTS.every((k) => byggeSource(raw[k]))) return null;
+    return { head: raw.head, body: raw.body, special: raw.special, name: cleanName(raw.name) || 'Mitt bygge' };
+  }
+  function byggeDef(b) {
+    if (!b) return BYGGE_BASE;
+    const head = robotById[b.head];
+    const body = robotById[b.body];
+    const atk = robotById[b.special];
+    return {
+      ...BYGGE_BASE, name: b.name || BYGGE_BASE.name,
+      head: head.head, eye: head.eye, extra: head.extra,
+      color: body.color, accent: body.accent, scale: body.scale, hp: body.hp, speed: body.speed, punch: body.punch,
+      special: atk.special, types: atk.types,
+    };
+  }
+  function setBygge(acct, raw) {
+    const b = cleanBygge(raw);
+    if (!b) return { error: 'Välj ett huvud, en kropp och en attack.' };
+    for (const k of BYGGE_PARTS) if (count(acct, b[k]) < 1) return { error: `Du äger inte ${robotById[b[k]].name}.` };
+    const first = count(acct, 'bygge') < 1;
+    acct.bygge = b;
+    acct.inv.bygge = 1;
+    return { bygge: b, first };
+  }
+
   // ---------- Klankriget ----------
   // Varje vecka tävlar klanerna om krigspoäng (samma poäng som klanpoängen, se api/match). Den
   // klan som vann förra veckan: varje medlem hämtar priset en gång (clanWarClaimed = veckan).
@@ -1449,6 +1491,9 @@
       if (Number.isInteger(raw.tourneyStarted) && raw.tourneyStarted > 0) acct.tourneyStarted = raw.tourneyStarted;
       acct.winsToBox = Math.max(0, Math.min(1, Math.floor(Number(raw.winsToBox)) || 0));
       if (isDay(raw.dailyWon)) acct.dailyWon = raw.dailyWon;
+      // Robotbygget står inte i ROBOTS (se BYGGE_BASE), så det läses in för sig.
+      const bygge = cleanBygge(raw.bygge);
+      if (bygge && inv.bygge > 0) { acct.bygge = bygge; acct.inv.bygge = 1; }
       if (typeof raw.clanWarClaimed === 'string' && /^\d{4}-v\d{1,2}$/.test(raw.clanWarClaimed)) acct.clanWarClaimed = raw.clanWarClaimed;
       if (raw.home && Array.isArray(raw.home.show)) {
         acct.home = { show: raw.home.show.slice(0, HOME_SLOTS).map((id) => (typeof id === 'string' && robotById[id] ? id : null)) };
@@ -1618,7 +1663,8 @@
   // helst mot robotar man ger som tillsammans är värda minst lika mycket. Bossar går att ge
   // bort men aldrig att få; jokern och monstren går inte att byta alls.
   const TRADE_VALUE = { common: 1, rare: 3, epic: 10, legendary: 100, divine: 500, boss: 150, mythic: 300 };
-  const tradeValue = (id) => (robotById[id] ? TRADE_VALUE[robotById[id].rarity] || 0 : 0);
+  // Robotbygget går inte att byta (varken ge eller få) — det är ens eget.
+  const tradeValue = (id) => (robotById[id] && id !== 'bygge' ? TRADE_VALUE[robotById[id].rarity] || 0 : 0);
   const canTradeFor = (id) => !!robotById[id] && !robotById[id].boss && tradeValue(id) > 0;
 
   // give: { robotId: antal }. Returnerar { got } eller { error }.
@@ -2047,7 +2093,8 @@
       return { robot: robotId, stake: false, opp: monsterId, monster: true };
     }
     // Bolt går aldrig att sätta i insats som sista kopian — man ska alltid ha minst en kvar.
-    const canStakeThis = !(robotId === 'bolt' && count(acct, robotId) <= 1);
+    // Robotbygget sätts aldrig på spel (det är ens eget, och skulle försvinna för gott).
+    const canStakeThis = !(robotId === 'bolt' && count(acct, robotId) <= 1) && robotId !== 'bygge';
     const stake = mode === 'stake' && canStake(acct) && canStakeThis;
     if (stake) removeRobot(acct, robotId);
     return { robot: robotId, stake, opp: pickOpponent(robotId, stake, rng).id };
@@ -2308,6 +2355,7 @@
       wildcardExtra: acct.wildcardExtra || null,
       mimikCustom: acct.mimikCustom || null,
       albumClaimed: Array.isArray(acct.albumClaimed) ? [...acct.albumClaimed] : [],
+      bygge: acct.bygge || null,
       home: { show: acct.home && Array.isArray(acct.home.show) ? acct.home.show.filter((id) => !id || count(acct, id) > 0) : [] },
       dailyChallenge: isDay(today) ? { day: today, opp: dailyChallenge(today), won: acct.dailyWon === today } : null,
       equipmentInv: { ...(acct.equipmentInv || {}) },
@@ -2658,7 +2706,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
-    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS, setHome, HOME_SLOTS, MEDALS, CLANWAR_COINS, CLANWAR_BOXES,
+    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS, setHome, HOME_SLOTS, MEDALS, CLANWAR_COINS, CLANWAR_BOXES, setBygge, byggeDef,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,

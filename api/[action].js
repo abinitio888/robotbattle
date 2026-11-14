@@ -109,6 +109,12 @@ module.exports = dispatch({
     method: 'POST',
     handler: acctAction((acct, body) => S.setMimikCustom(acct, body.text)),
   },
+  // Robotbygget: sätt ihop en egen robot av tre robotar man äger (se setBygge i shared.js).
+  'bygge-set': {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.setBygge(acct, body.bygge)),
+  },
+
   // Hemmet: vilka robotar som står på piedestalerna (se setHome i shared.js).
   'home-set': {
     method: 'POST',

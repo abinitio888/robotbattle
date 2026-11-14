@@ -189,6 +189,7 @@
         <button id="btn-rename-wildcard" type="button" class="linklike" hidden>Döp om jokern</button>
         <button id="btn-choose-wildcard-attack" type="button" class="linklike" hidden>Beskriv jokerns attack</button>
         <button id="btn-mimik" type="button" class="linklike" hidden>🪞 Bygg Mimik</button>
+        <button id="btn-bygge" type="button" class="linklike">🔧 Robotbygge — sätt ihop en egen robot</button>
         <p id="select-error" class="error"></p>
         <div class="buttons">
           <button id="btn-boxes" type="button" class="secondary">Öppna låda</button>
@@ -316,6 +317,26 @@
           <button id="btn-mimik-save" type="button">💾 Spara Mimik</button>
         </div>
         <button id="btn-mimik-back" type="button" class="linklike">Tillbaka till Garaget</button>
+      </section>
+
+      <section id="screen-bygge" hidden>
+        <h2>🔧 Robotbygge</h2>
+        <p class="hint">Sätt ihop din egen robot av tre robotar du har: ett huvud, en kropp och en attack.</p>
+        <div class="bygge-wrap">
+          <div id="bygge-preview"></div>
+          <div class="bygge-form">
+            <label>🤖 Huvud från <select id="bygge-head"></select></label>
+            <label>💪 Kropp från <select id="bygge-body"></select></label>
+            <label>⚡ Attack från <select id="bygge-special"></select></label>
+            <label>✏️ Namn <input id="bygge-name" type="text" maxlength="20" placeholder="Mitt bygge"></label>
+            <p id="bygge-info" class="hint"></p>
+          </div>
+        </div>
+        <p id="bygge-error" class="hint"></p>
+        <div class="buttons">
+          <button id="btn-bygge-save" type="button">🔧 Bygg roboten!</button>
+        </div>
+        <button id="btn-bygge-back" type="button" class="linklike">Tillbaka till Garaget</button>
       </section>
 
       <section id="screen-home" hidden>
