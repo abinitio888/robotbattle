@@ -1133,6 +1133,46 @@
     return tex;
   }
 
+  // Bara rutnätets linjer (svart emellan): golvets lysande neonrutor.
+  function gridGlowTexture() {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 256;
+    const c = cv.getContext('2d');
+    c.fillStyle = '#000000';
+    c.fillRect(0, 0, 256, 256);
+    c.strokeStyle = '#ffffff';
+    c.lineWidth = 3;
+    c.strokeRect(0, 0, 256, 256);
+    c.globalAlpha = 0.35;
+    c.lineWidth = 1;
+    c.strokeRect(64, 64, 128, 128);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  // En hologramskylt: lysande text med en ram, ritas genomskinlig och "additiv".
+  function holoTexture(text, color) {
+    const cv = document.createElement('canvas');
+    cv.width = 512;
+    cv.height = 192;
+    const c = cv.getContext('2d');
+    c.fillStyle = 'rgba(0,0,0,0)';
+    c.fillRect(0, 0, 512, 192);
+    c.strokeStyle = color;
+    c.lineWidth = 6;
+    c.strokeRect(10, 10, 492, 172);
+    c.globalAlpha = 0.25;
+    for (let y = 14; y < 180; y += 6) { c.fillStyle = color; c.fillRect(12, y, 488, 2); } // scanlinjer
+    c.globalAlpha = 1;
+    c.fillStyle = color;
+    c.font = 'bold 64px Orbitron, ui-monospace, Menlo, monospace';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(text, 256, 98, 470);
+    return new THREE.CanvasTexture(cv);
+  }
+
   function windowsTexture(seedStart) {
     const cv = document.createElement('canvas');
     cv.width = 64;
@@ -1154,12 +1194,16 @@
     const extra = (arena.width || W) - W; // hur mycket bredare än en vanlig bana (Robotstaden)
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(4000 + extra, 3200),
-      new THREE.MeshStandardMaterial({ map: floorTexture(arena), metalness: 0.2, roughness: arena.id === 'ice' ? 0.15 : 0.8 }),
+      new THREE.MeshStandardMaterial({
+        map: floorTexture(arena), metalness: 0.35, roughness: arena.id === 'ice' ? 0.15 : 0.45,
+        emissive: arena.line, emissiveMap: gridGlowTexture(), emissiveIntensity: 0.55,
+      }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.z = -100;
     floor.position.x = extra / 2;
     floor.material.map.repeat.set((4000 + extra) / 250, 13); // samma rutstorlek även på ett bredare golv
+    floor.material.emissiveMap.repeat.copy(floor.material.map.repeat);
     floor.receiveShadow = true;
     g.add(floor);
 
@@ -1241,25 +1285,159 @@
       }
     }
 
+    buildFutureCity(g, arena, extra);
+    return g;
+  }
+
+  // ---------- Framtidsstaden ----------
+  // Bakom varje bana: skyskrapor med neonkanter, spiror med blinkande ljus, hologramskyltar,
+  // flygande bilar med ljusspår, och på himlen en planet med ring och stjärnor. Rörelserna
+  // (bilar, blink, flimmer) sköts av animateCity varje bildruta, utifrån klockan.
+  const NEON = ['#3ee8ff', '#ff3ee8', '#7b5cff', '#ffd93d', '#3ddc84'];
+  const HOLO_TEXTS = ['ROBOT BATTLE', 'NEON CUP 2099', 'ROBOSTADEN', 'ENERGI ⚡', 'DRAKARNA KOMMER', 'TORNET 50'];
+  function buildFutureCity(g, arena, extra) {
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-    for (const row of [{ z: -700, n: 22, base: 0.55 }, { z: -1100, n: 26, base: 0.35 }]) {
+    const neonMats = {};
+    const neonMat = (c) => (neonMats[c] = neonMats[c] || new THREE.MeshBasicMaterial({ color: c }));
+    const palette = [arena.line, ...NEON];
+    const city = { blinkers: [], cars: [], holos: [], x0: -1700, x1: 1700 + extra };
+    g.userData.city = city;
+    const spireMat = new THREE.MeshStandardMaterial({ color: '#2a3040', metalness: 0.8, roughness: 0.3 });
+    const blinkMat = new THREE.MeshBasicMaterial({ color: '#ff3b3b' });
+
+    for (const row of [{ z: -700, base: 0.55, hMul: 1 }, { z: -1100, base: 0.4, hMul: 1.7 }]) {
       for (let x = -1600; x < 1600 + extra;) {
         const bw = 60 + rnd() * 110;
-        const bh = 120 + rnd() * 380;
+        const bh = (160 + rnd() * 420) * row.hMul;
         const bd = 60 + rnd() * 80;
+        const z = row.z - rnd() * 80;
+        const cx = x + bw / 2;
         const mat = new THREE.MeshStandardMaterial({
           color: arena.line, emissive: '#ffffff', emissiveMap: windowsTexture(1 + Math.floor(rnd() * 9999)),
-          emissiveIntensity: row.base, roughness: 0.9,
+          emissiveIntensity: row.base, roughness: 0.35, metalness: 0.6,
         });
         mat.color.multiplyScalar(0.3);
         const b = new THREE.Mesh(box(bw, bh, bd), mat);
-        b.position.set(x + bw / 2, bh / 2, row.z - rnd() * 80);
+        b.position.set(cx, bh / 2, z);
         g.add(b);
+        const c = palette[Math.floor(rnd() * palette.length)];
+        // Höga hus får en smalare topp, som en framtidsskyskrapa.
+        let top = bh;
+        if (bh > 420) {
+          const th = bh * 0.22;
+          const t = new THREE.Mesh(box(bw * 0.6, th, bd * 0.6), mat);
+          t.position.set(cx, bh + th / 2, z);
+          g.add(t);
+          const band2 = new THREE.Mesh(box(bw * 0.6 + 4, 3, bd * 0.6 + 4), neonMat(c));
+          band2.position.set(cx, bh + th, z);
+          g.add(band2);
+          top = bh + th;
+        }
+        // Neonkanter: en lysande list upptill och (ofta) lysande hörn framtill.
+        const band = new THREE.Mesh(box(bw + 4, 4, bd + 4), neonMat(c));
+        band.position.set(cx, bh, z);
+        g.add(band);
+        if (rnd() < 0.6) {
+          for (const sx of [-1, 1]) {
+            const strip = new THREE.Mesh(box(3, bh, 3), neonMat(c));
+            strip.position.set(cx + sx * (bw / 2), bh / 2, z + bd / 2);
+            g.add(strip);
+          }
+        }
+        // En spira med ett blinkande ljus på en del av de höga husen.
+        if (top > 320 && rnd() < 0.55) {
+          const sh = 50 + rnd() * 70;
+          const spire = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 4, sh, 6), spireMat);
+          spire.position.set(cx, top + sh / 2, z);
+          const light = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 6), blinkMat);
+          light.position.set(cx, top + sh, z);
+          g.add(spire, light);
+          city.blinkers.push({ m: light, phase: rnd() * 6 });
+        }
         x += bw + 8;
       }
     }
-    return g;
+
+    // Hologramskyltar som svävar framför husen och flimrar ibland.
+    const signs = Math.max(3, Math.round((3200 + extra) / 700));
+    for (let i = 0; i < signs; i++) {
+      const c = NEON[i % NEON.length];
+      const mat = new THREE.MeshBasicMaterial({
+        map: holoTexture(HOLO_TEXTS[i % HOLO_TEXTS.length], c), transparent: true, opacity: 0.85,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      });
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(200, 75), mat);
+      sign.position.set(-1400 + (i + 0.5) * ((3000 + extra) / signs), 88 + rnd() * 18, -600 - rnd() * 15);
+      g.add(sign);
+      city.holos.push({ m: sign, phase: rnd() * 10, y: sign.position.y });
+    }
+
+    // Flygande bilar i tre höjder, åt båda hållen, med ljusspår bakom sig.
+    const bodyMat = new THREE.MeshStandardMaterial({ color: '#1a1f2e', metalness: 0.9, roughness: 0.25 });
+    for (let i = 0; i < 14; i++) {
+      const c = NEON[i % NEON.length];
+      const car = new THREE.Group();
+      const body = new THREE.Mesh(box(40, 9, 18), bodyMat);
+      const cabin = new THREE.Mesh(box(18, 7, 14), new THREE.MeshBasicMaterial({ color: '#9fe8ff' }));
+      cabin.position.set(4, 7, 0);
+      const front = new THREE.Mesh(box(3, 4, 16), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+      front.position.set(21, 0, 0);
+      const trail = new THREE.Mesh(new THREE.PlaneGeometry(150, 6), new THREE.MeshBasicMaterial({
+        color: c, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      trail.position.set(-95, 0, 0);
+      const under = new THREE.Mesh(box(30, 2, 14), neonMat(c));
+      under.position.set(0, -5, 0);
+      car.add(body, cabin, front, trail, under);
+      const lane = i % 3;
+      const dir = i % 2 ? 1 : -1;
+      car.scale.x = dir; // nosen framåt, spåret bakom
+      // Låga filer (syns även från sidan) och en hög fil (syns från robotens ögon).
+      car.position.set(0, [50, 150, 360][lane] + rnd() * 20, [-540, -585, -620][lane] - rnd() * 20);
+      g.add(car);
+      city.cars.push({ m: car, dir, speed: 160 + rnd() * 220, start: rnd() });
+    }
+
+    // Himlen: en planet med ring, en stor ljusring och stjärnor. Utan dimma, så de syns långt bort.
+    const midX = (extra) / 2;
+    const planet = new THREE.Mesh(new THREE.SphereGeometry(360, 32, 24), new THREE.MeshBasicMaterial({ color: '#2a1850', fog: false }));
+    planet.position.set(midX + 900, 1250, -3600);
+    const pRing = new THREE.Mesh(new THREE.TorusGeometry(560, 14, 6, 64), new THREE.MeshBasicMaterial({ color: '#b07bff', fog: false, transparent: true, opacity: 0.8 }));
+    pRing.position.copy(planet.position);
+    pRing.rotation.set(Math.PI / 2.3, 0.3, 0);
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(1500, 5, 6, 96), new THREE.MeshBasicMaterial({ color: arena.line, fog: false, transparent: true, opacity: 0.55 }));
+    halo.position.set(midX - 400, 900, -3900);
+    halo.rotation.set(0.25, 0.4, 0);
+    g.add(planet, pRing, halo);
+    city.halo = halo;
+    const STARS = 320;
+    const starPos = new Float32Array(STARS * 3);
+    for (let i = 0; i < STARS; i++) {
+      starPos[i * 3] = -3000 + rnd() * (6000 + extra);
+      starPos[i * 3 + 1] = 700 + rnd() * 2200;
+      starPos[i * 3 + 2] = -3400 - rnd() * 800;
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    g.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 6, color: '#dfe8ff', fog: false, transparent: true, opacity: 0.85 })));
+  }
+
+  // Rör på staden: bilarna flyger (och börjar om på andra sidan), ljusen blinkar, skyltarna flimrar.
+  function animateCity(city, t) {
+    if (!city) return;
+    const span = city.x1 - city.x0;
+    for (const c of city.cars) {
+      const d = (c.start * span + t * c.speed) % span;
+      c.m.position.x = c.dir > 0 ? city.x0 + d : city.x1 - d;
+    }
+    for (const b of city.blinkers) b.m.visible = Math.sin(t * 2.4 + b.phase) > 0.55;
+    for (const h of city.holos) {
+      const glitch = Math.sin(t * 13 + h.phase * 7) > 0.97;
+      h.m.material.opacity = glitch ? 0.25 : 0.72 + Math.sin(t * 2 + h.phase) * 0.12;
+      h.m.position.y = h.y + Math.sin(t * 0.8 + h.phase) * 6;
+    }
+    if (city.halo) city.halo.rotation.z = t * 0.03;
   }
 
   // ---------- Effekter (pooler: samma meshar återanvänds varje bildruta) ----------
@@ -1392,7 +1570,7 @@
       try {
         composer = new THREE.EffectComposer(renderer);
         composer.addPass(new THREE.RenderPass(scene, camera));
-        composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(W, H), 0.65, 0.45, 0.86));
+        composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(W, H), 0.8, 0.5, 0.82));
       } catch (e) {
         composer = null;
       }
@@ -2122,6 +2300,7 @@
     function render(s) {
       setArena(s.arena);
       moveSaws(s.trapTime || 0);
+      animateCity(arenas[currentArena].group.userData.city, performance.now() / 1000);
       camWorld = s.arena.width || W;
       for (const byOwner of rigs.values()) for (const k in byOwner) { byOwner[k].used = false; }
       for (const entry of s.fighters || []) drawFighter(entry);

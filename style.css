@@ -920,3 +920,128 @@ button.clan-btn { background: linear-gradient(135deg, #3a4a9a, #7a1fff); box-sha
 .mimik-attack:hover { border-color: #c77dff; }
 .mimik-attack.chosen { background: #2a1a44; border-color: #ffd93d; box-shadow: 0 0 0 1px #ffd93d; }
 .mimik-chip { padding: 3px 8px; border-radius: 10px; background: #2a1a44; border: 1px solid #c77dff; color: #f0e2ff; font-size: 12px; }
+
+/* ================= Framtiden =================
+   Neon, glas och lysande kanter. Ligger sist så att den gäller före grundstilen ovan, men
+   bara på samma (enkla) väljare — knappar och kort med egna klasser behåller sitt utseende. */
+:root {
+  --neon-a: #3ee8ff;
+  --neon-b: #8f7bff;
+  --neon-c: #ff3ee8;
+  --glass-edge: rgba(62, 232, 255, 0.35);
+  --font-future: Orbitron, ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(62, 232, 255, 0.14), transparent 60%),
+    radial-gradient(1000px 600px at 110% 110%, rgba(255, 62, 232, 0.12), transparent 60%),
+    linear-gradient(rgba(62, 232, 255, 0.05) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, rgba(62, 232, 255, 0.05) 1px, transparent 1px) 0 0 / 40px 40px,
+    #060912;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-future);
+  font-weight: 900;
+  background: linear-gradient(90deg, #ffffff, var(--neon-a) 45%, var(--neon-b) 75%, var(--neon-c));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 10px rgba(62, 232, 255, 0.45));
+}
+h3 { font-size: 18px; letter-spacing: 0.1em; margin: 6px 0 0; }
+
+.label { font-family: var(--font-future); text-shadow: 0 0 8px currentColor; }
+
+/* Spelplanen: neonram med hörnmarkeringar. */
+#stage {
+  border: 1px solid var(--glass-edge);
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(143, 123, 255, 0.25), 0 0 28px rgba(62, 232, 255, 0.25), inset 0 0 40px rgba(62, 232, 255, 0.08);
+}
+#stage::before, #stage::after {
+  content: '';
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--neon-a);
+  pointer-events: none;
+  z-index: 5;
+  filter: drop-shadow(0 0 6px var(--neon-a));
+}
+#stage::before { top: 6px; left: 6px; border-right: 0; border-bottom: 0; border-radius: 6px 0 0 0; }
+#stage::after { bottom: 6px; right: 6px; border-left: 0; border-top: 0; border-radius: 0 0 6px 0; border-color: var(--neon-c); filter: drop-shadow(0 0 6px var(--neon-c)); }
+
+/* Menyerna: mörkt glas med fina skanlinjer. */
+#overlay {
+  background:
+    repeating-linear-gradient(0deg, rgba(62, 232, 255, 0.035) 0 1px, transparent 1px 4px),
+    linear-gradient(160deg, rgba(8, 14, 32, 0.9), rgba(14, 8, 34, 0.9));
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* Knapparna: lysande gradient, glöder mer när man pekar på dem. */
+button {
+  background: linear-gradient(135deg, var(--neon-a), var(--neon-b));
+  color: #04101c;
+  border-radius: 8px;
+  letter-spacing: 0.04em;
+  box-shadow: 0 0 14px rgba(62, 232, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.12);
+  box-shadow: 0 0 22px rgba(62, 232, 255, 0.7), 0 0 40px rgba(143, 123, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+button:active:not(:disabled) { transform: translateY(1px); }
+button.secondary {
+  background: rgba(20, 30, 60, 0.75);
+  border: 1px solid var(--glass-edge);
+  box-shadow: 0 0 10px rgba(62, 232, 255, 0.15), inset 0 0 12px rgba(62, 232, 255, 0.08);
+}
+button.linklike, button.linklike:hover:not(:disabled) {
+  background: none;
+  box-shadow: none;
+  transform: none;
+}
+
+/* Mätarna: lysande, med små segment som i en framtidsdisplay. */
+.bar {
+  background: rgba(10, 16, 34, 0.85);
+  border-color: rgba(62, 232, 255, 0.3);
+  position: relative;
+}
+.bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 14px, rgba(0, 0, 0, 0.35) 14px 16px);
+  pointer-events: none;
+}
+.fill.player { background: linear-gradient(90deg, #1aa8ff, var(--neon-a)); box-shadow: 0 0 12px var(--neon-a); }
+.fill.ai { background: linear-gradient(90deg, #ff3b6b, #ff8a3d); box-shadow: 0 0 12px #ff5a3d; }
+
+/* Robotkorten: glas som lyfter och glöder; de finaste har ett hologramsken. */
+.card {
+  background: linear-gradient(170deg, rgba(24, 34, 66, 0.85), rgba(12, 16, 34, 0.9));
+  border-color: rgba(62, 232, 255, 0.22);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.card.pickable:hover { transform: translateY(-3px); border-color: var(--neon-a); box-shadow: 0 0 16px rgba(62, 232, 255, 0.4); }
+.card.legendary, .card.divine, .card.mythic { position: relative; overflow: hidden; }
+.card.legendary::after, .card.divine::after, .card.mythic::after {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.16) 50%, transparent 60%);
+  animation: holo-shine 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes holo-shine { from { transform: translateX(-60%); } to { transform: translateX(60%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .card::after { animation: none !important; }
+}
