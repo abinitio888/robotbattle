@@ -21,7 +21,7 @@
     // Ett skin (se SKINS i shared.js) ändrar hur ytan ser ut: blank metall, neonkanter, kristall.
     const sk = (def.skin && def.skin.mat) || {};
     const std = (color) => new THREE.MeshStandardMaterial({
-      color, metalness: sk.metalness !== undefined ? sk.metalness : 0.6, roughness: sk.roughness !== undefined ? sk.roughness : 0.3,
+      color, metalness: sk.metalness !== undefined ? sk.metalness : 0.45, roughness: sk.roughness !== undefined ? sk.roughness : 0.38,
     });
     const additive = (opacity) => new THREE.MeshBasicMaterial({
       color: def.eye, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -774,7 +774,6 @@
       pivot.position.set(0, 40, side * 11);
       pivot.add(mesh(box(12, 34, 12), M.dark, 0, -17, 0));
       pivot.add(mesh(box(22, 10, 16), M.body, 3, -35, 0));
-      pivot.add(mesh(box(23, 1.6, 17), M.line, 3, -40.4, 0)); // lysande sula
       // Knä med en lysande punkt och en energilinje ner mot foten.
       pivot.add(mesh(sphere(7), M.body, 1, -16, 0));
       pivot.add(mesh(sphere(2.2), M.line, 7.5, -16, 0));
@@ -842,8 +841,6 @@
       limb.add(mesh(box(1.4, 26, 1.4), M.line, 5, 0, 0)); // följer med när armen sträcks
       const fist = mesh(sphere(7), mat, 0, -len, 0);
       fist.add(mesh(new THREE.TorusGeometry(7.2, 1.2, 6, 18), M.line));
-      fist.add(mesh(box(12, 10, 12), mat === M.body ? M.dark : M.body, 0, 10, 0)); // pansarskydd
-      fist.add(mesh(box(1.4, 8, 12.6), M.line, 6.2, 10, 0));
       pivot.add(limb, fist);
       upper.add(pivot);
       return { pivot, limb, fist };
@@ -855,73 +852,6 @@
         pad.scale.set(1.1, 0.8, 1);
         upper.add(pad);
         upper.add(mesh(sphere(2), M.line, 2, 99, z));
-      }
-    }
-    // ---- Framtidsdetaljer ----
-    // Lysande kanter längs bålens framhörn och en krage upptill.
-    for (const z of [-16.6, 16.6]) upper.add(mesh(box(1.6, 50, 1.6), M.line, 22.2 * bodyW, 67, z * bodyW));
-    upper.add(mesh(box(46 * bodyW, 1.6, 36 * bodyW), M.line, 0, 96.6, 0));
-    // Fenor på axlarna (om axlarna inte redan är stora).
-    if (def.extra !== 'shoulders') {
-      for (const side of [-1, 1]) {
-        const fin = mesh(box(14, 3, 10), M.body, -2, 100, side * 27);
-        fin.rotation.x = side * 0.55;
-        upper.add(fin);
-        const edge = mesh(box(14, 1, 1.4), M.line, -2, 103, side * 30.5);
-        edge.rotation.x = side * 0.55;
-        upper.add(edge);
-      }
-    }
-    // Bröstreaktorn: en lysande ring runt kärnan, med blad som snurrar.
-    const reactor = new THREE.Group();
-    reactor.position.set(24 * bodyW + 3, 77, 0); // precis framför kärnan
-    const reactorRing = mesh(new THREE.TorusGeometry(8, 1.6, 8, 24), M.line);
-    reactorRing.rotation.y = Math.PI / 2;
-    const reactorSpin = new THREE.Group();
-    for (let k = 0; k < 3; k++) {
-      const blade = mesh(box(1.2, 11, 2), M.line, 2.6, 0, 0);
-      blade.rotation.x = (k * Math.PI) / 3;
-      reactorSpin.add(blade);
-    }
-    reactor.add(reactorRing, reactorSpin);
-    upper.add(reactor);
-    // Jetpack på ryggen (om ryggen inte redan har vingar, mantel, jet eller taggar).
-    const jetGlows = [];
-    if (!parts.wings && !['jet', 'cape', 'spikes'].includes(def.extra)) {
-      const pack = new THREE.Group();
-      pack.position.set(-22 * bodyW, 76, 0);
-      pack.add(mesh(box(10, 30, 26), M.dark));
-      pack.add(mesh(box(1.4, 22, 2.4), M.line, -5.3, 2, 0));
-      for (const z of [-8, 8]) {
-        pack.add(mesh(cyl(4.5, 3.4, 8, 10), M.body, -1, -18, z));
-        const g = mesh(cone(3.4, 12, 10), M.line, -1, -28, z);
-        g.rotation.z = Math.PI;
-        pack.add(g);
-        jetGlows.push(g);
-      }
-      upper.add(pack);
-    }
-    // Episka och finare: en hologramskanning som sveper upp och ner över kroppen.
-    const fancy = ['epic', 'legendary', 'divine', 'mythic'].includes(def.rarity);
-    let scan = null;
-    if (fancy) {
-      const scanMat = new THREE.MeshBasicMaterial({ color: def.eye, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending });
-      scan = new THREE.Mesh(new THREE.TorusGeometry(32 * bodyW, 1.1, 6, 40), scanMat);
-      scan.rotation.x = Math.PI / 2;
-      inner.add(scan);
-    }
-    // Legendariska, gudomliga och Mimik: två små drönare som cirklar runt huvudet.
-    const drones = [];
-    if (['legendary', 'divine', 'mythic'].includes(def.rarity)) {
-      const droneMat = new THREE.MeshStandardMaterial({ color: '#1a1f2e', metalness: 0.9, roughness: 0.25 });
-      for (let k = 0; k < 2; k++) {
-        const d = new THREE.Group();
-        d.add(mesh(sphere(4), droneMat));
-        const halo = mesh(new THREE.TorusGeometry(6, 0.9, 6, 18), M.line);
-        halo.rotation.x = Math.PI / 2;
-        d.add(halo, mesh(sphere(1.6), M.eye, 3.6, 0, 0));
-        inner.add(d);
-        drones.push(d);
       }
     }
     const back = arm(-24, M.dark);
@@ -1047,7 +977,7 @@
     glow.castShadow = false;
     const upperBase = 40 * (legScale - 1); // långa/korta ben flyttar upp/ner allt ovanför
     upper.position.y = upperBase;
-    return { def, root, inner, upper, upperBase, armMul, extraArms, wings, tail, legs, back, front, core, cape, flame, glow, shield, divine, gear, neck, M, reactorSpin, jetGlows, scan, drones, legScale };
+    return { def, root, inner, upper, upperBase, armMul, extraArms, wings, tail, legs, back, front, core, cape, flame, glow, shield, divine, gear, neck, M };
   }
 
   const SIL_BODY = new THREE.Color('#232c4a');
@@ -1146,23 +1076,6 @@
     if (rig.tail) rig.tail.rotation.y = Math.sin(t * (p.moving ? 8 : 2.2)) * 0.35;
 
     rig.core.scale.setScalar(p.ready ? 1.4 : 1);
-    // Framtidsdetaljerna rör sig: reaktorn snurrar (fortare när specialen är laddad), jetpacken
-    // flammar när roboten springer eller flyger, skanringen sveper och drönarna cirklar.
-    rig.reactorSpin.rotation.x = t * (p.ready ? 9 : 3);
-    for (const g of rig.jetGlows) g.scale.set(1, (p.moving || air ? 1.6 : 0.7) + 0.35 * Math.abs(Math.sin(t * 27 + g.position.z)), 1);
-    if (rig.scan) {
-      const cyc = (t * 0.42) % 1;
-      rig.scan.visible = !sil && !p.dead;
-      rig.scan.position.y = 4 + cyc * 136 * rig.legScale;
-      rig.scan.material.opacity = Math.sin(cyc * Math.PI) * 0.75 * alpha;
-      rig.scan.material.color.set(def.eye);
-    }
-    rig.drones.forEach((d, k) => {
-      const a = t * 1.6 + k * Math.PI;
-      d.visible = !sil && !p.dead;
-      d.position.set(Math.cos(a) * 42, 128 + Math.sin(t * 3 + k * 2) * 6, Math.sin(a) * 42);
-      d.rotation.y = -a;
-    });
     if (rig.cape) rig.cape.rotation.z = 0.35 + Math.sin(t * 6) * 0.06;
     if (rig.flame) rig.flame.scale.y = 1 + Math.sin(t * 30) * 0.3;
 
@@ -1550,31 +1463,6 @@
     blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
   });
 
-  // Det metallen speglar: en mörk himmel med neonljus runt horisonten och ett ljus ovanför.
-  // Görs en gång (PMREM) och sätts som scene.environment — då blänker alla robotar.
-  function makeEnvMap(renderer) {
-    if (!THREE.PMREMGenerator) return null;
-    try {
-      const envScene = new THREE.Scene();
-      envScene.add(new THREE.Mesh(new THREE.SphereGeometry(100, 32, 16), new THREE.MeshBasicMaterial({ map: gradientTexture('#16245a', '#04050b'), side: THREE.BackSide })));
-      const lights = [['#3ee8ff', 0, 8, -80], ['#ff3ee8', 80, 14, 0], ['#7b5cff', -80, 10, 20], ['#3ee8ff', 0, 12, 80]];
-      for (const [c, x, y, z] of lights) {
-        const strip = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(z) > 0 ? 90 : 4, 8, Math.abs(x) > 0 ? 90 : 4), new THREE.MeshBasicMaterial({ color: c }));
-        strip.position.set(x, y, z);
-        envScene.add(strip);
-      }
-      const top = new THREE.Mesh(new THREE.BoxGeometry(70, 2, 70), new THREE.MeshBasicMaterial({ color: '#dfe8ff' }));
-      top.position.set(0, 90, 0);
-      envScene.add(top);
-      const pmrem = new THREE.PMREMGenerator(renderer);
-      const env = pmrem.fromScene(envScene, 0.02).texture;
-      pmrem.dispose();
-      return env;
-    } catch (e) {
-      return null;
-    }
-  }
-
   function createLights(scene) {
     const hemi = new THREE.HemisphereLight('#b8c8ff', '#202030', 0.75);
     scene.add(hemi);
@@ -1604,8 +1492,6 @@
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const scene = new THREE.Scene();
-    // Bara robotarna speglar neonet (se rigFor) — golv och hus skulle bli för ljusa.
-    const robotEnv = makeEnvMap(renderer);
     const FOV = 34;
     const camera = new THREE.PerspectiveCamera(FOV, W / H, 10, 6000);
     // Kameran följer kämparna: den siktar mitt emellan dem och går närmare ju närmare de står
@@ -1743,7 +1629,6 @@
         if (rig) scene.remove(rig.root);
         rig = buildRobot(def);
         rig.key = key;
-        if (robotEnv) rig.root.traverse((o) => { if (o.isMesh && o.material.isMeshStandardMaterial) o.material.envMap = robotEnv; });
         scene.add(rig.root);
         byOwner[slot] = rig;
       }
@@ -2473,7 +2358,6 @@
       r.setPixelRatio(1);
       r.setSize(260, 340, false);
       const sc = new THREE.Scene();
-      sc.environment = makeEnvMap(r);
       const l = createLights(sc);
       l.sun.castShadow = false;
       const cam = new THREE.PerspectiveCamera(30, 130 / 170, 10, 3000);
