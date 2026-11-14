@@ -1307,6 +1307,16 @@
 
   // ---------- Konto ----------
   // Ett konto är { inv: {robotId: antal}, boxes, daily: 'ÅÅÅÅ-MM-DD', selected, level, xp }.
+  // ---------- Dagens utmaning ----------
+  // Varje dag en speciell robot (episk eller legendarisk, samma för alla den dagen). Besegra den
+  // så blir den din och du får mynt — en gång per dag (dailyWon). Dagen kommer från servern.
+  const DAILY_COINS = 120;
+  const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
+  function dailyChallenge(day) {
+    const pool = ROBOTS.filter((r) => !r.monster && !r.boss && !r.mimic && r.id !== 'wildcard' && (r.rarity === 'epic' || r.rarity === 'legendary'));
+    return pool[hashName(`dag-${day}`) % pool.length].id;
+  }
+
   // ---------- Samlaralbumet ----------
   // Alla robotar man kan samla (inte monster, bossar eller jokern), en sida per typ. Har man
   // alla robotar på en sida får man hämta sidans pris EN gång (albumClaimed håller koll).
@@ -1417,6 +1427,7 @@
       if (Number.isInteger(raw.eventBeaten) && raw.eventBeaten > 0) acct.eventBeaten = raw.eventBeaten;
       if (Number.isInteger(raw.tourneyStarted) && raw.tourneyStarted > 0) acct.tourneyStarted = raw.tourneyStarted;
       acct.winsToBox = Math.max(0, Math.min(1, Math.floor(Number(raw.winsToBox)) || 0));
+      if (isDay(raw.dailyWon)) acct.dailyWon = raw.dailyWon;
       if (Array.isArray(raw.albumClaimed)) acct.albumClaimed = [...new Set(raw.albumClaimed.filter((t) => typeof t === 'string' && TYPES[t]))];
       const se = raw.season;
       if (se && typeof se.id === 'string' && /^\d{4}-[0-3]$/.test(se.id)) {
@@ -1948,6 +1959,12 @@
       }
       return { error: 'Den roboten har gått vidare.' };
     }
+    if (mode === 'daily') {
+      if (!isDay(target)) return { error: 'Ingen utmaning i dag.' };
+      if (acct.dailyWon === target) return { error: 'Du har redan klarat dagens utmaning — en ny kommer i morgon!' };
+      acct.selected = robotId;
+      return { robot: robotId, stake: false, opp: dailyChallenge(target), daily: target };
+    }
     if (mode === 'event') {
       const ev = eventWindow(now);
       if (!ev.open) return { error: 'Jättebossen är inte i staden just nu.' };
@@ -2153,6 +2170,15 @@
             result.gained = match.opp;
           }
         }
+      } else if (match.daily) {
+        // Bara en gång per dag (en gammal match räknas inte två gånger).
+        if (acct.dailyWon !== match.daily) {
+          acct.dailyWon = match.daily;
+          addRobot(acct, match.opp);
+          result.gained = match.opp;
+          result.daily = true;
+          result.coins += addCoins(acct, DAILY_COINS);
+        }
       } else if (match.boss) {
         addRobot(acct, match.opp);
         result.bossWon = match.opp;
@@ -2257,6 +2283,7 @@
       wildcardExtra: acct.wildcardExtra || null,
       mimikCustom: acct.mimikCustom || null,
       albumClaimed: Array.isArray(acct.albumClaimed) ? [...acct.albumClaimed] : [],
+      dailyChallenge: isDay(today) ? { day: today, opp: dailyChallenge(today), won: acct.dailyWon === today } : null,
       equipmentInv: { ...(acct.equipmentInv || {}) },
       equippedItem: acct.equippedItem || null,
       superPieces: { ...(acct.superPieces || {}) },
@@ -2605,7 +2632,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
-    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES,
+    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,

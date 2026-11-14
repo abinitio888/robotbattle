@@ -1749,6 +1749,7 @@ const screens = {
   tourney: document.getElementById('screen-tourney'),
   tops: document.getElementById('screen-tops'),
   album: document.getElementById('screen-album'),
+  daily: document.getElementById('screen-daily'),
   mimik: document.getElementById('screen-mimik'),
   travel: document.getElementById('screen-travel'),
   royals: document.getElementById('screen-royals'),
@@ -1912,8 +1913,9 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.weekly = started.match.weekly ? started.match.weekly.floor : 0;
   game.tourney = started.match.tourney || 0;
   game.event = started.match.event !== undefined;
+  game.daily = !!started.match.daily;
   // Veckans torn är svårt redan från början: våning 1 är som tornets våning 32, våning 10 som toppen.
-  game.bossTier = game.event ? GIANT_TIER : game.tourney ? tourneyTier(game.tourney) : game.weekly ? towerTier(30 + game.weekly * 2) : game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
+  game.bossTier = game.event ? GIANT_TIER : game.daily ? towerTier(20) : game.tourney ? tourneyTier(game.tourney) : game.weekly ? towerTier(30 + game.weekly * 2) : game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
     : game.elite ? eliteTier(game.acct.level, game.champion) : null;
   const tierDef = game.bossTier && game.bossTier.hpMul ? { ...oppDef, hp: Math.round(oppDef.hp * game.bossTier.hpMul) } : oppDef;
   const aDef = game.event ? { ...tierDef, scale: tierDef.scale * GIANT_SCALE } : tierDef; // jättebossen är jättestor
@@ -1932,6 +1934,7 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   announceMimic(game.player, game.ai);
   hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
   hud.nameAi.textContent = game.event ? `👹 JÄTTEBOSSEN · ${aDef.name}`
+    : game.daily ? `📅 DAGENS UTMANING · ${aDef.name}`
     : game.tourney ? `🏆 ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toUpperCase()} · ${aDef.name}`
     : game.team ? `👥 LAGSTRID ${game.team} MOT ${game.team} · ${aDef.name} leder`
     : game.weekly ? `📅 VECKANS TORN ${game.weekly}/${Shared.WEEKLY_TOP} · ${aDef.name}`
@@ -3019,6 +3022,29 @@ async function saveMimik() {
   showSelect();
 }
 
+// ---------- Dagens utmaning ----------
+// Dagens robot (från servern, samma för alla). Vinner man blir den ens egen, en gång per dag.
+function showDaily() {
+  game.phase = 'daily';
+  const dc = game.acct.dailyChallenge;
+  const box = byId('daily-card');
+  box.replaceChildren();
+  const btn = byId('btn-daily-fight');
+  if (!dc) {
+    byId('daily-status').textContent = 'Ingen utmaning just nu.';
+    btn.disabled = true;
+  } else {
+    const def = robotById[dc.opp];
+    box.append(createCard(def, {}));
+    byId('daily-status').textContent = dc.won
+      ? `✅ Du har klarat dagens utmaning och vunnit ${def.name}! En ny robot kommer i morgon.`
+      : `I dag är det ${def.name} (${RARITY[def.rarity].label}). Den är stark — som en boss! Besegra den så blir den din, och du får ${Shared.DAILY_COINS} 🪙. Du kan försöka hur många gånger du vill i dag.`;
+    btn.disabled = dc.won;
+    btn.textContent = dc.won ? '✅ Klarad i dag' : `⚔ Utmana ${def.name}`;
+  }
+  showScreen('daily');
+}
+
 // ---------- Samlaralbumet ----------
 // En sida per typ: robotarna du har syns, de du saknar är silhuetter. En hel sida ger ett pris
 // (mynt och en låda) som man hämtar en gång.
@@ -3267,6 +3293,7 @@ const STATIONS = [
   { id: 'tower', name: 'Utmaningstornet', emoji: '🗼', color: '#ff5ad1', x: 1220, z: -120 },
   { id: 'friend', name: 'Vänmatch', emoji: '🤝', color: '#7ee2a8', x: 800, z: 120 },
   { id: 'tops', name: 'Topplistor', emoji: '📊', color: '#3ee8ff', x: 1010, z: 120 },
+  { id: 'daily', name: 'Dagens utmaning', emoji: '📅', color: '#ff7ad9', x: 1220, z: 120 },
 
   { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 1400, z: -120 },
   { id: 'trade', name: 'Handlaren', emoji: '🔁', color: '#ff9a2a', x: 1400, z: 120 },
@@ -3283,6 +3310,7 @@ const STATION_HINT = {
   boxes: 'öppna lådor och hämta den dagliga',
   quests: 'nya uppdrag hela tiden',
   album: 'alla robotar du kan samla — en hel sida ger ett pris',
+  daily: 'en ny stark robot varje dag — vinn och den blir din',
   equipment: 'välj vad din robot bär',
   boss: 'möt en mystisk robot',
   monsters: 'res till Monstervärlden',
@@ -3473,6 +3501,7 @@ function enterStation(id) {
     case 'tourney': showTourney(); break;
     case 'tops': showTops(); break;
     case 'album': showAlbum(); break;
+    case 'daily': showDaily(); break;
     case 'garage': game.fromHub = true; showSelect(); break;
     case 'boxes':
       // Den dagliga lådan hämtas automatiskt när man går in i Lådor.
@@ -3882,6 +3911,8 @@ byId('btn-team-back').addEventListener('click', showHub);
 byId('btn-tourney-back').addEventListener('click', showHub);
 byId('btn-tops-back').addEventListener('click', showHub);
 byId('btn-album-back').addEventListener('click', showHub);
+byId('btn-daily-back').addEventListener('click', showHub);
+byId('btn-daily-fight').addEventListener('click', () => { const dc = game.acct.dailyChallenge; if (dc && !dc.won) startMatch('daily', dc.day); });
 byId('btn-mimik').addEventListener('click', showMimik);
 byId('btn-mimik-back').addEventListener('click', showSelect);
 byId('btn-mimik-save').addEventListener('click', saveMimik);
@@ -4012,6 +4043,10 @@ function showResult() {
       ? `👹 Ni besegrade jättebossen! Du fick ${Shared.EVENT_COINS} 🪙 och ${Shared.EVENT_BOXES === 1 ? 'en extra låda' : `${Shared.EVENT_BOXES} extra lådor`}!`
       : '👹 Ni besegrade jättebossen igen!';
     if (r.eventWon) celebrate('👹 JÄTTEBOSSEN ÄR BESEGRAD!', `${Shared.EVENT_COINS} 🪙 + ${Shared.EVENT_BOXES === 1 ? 'en låda' : `${Shared.EVENT_BOXES} lådor`}!`, true);
+  } else if (r.won && r.daily) {
+    text = `📅 Du klarade dagens utmaning! ${robotById[r.gained].name} är din, och du fick ${Shared.DAILY_COINS} 🪙. ${boxLine(r)}`;
+    rewardItem('DAGENS ROBOT!', robotById[r.gained], { isNew: true, n: invCount(r.gained) });
+    celebrate('📅 DAGENS UTMANING KLARAD!', `${robotById[r.gained].name} + ${Shared.DAILY_COINS} 🪙`, true);
   } else if (r.won && r.tourney) {
     if (r.tourneyWon) {
       text = `🏆 Du vann turneringen! ${robotById[r.gained].name} är din, och du fick ${Shared.TOURNEY_WIN_COINS} 🪙 och ${Shared.TOURNEY_WIN_BOXES} extra lådor!`;
@@ -4052,6 +4087,8 @@ function showResult() {
     rewardItem('FÖRLORAD ROBOT', robotById[r.lost], { n: invCount(r.lost) });
   } else if (game.event) {
     text = '👹 Jättebossen var för stark den här gången. Försök igen medan den är kvar i staden!';
+  } else if (game.daily) {
+    text = '📅 Dagens robot var för stark den här gången. Den finns kvar hela dagen — försök igen!';
   } else if (game.tourney) {
     text = `🏆 Du åkte ut i ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toLowerCase()}en. Det går en ny turnering var femte minut — försök igen då!`;
   } else if (game.weekly) {
@@ -5387,7 +5424,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'daily' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);
