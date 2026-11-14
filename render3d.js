@@ -743,62 +743,19 @@
           mat.color.copy(color);
           mat.opacity = base * alpha;
         }
-        // (Det som förr cirklade runt roboten står stilla — spin används inte längre.)
+        for (const s of spin) s.g.rotation.y = t * s.speed * (1 + power * 3);
         for (const w of flap) w.pivot.rotation.x = w.side * (Math.sin(t * (4 + power * 10)) * 0.18 + power * 0.35);
-        const p = 1 + power * 0.8; // växer bara under specialattacken, annars stilla
+        const p = 1 + power * 0.8 + Math.sin(t * 5) * 0.06;
         for (const m of pulse) m.scale.copy(m.userData.s).multiplyScalar(p);
-
+        for (const sp of spinners) {
+          if (sp.mat) sp.mat.rotation = t * sp.speed * (1 + power * 4);
+          else sp.obj.rotation[sp.axis] = t * sp.speed * (1 + power * 3);
+        }
       },
     };
   }
 
   // Bygger en robot. Returnerar en "rigg" med alla delar som poseRobot() rör på.
-  // Varje robot är byggd på sitt eget sätt, så att de ser olika ut på långt håll:
-  // torso: box (låda), round (tunna), wedge (kil: breda axlar, smal midja), egg (ägg), slab (hög och smal)
-  // legs: long, short, wheels, tracks, hover (svävar, inga ben), spider (fyra spindelben)
-  // arms: long, short, four, blade (svärdsarm), claw (klor)
-  // body: wide/thin. Robotens egna parts (Mimiks bygge, drakarnas vingar) går före.
-  const BUILDS = {
-    bolt: {}, salvo: { torso: 'round', legs: 'short' }, titan: { torso: 'wedge', body: 'wide', legs: 'tracks', arms: 'long' },
-    blitz: { torso: 'wedge', body: 'thin', legs: 'long', arms: 'blade' }, shade: { torso: 'egg', legs: 'hover', arms: 'claw' },
-    rook: { body: 'wide', legs: 'short', arms: 'long' }, mortar: { torso: 'round', legs: 'tracks' }, volt: { torso: 'egg', legs: 'long' },
-    aegis: { torso: 'wedge', body: 'wide' }, nova: { torso: 'egg', legs: 'hover' }, omega: { torso: 'wedge', legs: 'long', arms: 'claw' },
-    spike: { legs: 'spider' }, vamp: { torso: 'slab', legs: 'hover', arms: 'claw' }, prisma: { torso: 'egg', legs: 'hover' },
-    frost: { torso: 'wedge', legs: 'spider', arms: 'blade' }, falk: { torso: 'wedge', body: 'thin', legs: 'long' },
-    zenith: { torso: 'slab', legs: 'hover', arms: 'long' }, wildcard: { torso: 'round' }, mimik: { torso: 'egg' },
-    boomer: { torso: 'round', legs: 'wheels' }, sapper: { legs: 'tracks', arms: 'short' }, anchor: { torso: 'round', body: 'wide', arms: 'long' },
-    miasma: { torso: 'round', legs: 'spider' }, riposte: { torso: 'slab', body: 'thin', legs: 'long', arms: 'blade' },
-    comet: { torso: 'wedge', legs: 'hover' }, pip: { torso: 'egg', body: 'thin', legs: 'wheels' }, grus: { body: 'wide', legs: 'tracks' },
-    glod: { torso: 'round', legs: 'short', arms: 'claw' }, tornado: { torso: 'wedge', legs: 'hover', arms: 'blade' },
-    koral: { torso: 'round', legs: 'spider' }, gnista: { legs: 'spider', arms: 'four' }, fantom: { torso: 'slab', legs: 'hover' },
-    magma: { torso: 'wedge', body: 'wide', legs: 'short', arms: 'long' }, viper: { torso: 'slab', body: 'thin', legs: 'spider', arms: 'claw' },
-    aurora: { torso: 'egg', legs: 'long' }, ragnar: { torso: 'wedge', body: 'wide', arms: 'blade' },
-    odla: { torso: 'round', arms: 'claw' }, glodvinge: { torso: 'wedge', arms: 'claw' }, stormdrake: { torso: 'slab', legs: 'long' },
-    nattdrake: { torso: 'wedge', arms: 'claw' }, tiamat: { torso: 'wedge', arms: 'claw', legs: 'short' },
-    seraph: { torso: 'slab', legs: 'long' }, atlas: { torso: 'wedge', body: 'wide', legs: 'short', arms: 'long' },
-    eclipse: { torso: 'egg', legs: 'hover' }, kronos: { torso: 'round', legs: 'long' }, solaris: { torso: 'round', body: 'thin', legs: 'long' },
-    leviatan: { torso: 'wedge', legs: 'hover', arms: 'long' }, fenrir: { torso: 'wedge', legs: 'spider', arms: 'claw' },
-    gaia: { torso: 'round', body: 'wide', legs: 'short' }, valkyria: { torso: 'wedge', body: 'thin', legs: 'long', arms: 'blade' },
-    gnasher: { torso: 'round', legs: 'spider', arms: 'claw' }, skuggvarg: { torso: 'slab', legs: 'long', arms: 'claw' },
-    stenkoloss: { torso: 'wedge', body: 'wide', legs: 'short', arms: 'long' }, frostspindel: { torso: 'egg', legs: 'spider' },
-    sumpdrake: { torso: 'round', tail: true }, nattuggla: { torso: 'egg', wings: true, legs: 'short' },
-    lavagolem: { torso: 'wedge', body: 'wide', legs: 'short', arms: 'long' }, stormfenix: { torso: 'slab', wings: true, legs: 'long' },
-    kristallkrabba: { torso: 'round', body: 'wide', legs: 'spider', arms: 'claw' }, mygghärva: { torso: 'egg', body: 'thin', legs: 'spider', wings: true },
-    djupvakt: { torso: 'round', legs: 'hover', arms: 'long' }, taggormen: { torso: 'slab', legs: 'hover', tail: true },
-    drakkungen: { torso: 'wedge', wings: true, tail: true, arms: 'claw' }, frostkungen: { torso: 'wedge', arms: 'blade' },
-    stenkungen: { torso: 'wedge', body: 'wide', legs: 'short', arms: 'long' }, skuggdrottningen: { torso: 'slab', legs: 'hover', arms: 'claw' },
-  };
-  // Robotar som inte finns i listan (t.ex. nya) får en form efter sina typer.
-  function autoBuild(def) {
-    const t = def.types || [];
-    if (t.includes('spöke') || t.includes('psykisk')) return { torso: 'egg', legs: 'hover' };
-    if (t.includes('sten') || t.includes('mark')) return { torso: 'wedge', body: 'wide', legs: 'short', arms: 'long' };
-    if (t.includes('kryp')) return { torso: 'round', legs: 'spider' };
-    if (t.includes('strid')) return { torso: 'wedge', arms: 'blade' };
-    if (t.includes('flygande') || t.includes('elektrisk')) return { torso: 'slab', body: 'thin', legs: 'long' };
-    return { torso: 'round' };
-  }
-
   function buildRobot(def) {
     const M = makeMaterials(def);
     const root = new THREE.Group();
@@ -806,7 +763,7 @@
     root.add(inner);
     // Hur roboten är byggd (bara Mimik har det, se describeMimik i shared.js): kropp smal/tjock,
     // ben långa/korta/hjul/larvband, armar långa/korta/fyra, vingar och svans.
-    const parts = { ...(BUILDS[def.id] || autoBuild(def)), ...(def.parts || {}) };
+    const parts = def.parts || {};
     const legScale = parts.legs === 'long' ? 1.35 : parts.legs === 'short' ? 0.7 : 1;
     const bodyW = parts.body === 'wide' ? 1.3 : parts.body === 'thin' ? 0.75 : 1;
     const armMul = parts.arms === 'long' ? 1.4 : parts.arms === 'short' ? 0.7 : 1;
@@ -848,26 +805,6 @@
             pivot.add(roller);
           }
         }
-      } else if (parts.legs === 'hover') {
-        // Inga ben: en avsmalnande svävkapsel med ett stilla sken under.
-        pivot.clear();
-        const pod = mesh(cone(10, 30, 12), M.dark, 0, -14, 0);
-        pod.rotation.z = Math.PI;
-        pivot.add(pod, mesh(box(1.4, 20, 2), M.line, 6, -12, 0));
-        const glowDisc = mesh(new THREE.CircleGeometry(9, 18), M.line, 0, -31, 0);
-        glowDisc.rotation.x = Math.PI / 2;
-        pivot.add(glowDisc);
-      } else if (parts.legs === 'spider') {
-        // Två spindelben per sida (fyra totalt), med knän som pekar utåt.
-        pivot.clear();
-        for (const k of [-1, 1]) {
-          const thigh = mesh(box(4, 26, 4), M.dark, k * 9, -8, side * 5);
-          thigh.rotation.z = k * 0.75;
-          thigh.rotation.x = side * -0.35;
-          const shin = mesh(box(3.5, 28, 3.5), M.body, k * 19, -27, side * 9);
-          shin.rotation.z = -k * 0.2;
-          pivot.add(thigh, shin, mesh(sphere(3.4), M.line, k * 15, -16, side * 8), mesh(cone(2.4, 7, 6), M.line, k * 21, -42, side * 9));
-        }
       }
       pivot.add(thrust);
       // Långa eller korta ben: benet sträcks från höften, och resten av roboten flyttas upp/ner.
@@ -879,34 +816,15 @@
 
     const upper = new THREE.Group(); // allt ovanför benen, gungar lite när den står still
     inner.add(upper);
-    const torsoShape = parts.torso || 'box';
-    let torso;
-    if (torsoShape === 'round') {
-      torso = mesh(cyl(24, 20, 58, 20), M.body, 0, 67, 0);
-      const rim = mesh(new THREE.TorusGeometry(24 * bodyW, 2.2, 6, 24), M.dark, 0, 90, 0); // fast kant, rör sig inte
-      rim.rotation.x = Math.PI / 2;
-      upper.add(rim);
-    } else if (torsoShape === 'wedge') {
-      torso = mesh(new THREE.CylinderGeometry(33, 18, 58, 4), M.body, 0, 67, 0);
-      torso.rotation.y = Math.PI / 4;
-    } else if (torsoShape === 'egg') {
-      torso = mesh(new THREE.SphereGeometry(28, 20, 14), M.body, 0, 69, 0);
-      torso.scale.y = 1.15;
-    } else if (torsoShape === 'slab') {
-      torso = mesh(box(32, 70, 28), M.body, 0, 72, 0);
-    } else {
-      torso = mesh(box(44, 58, 34), M.body, 0, 67, 0);
-    }
-    torso.scale.x *= bodyW;
-    torso.scale.z *= bodyW;
+    const torso = mesh(box(44, 58, 34), M.body, 0, 67, 0);
+    torso.scale.set(bodyW, 1, bodyW);
     upper.add(torso);
     upper.add(mesh(box(4, 22, 24), M.dark, 22 * bodyW, 77, 0));
     const core = mesh(sphere(5), M.eye, 24 * bodyW, 77, 0);
     upper.add(core);
     // Bälte med ett lysande spänne, energilinjer på bröstet och lysande ventiler på sidorna.
     const belt = mesh(box(47, 7, 37), M.dark, 0, 42, 0);
-    const waist = { wedge: 0.62, egg: 0.72, slab: 0.72, round: 0.88 }[torsoShape] || 1; // bältet lika brett som midjan
-    belt.scale.set(bodyW * waist, 1, bodyW * waist);
+    belt.scale.set(bodyW, 1, bodyW);
     upper.add(belt);
     upper.add(mesh(box(2, 4, 10), M.line, 24, 42, 0));
     for (const z of [-9, 9]) upper.add(mesh(box(1.4, 14, 2.6), M.line, 22.4, 56, z));
@@ -941,7 +859,7 @@
     }
     // ---- Framtidsdetaljer ----
     // Lysande kanter längs bålens framhörn och en krage upptill.
-    if (torsoShape === 'box') for (const z of [-16.6, 16.6]) upper.add(mesh(box(1.6, 50, 1.6), M.line, 22.2 * bodyW, 67, z * bodyW));
+    for (const z of [-16.6, 16.6]) upper.add(mesh(box(1.6, 50, 1.6), M.line, 22.2 * bodyW, 67, z * bodyW));
     upper.add(mesh(box(46 * bodyW, 1.6, 36 * bodyW), M.line, 0, 96.6, 0));
     // Fenor på axlarna (om axlarna inte redan är stora).
     if (def.extra !== 'shoulders') {
@@ -983,22 +901,31 @@
       }
       upper.add(pack);
     }
-    const back = arm(-24, M.dark);
-    const front = arm(24, M.body);
-    if (parts.arms === 'blade') {
-      // Ett energisvärd ur den främre näven: hänger ner, pekar framåt när den slår.
-      const blade = mesh(box(3, 48, 11), M.dark, 0, -27, 0);
-      front.fist.add(blade, mesh(box(3.6, 46, 2), M.line, 0, -27, 6), mesh(cone(5.5, 12, 4), M.line, 0, -56, 0));
-      front.fist.children[front.fist.children.length - 1].rotation.z = Math.PI;
-    } else if (parts.arms === 'claw') {
-      for (const f of [front.fist, back.fist]) {
-        for (const z of [-5, 0, 5]) {
-          const c = mesh(cone(2.4, 13, 6), M.line, 3, -9, z);
-          c.rotation.z = Math.PI + 0.35;
-          f.add(c);
-        }
+    // Episka och finare: en hologramskanning som sveper upp och ner över kroppen.
+    const fancy = ['epic', 'legendary', 'divine', 'mythic'].includes(def.rarity);
+    let scan = null;
+    if (fancy) {
+      const scanMat = new THREE.MeshBasicMaterial({ color: def.eye, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending });
+      scan = new THREE.Mesh(new THREE.TorusGeometry(32 * bodyW, 1.1, 6, 40), scanMat);
+      scan.rotation.x = Math.PI / 2;
+      inner.add(scan);
+    }
+    // Legendariska, gudomliga och Mimik: två små drönare som cirklar runt huvudet.
+    const drones = [];
+    if (['legendary', 'divine', 'mythic'].includes(def.rarity)) {
+      const droneMat = new THREE.MeshStandardMaterial({ color: '#1a1f2e', metalness: 0.9, roughness: 0.25 });
+      for (let k = 0; k < 2; k++) {
+        const d = new THREE.Group();
+        d.add(mesh(sphere(4), droneMat));
+        const halo = mesh(new THREE.TorusGeometry(6, 0.9, 6, 18), M.line);
+        halo.rotation.x = Math.PI / 2;
+        d.add(halo, mesh(sphere(1.6), M.eye, 3.6, 0, 0));
+        inner.add(d);
+        drones.push(d);
       }
     }
+    const back = arm(-24, M.dark);
+    const front = arm(24, M.body);
     // Fyra armar: ett extra par lite längre ner, som rör sig som de vanliga.
     const extraArms = parts.arms === 'four' ? [{ arm: arm(-26, M.dark, 66), like: 'back' }, { arm: arm(26, M.body, 66), like: 'front' }] : [];
     // Vingar på ryggen och en svans, som rör sig lite (se poseRobot).
@@ -1120,7 +1047,7 @@
     glow.castShadow = false;
     const upperBase = 40 * (legScale - 1); // långa/korta ben flyttar upp/ner allt ovanför
     upper.position.y = upperBase;
-    return { def, root, inner, upper, upperBase, armMul, extraArms, wings, tail, legs, back, front, core, cape, flame, glow, shield, divine, gear, neck, M, jetGlows, legScale };
+    return { def, root, inner, upper, upperBase, armMul, extraArms, wings, tail, legs, back, front, core, cape, flame, glow, shield, divine, gear, neck, M, reactorSpin, jetGlows, scan, drones, legScale };
   }
 
   const SIL_BODY = new THREE.Color('#232c4a');
@@ -1219,8 +1146,23 @@
     if (rig.tail) rig.tail.rotation.y = Math.sin(t * (p.moving ? 8 : 2.2)) * 0.35;
 
     rig.core.scale.setScalar(p.ready ? 1.4 : 1);
-    // Jetpacken flammar när roboten springer eller flyger.
+    // Framtidsdetaljerna rör sig: reaktorn snurrar (fortare när specialen är laddad), jetpacken
+    // flammar när roboten springer eller flyger, skanringen sveper och drönarna cirklar.
+    rig.reactorSpin.rotation.x = t * (p.ready ? 9 : 3);
     for (const g of rig.jetGlows) g.scale.set(1, (p.moving || air ? 1.6 : 0.7) + 0.35 * Math.abs(Math.sin(t * 27 + g.position.z)), 1);
+    if (rig.scan) {
+      const cyc = (t * 0.42) % 1;
+      rig.scan.visible = !sil && !p.dead;
+      rig.scan.position.y = 4 + cyc * 136 * rig.legScale;
+      rig.scan.material.opacity = Math.sin(cyc * Math.PI) * 0.75 * alpha;
+      rig.scan.material.color.set(def.eye);
+    }
+    rig.drones.forEach((d, k) => {
+      const a = t * 1.6 + k * Math.PI;
+      d.visible = !sil && !p.dead;
+      d.position.set(Math.cos(a) * 42, 128 + Math.sin(t * 3 + k * 2) * 6, Math.sin(a) * 42);
+      d.rotation.y = -a;
+    });
     if (rig.cape) rig.cape.rotation.z = 0.35 + Math.sin(t * 6) * 0.06;
     if (rig.flame) rig.flame.scale.y = 1 + Math.sin(t * 30) * 0.3;
 
