@@ -1079,3 +1079,5 @@ button.linklike, button.linklike:hover:not(:disabled) {
 .bygge-form { display: flex; flex-direction: column; gap: 10px; text-align: left; min-width: 260px; }
 .bygge-form label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; }
 .bygge-form select, .bygge-form input { padding: 6px; background: #131a2b; color: var(--text); border: 1px solid #2a3556; border-radius: 6px; font: inherit; font-weight: 400; }
+.card.custom .rarity { color: #ff9a2a; }
+.card.custom { border-color: rgba(255, 154, 42, 0.6); }

@@ -509,6 +509,88 @@ const SPECIALS = {
       }
     },
   },
+  // ---- Robotbyggets egna attacker (se BYGGE_ATTACKS i shared.js) ----
+  rockets: {
+    // Fem raketer från ryggen i en hög båge, som slår ner runt motståndaren en i taget.
+    dur: 0.7, fires: [0.25],
+    fire: (f, o, sp) => {
+      [-70, -35, 0, 35, 70].forEach((off, i) => {
+        const x0 = f.x - f.facing * 6;
+        const y0 = f.y - f.h * 0.95;
+        const vy = -620 - i * 60; // olika höga bågar: de landar en i taget
+        const grav = 1300;
+        const tx = clamp(o.x + off, 20, W - 20);
+        const t = (-vy + Math.sqrt(vy * vy - 2 * grav * (y0 - FLOOR))) / grav;
+        game.projectiles.push({ owner: f, x: x0, y: y0, z: f.z, vx: (tx - x0) / t, vy, vz: (o.z - f.z) / t, grav, dmg: sp.dmg, r: 8, blast: 34, color: '#ff9a2a', noEnergy: true, knock: 120 });
+      });
+      sparks(f.x, f.y - f.h, '#ff9a2a', 14, f.z);
+    },
+  },
+  tesla: {
+    // Ett elfält runt roboten i två sekunder: den som står nära får en stöt var tredje tiondel.
+    dur: 2.0, fires: [0.15, 0.45, 0.75, 1.05, 1.35, 1.65, 1.95],
+    fire: (f, o, sp) => {
+      for (let k = 0; k < 10; k++) {
+        const a = Math.random() * Math.PI * 2;
+        sparks(f.x + Math.cos(a) * 95, f.y - f.h * 0.5 + Math.sin(a) * 20, '#7fe8ff', 2, f.z + Math.sin(a) * 60);
+      }
+      if (Math.hypot(o.x - f.x, o.z - f.z) < 125) {
+        const energy = f.energy;
+        hurt(o, sp.dmg, Math.sign(o.x - f.x) || f.facing, 70, f);
+        f.energy = energy;
+        sparks(o.x, o.y - o.h * 0.6, '#ffffff', 10, o.z);
+      }
+    },
+  },
+  spin: {
+    // Snurrar fram som en snurra: rör sig framåt och slår allt i vägen, flera gånger.
+    dur: 1.2, fires: [0.1, 0.3, 0.5, 0.7, 0.9, 1.1],
+    fire: (f, o, sp) => {
+      f.kx = f.facing * 420;
+      sparks(f.x, f.y - f.h * 0.5, f.def.color, 8, f.z);
+      const energy = f.energy;
+      meleeHit(f, o, sp.dmg, 55 * f.def.scale, 140);
+      f.energy = energy;
+    },
+  },
+  net: {
+    // Ett elnät som fastnar: den som träffas kan inte gå (men kan slå) en och en halv sekund.
+    dur: 0.55, fires: [0.2],
+    fire: (f, o, sp) => {
+      game.projectiles.push({
+        owner: f, x: f.x + f.facing * (f.w / 2 + 8), y: f.y - f.h * 0.6, z: f.z,
+        vx: f.facing * 520, dmg: sp.dmg, r: 16, color: '#7fe8ff', root: 1.5, knock: 40,
+      });
+    },
+  },
+  magnet: {
+    // Drar in motståndaren till roboten, var den än står (även i djupled), och ger en stöt.
+    dur: 0.6, fires: [0.25],
+    fire: (f, o, sp) => {
+      const dir = Math.sign(f.x - o.x) || 1;
+      const dist = Math.abs(f.x - o.x);
+      for (let k = 0; k < 8; k++) sparks(o.x + dir * k * 20, o.y - o.h * 0.5, '#c77dff', 2, o.z);
+      hurt(o, sp.dmg, dir, 0, f);
+      // Dragningen efter träffen (hurt() sätter annars knuffen till noll).
+      if (dist > 70) o.kx = dir * Math.min(1100, 300 + dist * 2.2);
+      o.z += (f.z - o.z) * 0.8;
+    },
+  },
+  railgun: {
+    // Laddar upp (lyser) och skjuter sedan ett jätteskott genom allt — hinder och hela banan.
+    dur: 1.15, fires: [0.1, 0.85],
+    fire: (f, o, sp) => {
+      if (f.act && f.act.i === 1) { // laddningen
+        sparks(f.x + f.facing * 30, f.y - f.h * 0.55, '#7fe8ff', 16, f.z);
+        return;
+      }
+      const x0 = f.x + f.facing * (f.w / 2);
+      const x1 = f.x + f.facing * 1400;
+      game.beams.push({ x0, x1, y: f.y - f.h * 0.55, z: f.z, t: 0.35, max: 0.35, color: '#7fe8ff' });
+      game.shake = Math.max(game.shake, 0.35);
+      if (inLane(o, f.z, 30) && overlaps(o, x0, x1, f.y - f.h * 0.85, f.y - f.h * 0.2)) hurt(o, sp.dmg, f.facing, 520, f);
+    },
+  },
   tether: {
     // En gyllene kedja binder motståndaren vid Valkyria i tre sekunder. Är den för långt bort
     // dras den in och tar skada — men den som står nära klarar sig.
@@ -1040,8 +1122,11 @@ function updateProjectiles(dt) {
       // Krok (grapple) drar motståndaren mot den som kastade den, i stället för bort.
       const dir = p.pull ? (Math.sign(p.owner.x - target.x) || 1) : Math.sign(p.vx);
       const knock = p.pull ? 260 : 300;
-      if (hurt(target, p.dmg, dir, knock, p.owner)) {
+      const energy = p.owner.energy;
+      if (hurt(target, p.dmg, dir, p.knock !== undefined ? p.knock : knock, p.owner)) {
         p.dead = true;
+        if (p.noEnergy) p.owner.energy = energy; // byggets raketer ger ingen energi tillbaka
+        if (p.root) target.rootT = Math.max(target.rootT || 0, p.root); // elnätet
         if (p.freeze) {
           target.hurt = p.freeze;
           target.invuln = p.freeze + 0.1;
@@ -1056,7 +1141,9 @@ function updateProjectiles(dt) {
       if (p.cloud) {
         game.clouds.push({ owner: p.owner, x: p.x, z: p.z, r: p.cloud.r, life: p.cloud.life, tickT: 0.15, dmg: p.cloud.dmg, color: p.color });
       } else if (Math.abs(p.x - target.x) < p.blast + target.w / 2 && inLane(target, p.z, p.blast * 0.6) && target.y >= FLOOR - 50) {
-        hurt(target, p.dmg, Math.sign(target.x - p.x) || 1, 420, p.owner);
+        const energy = p.owner.energy;
+        hurt(target, p.dmg, Math.sign(target.x - p.x) || 1, p.knock !== undefined ? p.knock * 2 : 420, p.owner);
+        if (p.noEnergy) p.owner.energy = energy;
       }
     }
   }
@@ -3082,7 +3169,9 @@ function showBygge() {
   };
   fill('bygge-head', current ? current.head : owned[0] && owned[0].id);
   fill('bygge-body', current ? current.body : (owned[1] || owned[0] || {}).id);
-  fill('bygge-special', current ? current.special : (owned[2] || owned[0] || {}).id);
+  const atk = byId('bygge-special');
+  atk.replaceChildren();
+  for (const a of Shared.BYGGE_ATTACKS) atk.append(new Option(`${a.name} — ${a.desc}`, a.type, false, current ? a.type === current.special : a === Shared.BYGGE_ATTACKS[0]));
   byId('bygge-name').value = current ? current.name : '';
   byId('btn-bygge-save').textContent = current ? '🔧 Bygg om roboten' : '🔧 Bygg roboten!';
   renderBygge();
@@ -3100,7 +3189,7 @@ function renderBygge() {
   if (!b.head || !b.body || !b.special) { byId('bygge-info').textContent = 'Du behöver minst en robot.'; return; }
   const def = Shared.byggeDef(b);
   box.append(createCard(def, {}));
-  byId('bygge-info').textContent = `Huvud: ${robotById[b.head].name} · Kropp: ${robotById[b.body].name} · Attack: ${robotById[b.special].special.name} (${robotById[b.special].name})`;
+  byId('bygge-info').textContent = `Huvud: ${robotById[b.head].name} · Kropp och typ: ${robotById[b.body].name} · Attack: ${def.special.name}`;
 }
 
 async function saveBygge() {
@@ -4439,7 +4528,7 @@ async function openBox() {
   }, 1450);
 }
 
-const RARITY_COLOR = { common: '#9aa7c7', rare: '#4da3ff', epic: '#b46bff', legendary: '#ffd93d', divine: '#3ee8ff', wildcard: '#ff5fd2', mythic: '#c77dff', boss: '#ff1744', monster: '#ff7a1a' };
+const RARITY_COLOR = { custom: '#ff9a2a', common: '#9aa7c7', rare: '#4da3ff', epic: '#b46bff', legendary: '#ffd93d', divine: '#3ee8ff', wildcard: '#ff5fd2', mythic: '#c77dff', boss: '#ff1744', monster: '#ff7a1a' };
 const rarityColor = (def) => RARITY_COLOR[def.rarity] || '#5b6bd6';
 
 // isRename: true när man själv öppnar rutan igen för att byta namn (och därmed attack, se

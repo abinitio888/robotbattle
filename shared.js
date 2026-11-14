@@ -16,6 +16,7 @@
     boss: { label: 'Mystisk', weight: 0, rank: 5 },
     wildcard: { label: 'Joker', weight: 0, rank: 2 },
     mythic: { label: 'Mytisk', weight: 0, rank: 4 }, // bara Mimik, se MIMIK_CHANCE
+    custom: { label: 'Eget bygge', weight: 0, rank: 3 }, // bara robotbygget, se BYGGE_BASE
     monster: { label: 'Monster', weight: 0, rank: 6 },
   };
 
@@ -998,7 +999,7 @@
   // Den står med flit INTE i ROBOTS, så den hamnar aldrig i lådor, på gatan, i tornet eller som
   // motståndare — men den går att äga (inv.bygge) och spela med som vilken robot som helst.
   const BYGGE_BASE = {
-    id: 'bygge', name: 'Mitt bygge', rarity: 'epic', types: ['normal'],
+    id: 'bygge', name: 'Mitt bygge', rarity: 'custom', types: ['normal'],
     color: '#9aa7c7', accent: '#2f3646', eye: '#3ee8ff', head: 'box', extra: 'none',
     scale: 1, hp: 100, speed: 230, punch: 8,
     special: { type: 'projectile', name: 'Energiskott', dmg: 20, desc: 'Ett stort skott rakt fram.' },
@@ -1330,26 +1331,40 @@
   // ---------- Robotbygget ----------
   // Tre robotar man äger: huvudet (huvudform, ögon, tillbehör), kroppen (färger, storlek, liv,
   // fart, slag) och attacken (specialattack och typ). Plus ett eget namn.
-  const BYGGE_PARTS = ['head', 'body', 'special'];
+  // Attacken är en av byggets EGNA attacker (BYGGE_ATTACKS) — ingen annan robot har dem.
+  // Typen kommer från kroppen.
+  const BYGGE_ATTACKS = [
+    { type: 'rockets', name: 'Raketsvärm', dmg: 8, desc: 'Fem raketer flyger upp i en båge och slår ner runt motståndaren.' },
+    { type: 'tesla', name: 'Teslafält', dmg: 4, desc: 'Ett elfält runt dig i två sekunder — alla som står nära får stötar hela tiden.' },
+    { type: 'spin', name: 'Turbosnurr', dmg: 5, desc: 'Snurrar fram som en snurra och träffar om och om igen.' },
+    { type: 'net', name: 'Elnät', dmg: 12, desc: 'Kastar ett elnät — den som träffas kan inte gå på en och en halv sekund.' },
+    { type: 'magnet', name: 'Magnetpuls', dmg: 10, desc: 'Drar in motståndaren till dig, var den än står.' },
+    { type: 'railgun', name: 'Rälsgevär', dmg: 32, desc: 'Laddar upp en stund och skjuter sedan ett jätteskott som går igenom allt.' },
+  ];
+  const BYGGE_ATTACK_IDS = new Set(BYGGE_ATTACKS.map((a) => a.type));
+  const BYGGE_PARTS = ['head', 'body'];
   const byggeSource = (id) => typeof id === 'string' && id !== 'bygge' && id !== 'wildcard' && ROBOTS.some((r) => r.id === id && !r.monster && !r.boss);
   function cleanBygge(raw) {
     if (!raw || typeof raw !== 'object') return null;
     if (!BYGGE_PARTS.every((k) => byggeSource(raw[k]))) return null;
-    return { head: raw.head, body: raw.body, special: raw.special, name: cleanName(raw.name) || 'Mitt bygge' };
+    // Ett äldre bygge hade en annan robots attack — det får byggets första egna attack.
+    const special = BYGGE_ATTACK_IDS.has(raw.special) ? raw.special : BYGGE_ATTACKS[0].type;
+    return { head: raw.head, body: raw.body, special, name: cleanName(raw.name) || 'Mitt bygge' };
   }
   function byggeDef(b) {
     if (!b) return BYGGE_BASE;
     const head = robotById[b.head];
     const body = robotById[b.body];
-    const atk = robotById[b.special];
+    const atk = BYGGE_ATTACKS.find((a) => a.type === b.special) || BYGGE_ATTACKS[0];
     return {
       ...BYGGE_BASE, name: b.name || BYGGE_BASE.name,
       head: head.head, eye: head.eye, extra: head.extra,
       color: body.color, accent: body.accent, scale: body.scale, hp: body.hp, speed: body.speed, punch: body.punch,
-      special: atk.special, types: atk.types,
+      special: { ...atk }, types: body.types,
     };
   }
   function setBygge(acct, raw) {
+    if (!raw || typeof raw !== 'object' || !BYGGE_ATTACK_IDS.has(raw.special)) return { error: 'Välj ett huvud, en kropp och en attack.' };
     const b = cleanBygge(raw);
     if (!b) return { error: 'Välj ett huvud, en kropp och en attack.' };
     for (const k of BYGGE_PARTS) if (count(acct, b[k]) < 1) return { error: `Du äger inte ${robotById[b[k]].name}.` };
@@ -2706,7 +2721,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
-    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS, setHome, HOME_SLOTS, MEDALS, CLANWAR_COINS, CLANWAR_BOXES, setBygge, byggeDef,
+    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS, setHome, HOME_SLOTS, MEDALS, CLANWAR_COINS, CLANWAR_BOXES, setBygge, byggeDef, BYGGE_ATTACKS,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,
