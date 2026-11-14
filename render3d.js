@@ -17,6 +17,23 @@
   // ---------- Robotmodellen ----------
   // Byggs ur samma def som 2D-roboten: färger, huvudform, extra. Framåt är +X lokalt, upp är +Y,
   // fötterna står på Y = 0. Måtten är samma "pixlar" som i 2D-ritningen.
+  // Liten stabil hash av robotens id: väljer mönster och tredje färg, samma varje gång.
+  function idHash(id) {
+    let h = 7;
+    for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return h;
+  }
+  // Den tredje färgen: en tydlig kontrast till kroppen (komplement- eller triadfärg). Grå/vita
+  // robotar får en klar färg i stället, så att de inte blir grå i grått.
+  function trimColor(def) {
+    const hsl = {};
+    new THREE.Color(def.color).getHSL(hsl);
+    const shift = [0.5, 0.33, 0.67, 0.12][idHash(def.id) % 4];
+    const hue = hsl.s < 0.2 ? (idHash(def.id) % 360) / 360 : (hsl.h + shift) % 1;
+    return '#' + new THREE.Color().setHSL(hue, 0.8, hsl.l > 0.6 ? 0.45 : 0.55).getHexString();
+  }
+  const PATTERNS = ['stripe', 'chevron', 'split', 'plates'];
+
   function makeMaterials(def) {
     // Ett skin (se SKINS i shared.js) ändrar hur ytan ser ut: blank metall, neonkanter, kristall.
     const sk = (def.skin && def.skin.mat) || {};
@@ -29,7 +46,8 @@
     const M = {
       body: std(def.color),
       dark: std(def.accent),
-      eye: new THREE.MeshBasicMaterial({ color: def.eye }),
+      trim: std(trimColor(def)), // den tredje färgen: ränder, märken och pansarplåtar
+      eye: new THREE.MeshBasicMaterial({ color: def.eye, side: THREE.DoubleSide }), // visiret är en böjd yta
       gold: std('#ffd93d'),
       glow: new THREE.MeshBasicMaterial({ color: def.eye, transparent: true, opacity: 0.7, depthWrite: false }),
       line: additive(0.9), // energilinjerna på kroppen
@@ -158,55 +176,67 @@
   function buildHead(def, M, root) {
     const head = new THREE.Group();
     root.add(head);
-    const visor = (x, y, w, h, d) => head.add(mesh(box(w, h, d), M.eye, x, y, 0));
+    // Ett böjt visir runt framsidan (en bit av en cylinder), som lyser i ögonfärgen.
+    const band = (r, y, h, arc = 2.1) => {
+      const g = new THREE.CylinderGeometry(r, r, h, 24, 1, true, Math.PI / 2 - arc / 2, arc);
+      head.add(mesh(g, M.eye, 0, y, 0));
+    };
     switch (def.head) {
-      case 'box':
-        head.add(mesh(box(30, 26, 28), M.body, 0, 109, 0));
-        visor(14, 109.5, 4, 9, 20);
-        break;
-      case 'dome': {
-        const g = new THREE.SphereGeometry(18, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2);
-        head.add(mesh(g, M.body, 0, 96, 0));
-        visor(13, 105, 6, 7, 16);
+      case 'box': { // kantig hjälm med panna och haka
+        head.add(mesh(box(26, 24, 24), M.body, 0, 109, 0));
+        head.add(mesh(box(28, 5, 26), M.trim, 1, 121, 0));
+        head.add(mesh(box(3, 6, 21), M.eye, 13.2, 110, 0));
+        head.add(mesh(box(10, 7, 16), M.dark, 9, 99, 0));
+        for (const z of [-13, 13]) head.add(mesh(box(10, 12, 3), M.dark, -2, 109, z));
         break;
       }
-      case 'round':
+      case 'dome': { // kupol med visir och en kam
+        head.add(mesh(new THREE.SphereGeometry(18, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), M.body, 0, 96, 0));
+        band(16.2, 104, 5, 2.4);
+        head.add(mesh(box(26, 4, 3), M.trim, -2, 113.5, 0));
+        break;
+      }
+      case 'round': { // rund hjälm med visir och en tuppkam
         head.add(mesh(sphere(15), M.body, 0, 110, 0));
-        head.add(mesh(sphere(5), M.eye, 12, 110, 0));
+        band(15.3, 111, 6, 2.2);
+        head.add(mesh(box(22, 5, 3), M.trim, -2, 125, 0));
         break;
-      case 'cyclops':
-        head.add(mesh(box(32, 26, 28), M.body, 0, 109, 0));
-        const ring = mesh(cyl(9, 9, 4), M.dark, 16, 109, 0);
-        ring.rotation.z = Math.PI / 2;
-        head.add(ring);
-        head.add(mesh(sphere(6), M.eye, 18, 109, 0));
+      }
+      case 'cyclops': { // ett stort lysande öga i en ram
+        head.add(mesh(sphere(15), M.body, 0, 110, 0));
+        const frame = mesh(cyl(8, 9, 5, 20), M.dark, 13, 110, 0);
+        frame.rotation.z = Math.PI / 2;
+        head.add(frame, mesh(sphere(6), M.eye, 15.5, 110, 0));
+        head.add(mesh(box(4, 3, 24), M.trim, 0, 122, 0));
         break;
-      case 'horn': {
-        head.add(mesh(box(30, 24, 26), M.body, 0, 108, 0));
-        visor(14, 108, 4, 8, 18);
+      }
+      case 'horn': { // hjälm med två bakåtsvepta horn
+        head.add(mesh(box(24, 22, 22), M.body, 0, 108, 0));
+        head.add(mesh(box(3, 5, 19), M.eye, 12.2, 109, 0));
+        head.add(mesh(box(8, 6, 14), M.dark, 8, 98, 0));
         for (const z of [-8, 8]) {
-          const h = mesh(cone(4, 18), M.dark, -2, 128, z);
-          h.rotation.x = z > 0 ? 0.25 : -0.25;
+          const h = mesh(cone(3.6, 22, 8), M.trim, -3, 125, z);
+          h.rotation.z = 0.7;
+          h.rotation.x = z > 0 ? 0.3 : -0.3;
           head.add(h);
         }
         break;
       }
-      case 'crown': {
+      case 'crown': { // rund hjälm, visir och en guldkrona
         head.add(mesh(sphere(15), M.body, 0, 110, 0));
-        visor(12, 112, 6, 6, 14);
-        const gold = M.gold;
-        head.add(mesh(cyl(12, 12, 6), gold, 0, 124, 0));
+        band(15.3, 111, 5, 2.2);
+        head.add(mesh(cyl(12, 12, 6), M.gold, 0, 124, 0));
         for (let k = 0; k < 5; k++) {
           const a = (k / 5) * Math.PI * 2;
-          head.add(mesh(cone(3.5, 12, 6), gold, Math.cos(a) * 10, 132, Math.sin(a) * 10));
+          head.add(mesh(cone(3.5, 12, 6), M.gold, Math.cos(a) * 10, 132, Math.sin(a) * 10));
         }
         break;
       }
-      default: { // huva
-        const g = mesh(cone(19, 40, 16), M.dark, -2, 114, 0);
+      default: { // huva: mörkt ansikte med två lysande ögonslitsar
+        const g = mesh(cone(19, 40, 20), M.dark, -2, 114, 0);
         g.rotation.z = 0.25;
-        head.add(g);
-        visor(13, 111, 4, 5, 16);
+        head.add(g, mesh(sphere(11), M.body, 3, 108, 0));
+        for (const z of [-4.5, 4.5]) head.add(mesh(box(3, 2.2, 5), M.eye, 13.5, 110, z));
       }
     }
     return head;
@@ -811,64 +841,71 @@
     const bodyW = parts.body === 'wide' ? 1.3 : parts.body === 'thin' ? 0.75 : 1;
     const armMul = parts.arms === 'long' ? 1.4 : parts.arms === 'short' ? 0.7 : 1;
 
+    // Mönstret och vilken sida som får den tredje färgen (split: höger sida är trimfärgad).
+    const pattern = parts.pattern || PATTERNS[idHash(def.id) % PATTERNS.length];
+    const sideMat = (side) => (pattern === 'split' && side > 0 ? M.trim : M.body);
+    const plateMat = pattern === 'plates' ? M.trim : M.body;
+
     const legs = [];
     for (const side of [-1, 1]) {
       const pivot = new THREE.Group();
       pivot.position.set(0, 40, side * 11);
-      pivot.add(mesh(box(12, 34, 12), M.dark, 0, -17, 0));
-      pivot.add(mesh(box(22, 10, 16), M.body, 3, -35, 0));
-      pivot.add(mesh(box(23, 1.6, 17), M.line, 3, -40.4, 0)); // lysande sula
-      // Knä med en lysande punkt och en energilinje ner mot foten.
-      pivot.add(mesh(sphere(7), M.body, 1, -16, 0));
-      pivot.add(mesh(sphere(2.2), M.line, 7.5, -16, 0));
-      pivot.add(mesh(box(1.4, 10, 2.4), M.line, 6.4, -27, 0));
-      // Jetflamma under foten, syns bara i luften.
-      const thrust = new THREE.Group();
-      thrust.position.set(3, -40, 0);
-      const flameCone = mesh(cone(6, 22, 12), M.thrust, 0, -11, 0);
-      flameCone.rotation.z = Math.PI;
-      const ring = mesh(new THREE.TorusGeometry(7, 1.5, 6, 18), M.thrust);
-      ring.rotation.x = Math.PI / 2;
-      thrust.add(flameCone, ring);
-      thrust.visible = false;
+      const shell = sideMat(side);
       if (parts.legs === 'wheels' || parts.legs === 'tracks') {
-        pivot.clear(); // hjul eller larvband i stället för ben och fötter
-        pivot.add(mesh(box(10, 20, 10), M.dark, 0, -10, 0));
+        pivot.add(mesh(cyl(5, 5, 20, 12), M.dark, 0, -10, 0));
         if (parts.legs === 'wheels') {
-          const wheel = mesh(cyl(16, 16, 10, 20), M.dark, 0, -24, 0);
+          const wheel = mesh(cyl(16, 16, 9, 24), M.dark, 0, -24, 0);
           wheel.rotation.x = Math.PI / 2;
-          const hub = mesh(cyl(6, 6, 11, 12), M.line, 0, -24, 0);
+          const hub = mesh(cyl(8, 8, 10, 16), shell, 0, -24, 0);
           hub.rotation.x = Math.PI / 2;
           pivot.add(wheel, hub);
         } else {
-          pivot.add(mesh(box(46, 22, 14), M.dark, 2, -29, 0));
+          pivot.add(mesh(box(46, 20, 13), M.dark, 2, -29, 0), mesh(box(40, 6, 14), shell, 2, -20, 0));
           for (const x of [-16, 2, 20]) {
-            const roller = mesh(cyl(7, 7, 15, 12), M.body, x, -29, 0);
+            const roller = mesh(cyl(6.5, 6.5, 14, 14), M.dark, x, -30, 0);
             roller.rotation.x = Math.PI / 2;
             pivot.add(roller);
           }
         }
       } else if (parts.legs === 'hover') {
-        // Inga ben: en avsmalnande svävkapsel med ett stilla sken under.
-        pivot.clear();
-        const pod = mesh(cone(10, 30, 12), M.dark, 0, -14, 0);
-        pod.rotation.z = Math.PI;
-        pivot.add(pod, mesh(box(1.4, 20, 2), M.line, 6, -12, 0));
-        const glowDisc = mesh(new THREE.CircleGeometry(9, 18), M.line, 0, -31, 0);
+        // Inga ben: en droppformad svävkapsel med ett stilla sken under.
+        const pts = [[0, -34], [5, -31], [9, -22], [10, -12], [8, -3], [0, 0]].map(([r, y]) => new THREE.Vector2(r, y));
+        pivot.add(mesh(new THREE.LatheGeometry(pts, 20), shell));
+        const glowDisc = mesh(new THREE.CircleGeometry(6, 18), M.eye, 0, -34.5, 0);
         glowDisc.rotation.x = Math.PI / 2;
-        pivot.add(glowDisc);
+        pivot.add(glowDisc, mesh(cyl(10.4, 10.4, 3, 20), M.trim, 0, -13, 0));
       } else if (parts.legs === 'spider') {
-        // Två spindelben per sida (fyra totalt), med knän som pekar utåt.
-        pivot.clear();
+        // Två smala spindelben per sida (fyra totalt), knäna utåt, spetsar i trimfärgen.
         for (const k of [-1, 1]) {
-          const thigh = mesh(box(4, 26, 4), M.dark, k * 9, -8, side * 5);
+          const thigh = mesh(cyl(2.6, 2.2, 26, 8), M.dark, k * 9, -8, side * 5);
           thigh.rotation.z = k * 0.75;
           thigh.rotation.x = side * -0.35;
-          const shin = mesh(box(3.5, 28, 3.5), M.body, k * 19, -27, side * 9);
+          const shin = mesh(cyl(3.2, 1.6, 30, 8), shell, k * 19, -27, side * 9);
           shin.rotation.z = -k * 0.2;
-          pivot.add(thigh, shin, mesh(sphere(3.4), M.line, k * 15, -16, side * 8), mesh(cone(2.4, 7, 6), M.line, k * 21, -42, side * 9));
+          pivot.add(thigh, shin, mesh(sphere(3.6), M.dark, k * 15, -15, side * 8), mesh(cone(2.2, 8, 6), M.trim, k * 21, -43, side * 9));
         }
+      } else {
+        // Ben: led i höften, smalt lår, knäskydd och ett bepansrat underben som en stövel.
+        pivot.add(mesh(sphere(6), M.dark));
+        pivot.add(mesh(cyl(5, 4.2, 18, 12), M.dark, 0, -9, 0));
+        pivot.add(mesh(sphere(5), M.dark, 0, -19, 0));
+        const knee = mesh(box(5, 9, 10), pattern === 'plates' ? M.trim : shell, 5.5, -19, 0);
+        knee.rotation.z = -0.25;
+        pivot.add(knee);
+        pivot.add(mesh(cyl(6.5, 8.5, 18, 14), shell, 0, -29, 0));
+        if (pattern === 'stripe') pivot.add(mesh(cyl(7.6, 7.9, 3, 14), M.trim, 0, -27, 0));
+        pivot.add(mesh(box(22, 5, 14), M.dark, 4, -38, 0));
+        const toe = mesh(sphere(7), shell, 12, -37.5, 0);
+        toe.scale.set(1, 0.55, 0.95);
+        pivot.add(toe);
       }
+      // Jetflamma under foten, syns bara i luften.
+      const thrust = new THREE.Group();
+      thrust.position.set(3, -40, 0);
+      const flameCone = mesh(cone(6, 22, 12), M.thrust, 0, -11, 0);
+      flameCone.rotation.z = Math.PI;
+      thrust.add(flameCone);
+      thrust.visible = false;
       pivot.add(thrust);
       // Långa eller korta ben: benet sträcks från höften, och resten av roboten flyttas upp/ner.
       pivot.scale.y = legScale;
@@ -879,139 +916,131 @@
 
     const upper = new THREE.Group(); // allt ovanför benen, gungar lite när den står still
     inner.add(upper);
+    // Bålen svarvas fram ur en profil (radie för varje höjd): olika profiler och antal sidor
+    // ger olika kroppar. Den rundas av upptill mot halsen och nertill mot midjan.
     const torsoShape = parts.torso || 'box';
-    let torso;
-    if (torsoShape === 'round') {
-      torso = mesh(cyl(24, 20, 58, 20), M.body, 0, 67, 0);
-      const rim = mesh(new THREE.TorusGeometry(24 * bodyW, 2.2, 6, 24), M.dark, 0, 90, 0); // fast kant, rör sig inte
-      rim.rotation.x = Math.PI / 2;
-      upper.add(rim);
-    } else if (torsoShape === 'wedge') {
-      torso = mesh(new THREE.CylinderGeometry(33, 18, 58, 4), M.body, 0, 67, 0);
-      torso.rotation.y = Math.PI / 4;
-    } else if (torsoShape === 'egg') {
-      torso = mesh(new THREE.SphereGeometry(28, 20, 14), M.body, 0, 69, 0);
-      torso.scale.y = 1.15;
-    } else if (torsoShape === 'slab') {
-      torso = mesh(box(32, 70, 28), M.body, 0, 72, 0);
-    } else {
-      torso = mesh(box(44, 58, 34), M.body, 0, 67, 0);
-    }
-    torso.scale.x *= bodyW;
-    torso.scale.z *= bodyW;
+    const PROFILES = {
+      box: { segs: 8, pts: [[12, 40], [15, 47], [20, 57], [24, 70], [25, 84], [21, 93], [9, 97]] },
+      round: { segs: 24, pts: [[14, 40], [21, 48], [25, 64], [24.5, 82], [19, 93], [8, 97]] },
+      wedge: { segs: 4, pts: [[13, 40], [16, 50], [24, 66], [32, 85], [27, 94], [10, 97]] },
+      egg: { segs: 24, pts: [[6, 38], [17, 44], [24, 56], [26, 70], [23, 85], [15, 94], [5, 98]] },
+      slab: { segs: 6, pts: [[12, 40], [15, 52], [18, 70], [18.5, 88], [14, 97], [6, 100]] },
+    };
+    const prof = PROFILES[torsoShape] || PROFILES.box;
+    const rAt = (y) => {
+      const pts = prof.pts;
+      if (y <= pts[0][1]) return pts[0][0];
+      for (let i = 1; i < pts.length; i++) {
+        if (y <= pts[i][1]) {
+          const [r0, y0] = pts[i - 1];
+          const [r1, y1] = pts[i];
+          return r0 + ((r1 - r0) * (y - y0)) / (y1 - y0);
+        }
+      }
+      return pts[pts.length - 1][0];
+    };
+    // Hur långt ut framsidan är (en mångkant har platta sidor innanför hörnen).
+    const flat = Math.cos(Math.PI / prof.segs);
+    const turn = prof.segs === 4 ? Math.PI / 4 : prof.segs === 8 ? Math.PI / 8 : prof.segs === 6 ? Math.PI / 6 : 0;
+    const torso = mesh(new THREE.LatheGeometry(prof.pts.map(([r, y]) => new THREE.Vector2(r, y)), prof.segs), M.body);
+    torso.rotation.y = turn;
+    torso.scale.set(bodyW, 1, bodyW);
     upper.add(torso);
-    upper.add(mesh(box(4, 22, 24), M.dark, 22 * bodyW, 77, 0));
-    const core = mesh(sphere(5), M.eye, 24 * bodyW, 77, 0);
+    const frontAt = (y) => rAt(y) * flat * bodyW;
+    // Höften under bålen.
+    upper.add(mesh(cyl(13 * bodyW, 12 * bodyW, 10, 16), M.dark, 0, 40, 0));
+    // Bröstplåt (inte på ägg och tunna — där sitter mönstret direkt på kroppen).
+    if (torsoShape !== 'egg' && torsoShape !== 'round') {
+      const plate = mesh(box(4, 24, 22 * bodyW), plateMat === M.body ? M.dark : M.trim, frontAt(78) + 1, 78, 0);
+      plate.rotation.z = -0.12;
+      upper.add(plate);
+    }
+    // Kärnan mitt på bröstet lyser i ögonfärgen (och växer när specialen är laddad).
+    const core = mesh(sphere(4.5), M.eye, frontAt(80) + 3, 80, 0);
     upper.add(core);
-    // Bälte med ett lysande spänne, energilinjer på bröstet och lysande ventiler på sidorna.
-    const belt = mesh(box(47, 7, 37), M.dark, 0, 42, 0);
-    const waist = { wedge: 0.62, egg: 0.72, slab: 0.72, round: 0.88 }[torsoShape] || 1; // bältet lika brett som midjan
-    belt.scale.set(bodyW * waist, 1, bodyW * waist);
-    upper.add(belt);
-    upper.add(mesh(box(2, 4, 10), M.line, 24, 42, 0));
-    for (const z of [-9, 9]) upper.add(mesh(box(1.4, 14, 2.6), M.line, 22.4, 56, z));
-    upper.add(mesh(box(1.4, 2.6, 28), M.line, 22.4, 92, 0));
-    for (const z of [-17.4, 17.4]) {
-      for (const y of [62, 68, 74]) upper.add(mesh(box(18, 2, 1.2), M.line, -4, y, z));
+    // Mönstret i den tredje färgen.
+    if (pattern === 'stripe') {
+      for (const y of [58, 64]) {
+        const r = rAt(y) * 1.03;
+        const ring = mesh(new THREE.CylinderGeometry(r, r, 3.2, prof.segs, 1, true), M.trim, 0, y, 0);
+        ring.rotation.y = turn;
+        ring.scale.set(bodyW, 1, bodyW);
+        upper.add(ring);
+      }
+    } else if (pattern === 'chevron') {
+      for (const z of [-1, 1]) {
+        const bar = mesh(box(3, 20, 4), M.trim, frontAt(66) + 1.2, 66, z * 6);
+        bar.rotation.x = z * 0.65;
+        upper.add(bar);
+      }
     }
 
-    const arm = (z, mat, y = 88) => {
+    // Axlarna: stora, släta axelskydd (om roboten inte redan har stora axlar).
+    const shoulderZ = (rAt(86) * flat + 4) * bodyW;
+    if (def.extra !== 'shoulders') {
+      for (const side of [-1, 1]) {
+        // En kupad axelplåt som går ner över överarmen (inte en platt hatt).
+        const pad = mesh(new THREE.SphereGeometry(13, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.62), pattern === 'plates' ? M.trim : sideMat(side), 0, 84, side * shoulderZ);
+        pad.scale.set(1.15, 1.05, 1.0);
+        upper.add(pad);
+      }
+    }
+
+    // En arm: smal överarm, armbåge och ett bepansrat underarmsskydd, sedan näven. Armen är
+    // en grupp (limb) på 40 i längd som sträcks när roboten slår (se poseRobot).
+    const arm = (side, shellMat, y = 88) => {
       const pivot = new THREE.Group();
-      pivot.position.set(2, y, z * bodyW);
+      pivot.position.set(1, y, side * shoulderZ);
       const len = 40 * armMul;
-      const limb = mesh(cyl(5, 5, 40, 10), mat, 0, -len / 2, 0);
+      const limb = new THREE.Group();
+      limb.position.y = -len / 2;
+      limb.add(mesh(cyl(5.4, 4.8, 20, 12), M.dark, 0, 10, 0));
+      limb.add(mesh(sphere(5.6), M.dark));
+      limb.add(mesh(cyl(6.4, 8, 20, 14), shellMat, 0, -10, 0));
+      if (pattern === 'stripe') limb.add(mesh(cyl(7.4, 7.7, 2.8, 14), M.trim, 0, -12, 0));
       limb.scale.y = armMul;
-      limb.add(mesh(box(1.4, 26, 1.4), M.line, 5, 0, 0)); // följer med när armen sträcks
-      const fist = mesh(sphere(7), mat, 0, -len, 0);
-      fist.add(mesh(new THREE.TorusGeometry(7.2, 1.2, 6, 18), M.line));
-      fist.add(mesh(box(12, 10, 12), mat === M.body ? M.dark : M.body, 0, 10, 0)); // pansarskydd
-      fist.add(mesh(box(1.4, 8, 12.6), M.line, 6.2, 10, 0));
+      const fist = mesh(sphere(7.5), M.dark, 0, -len, 0);
+      fist.add(mesh(box(8, 6, 13), shellMat, 3.8, -1, 0)); // knogskydd
       pivot.add(limb, fist);
       upper.add(pivot);
       return { pivot, limb, fist };
     };
-    // Rundade axelskydd (om roboten inte redan har stora axlar).
-    if (def.extra !== 'shoulders') {
-      for (const z of [-24, 24]) {
-        const pad = mesh(new THREE.SphereGeometry(11, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), M.dark, 2, 90, z);
-        pad.scale.set(1.1, 0.8, 1);
-        upper.add(pad);
-        upper.add(mesh(sphere(2), M.line, 2, 99, z));
-      }
-    }
-    // ---- Framtidsdetaljer ----
-    // Lysande kanter längs bålens framhörn och en krage upptill.
-    if (torsoShape === 'box') for (const z of [-16.6, 16.6]) upper.add(mesh(box(1.6, 50, 1.6), M.line, 22.2 * bodyW, 67, z * bodyW));
-    upper.add(mesh(box(46 * bodyW, 1.6, 36 * bodyW), M.line, 0, 96.6, 0));
-    // Fenor på axlarna (om axlarna inte redan är stora).
-    if (def.extra !== 'shoulders') {
-      for (const side of [-1, 1]) {
-        const fin = mesh(box(14, 3, 10), M.body, -2, 100, side * 27);
-        fin.rotation.x = side * 0.55;
-        upper.add(fin);
-        const edge = mesh(box(14, 1, 1.4), M.line, -2, 103, side * 30.5);
-        edge.rotation.x = side * 0.55;
-        upper.add(edge);
-      }
-    }
-    // Bröstreaktorn: en lysande ring runt kärnan, med blad som snurrar.
-    const reactor = new THREE.Group();
-    reactor.position.set(24 * bodyW + 3, 77, 0); // precis framför kärnan
-    const reactorRing = mesh(new THREE.TorusGeometry(8, 1.6, 8, 24), M.line);
-    reactorRing.rotation.y = Math.PI / 2;
-    const reactorSpin = new THREE.Group();
-    for (let k = 0; k < 3; k++) {
-      const blade = mesh(box(1.2, 11, 2), M.line, 2.6, 0, 0);
-      blade.rotation.x = (k * Math.PI) / 3;
-      reactorSpin.add(blade);
-    }
-    reactor.add(reactorRing, reactorSpin);
-    upper.add(reactor);
-    // Jetpack på ryggen (om ryggen inte redan har vingar, mantel, jet eller taggar).
-    const jetGlows = [];
-    if (!parts.wings && !['jet', 'cape', 'spikes'].includes(def.extra)) {
-      const pack = new THREE.Group();
-      pack.position.set(-22 * bodyW, 76, 0);
-      pack.add(mesh(box(10, 30, 26), M.dark));
-      pack.add(mesh(box(1.4, 22, 2.4), M.line, -5.3, 2, 0));
-      for (const z of [-8, 8]) {
-        pack.add(mesh(cyl(4.5, 3.4, 8, 10), M.body, -1, -18, z));
-        const g = mesh(cone(3.4, 12, 10), M.line, -1, -28, z);
-        g.rotation.z = Math.PI;
-        pack.add(g);
-        jetGlows.push(g);
-      }
-      upper.add(pack);
-    }
-    const back = arm(-24, M.dark);
-    const front = arm(24, M.body);
+    const back = arm(-1, sideMat(-1));
+    const front = arm(1, sideMat(1));
     if (parts.arms === 'blade') {
-      // Ett energisvärd ur den främre näven: hänger ner, pekar framåt när den slår.
-      const blade = mesh(box(3, 48, 11), M.dark, 0, -27, 0);
-      front.fist.add(blade, mesh(box(3.6, 46, 2), M.line, 0, -27, 6), mesh(cone(5.5, 12, 4), M.line, 0, -56, 0));
-      front.fist.children[front.fist.children.length - 1].rotation.z = Math.PI;
+      // Ett lysande energisvärd ur den främre näven: hänger ner, pekar framåt när den slår.
+      const hilt = mesh(box(5, 8, 13), M.dark, 0, -7, 0);
+      const blade = mesh(box(2, 50, 7), M.line, 0, -36, 0);
+      const tip = mesh(cone(3.6, 10, 4), M.line, 0, -66, 0);
+      tip.rotation.z = Math.PI;
+      front.fist.add(hilt, blade, tip);
     } else if (parts.arms === 'claw') {
       for (const f of [front.fist, back.fist]) {
-        for (const z of [-5, 0, 5]) {
-          const c = mesh(cone(2.4, 13, 6), M.line, 3, -9, z);
-          c.rotation.z = Math.PI + 0.35;
+        for (const z of [-4.5, 0, 4.5]) {
+          const c = mesh(cone(2.2, 14, 6), M.trim, 4, -9, z);
+          c.rotation.z = Math.PI + 0.4;
           f.add(c);
         }
       }
     }
     // Fyra armar: ett extra par lite längre ner, som rör sig som de vanliga.
-    const extraArms = parts.arms === 'four' ? [{ arm: arm(-26, M.dark, 66), like: 'back' }, { arm: arm(26, M.body, 66), like: 'front' }] : [];
+    const extraArms = parts.arms === 'four' ? [{ arm: arm(-1.1, M.dark, 66), like: 'back' }, { arm: arm(1.1, M.dark, 66), like: 'front' }] : [];
+    const jetGlows = [];
     // Vingar på ryggen och en svans, som rör sig lite (se poseRobot).
     let wings = null;
     if (parts.wings) {
       wings = [];
       for (const side of [-1, 1]) {
         const w = new THREE.Group();
-        w.position.set(-22 * bodyW, 88, side * 10);
-        const blade = mesh(box(4, 22, 60), M.dark, 0, 6, side * 30);
-        blade.rotation.x = side * -0.35;
-        const tip = mesh(box(3, 12, 30), M.body, 0, 18, side * 54);
-        w.add(blade, tip, mesh(box(1.4, 2.4, 50), M.line, 2.4, 10, side * 30));
+        w.position.set(-rAt(86) * flat * bodyW + 2, 88, side * 10);
+        // Tre fjädrar i olika längd, i kroppens färg och trimfärgen, med en mörk bärande led.
+        w.add(mesh(cyl(3, 3, 26, 8), M.dark, 0, 4, side * 12));
+        w.children[0].rotation.x = Math.PI / 2;
+        [[62, 14, M.body], [50, 2, M.trim], [38, -10, M.body]].forEach(([len, y, mat], k) => {
+          const f = mesh(box(3, 9, len), mat, -1 - k, y, side * (14 + len / 2));
+          f.rotation.x = side * -(0.32 - k * 0.12);
+          w.add(f);
+        });
         upper.add(w);
         wings.push({ w, side });
       }
@@ -1019,9 +1048,11 @@
     let tail = null;
     if (parts.tail) {
       tail = new THREE.Group();
-      tail.position.set(-20 * bodyW, 46, 0);
-      for (let k = 0; k < 5; k++) tail.add(mesh(sphere(6 - k * 0.8), k % 2 ? M.dark : M.body, -8 - k * 9, -k * 4, 0));
-      tail.add(mesh(cone(5, 12, 8), M.line, -56, -20, 0));
+      tail.position.set(-16 * bodyW, 44, 0);
+      for (let k = 0; k < 6; k++) tail.add(mesh(sphere(6.4 - k * 0.8), k % 2 ? M.dark : M.body, -7 - k * 8, -k * 3.5, 0));
+      const spike = mesh(cone(4.5, 14, 8), M.trim, -55, -21, 0);
+      spike.rotation.z = Math.PI / 2 + 0.4;
+      tail.add(spike);
       upper.add(tail);
     }
 
@@ -1120,7 +1151,7 @@
     glow.castShadow = false;
     const upperBase = 40 * (legScale - 1); // långa/korta ben flyttar upp/ner allt ovanför
     upper.position.y = upperBase;
-    return { def, root, inner, upper, upperBase, armMul, extraArms, wings, tail, legs, back, front, core, cape, flame, glow, shield, divine, gear, neck, M, jetGlows, legScale };
+    return { def, root, inner, upper, upperBase, armMul, extraArms, wings, tail, legs, back, front, core, cape, flame, glow, shield, divine, gear, neck, M, jetGlows, legScale, trimHex: '#' + M.trim.color.getHexString() };
   }
 
   const SIL_BODY = new THREE.Color('#232c4a');
@@ -1137,6 +1168,7 @@
     M.dark.color.set(sil ? SIL_DARK : flash ? FLASH_DARK : def.accent);
     M.eye.color.set(sil ? SIL_BODY : def.eye);
     M.gold.color.set(sil ? SIL_BODY : '#ffd93d');
+    M.trim.color.set(sil ? SIL_DARK : flash ? WHITE : rig.trimHex);
     M.glow.color.set(def.eye);
     // Mimik skimrar i alla färger.
     if (def.shimmer && !sil && !flash) {
@@ -1145,7 +1177,7 @@
       M.eye.color.setHSL((hue + 0.5) % 1, 0.9, 0.6);
     }
     const alpha = p.alpha === undefined ? 1 : p.alpha;
-    for (const k of ['body', 'dark', 'eye', 'gold']) {
+    for (const k of ['body', 'dark', 'eye', 'gold', 'trim']) {
       const op = alpha * (M[k].userData.baseOpacity || 1); // kristallskinnet är alltid lite genomskinligt
       M[k].transparent = op < 1;
       M[k].opacity = op;
