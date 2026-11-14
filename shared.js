@@ -1307,6 +1307,29 @@
 
   // ---------- Konto ----------
   // Ett konto är { inv: {robotId: antal}, boxes, daily: 'ÅÅÅÅ-MM-DD', selected, level, xp }.
+  // ---------- Samlaralbumet ----------
+  // Alla robotar man kan samla (inte monster, bossar eller jokern), en sida per typ. Har man
+  // alla robotar på en sida får man hämta sidans pris EN gång (albumClaimed håller koll).
+  const ALBUM_COINS = 250;
+  const ALBUM_BOXES = 1;
+  function albumPages() {
+    const robots = ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard');
+    return Object.keys(TYPES)
+      .map((type) => ({ type, ids: robots.filter((r) => r.types.includes(type)).map((r) => r.id) }))
+      .filter((page) => page.ids.length > 0);
+  }
+  function claimAlbum(acct, type) {
+    const page = albumPages().find((p) => p.type === type);
+    if (!page) return { error: 'Den sidan finns inte i albumet.' };
+    if (!page.ids.every((id) => count(acct, id) > 0)) return { error: 'Du har inte alla robotar på den sidan än.' };
+    acct.albumClaimed = Array.isArray(acct.albumClaimed) ? acct.albumClaimed : [];
+    if (acct.albumClaimed.includes(type)) return { error: 'Du har redan hämtat priset för den sidan.' };
+    acct.albumClaimed.push(type);
+    addCoins(acct, ALBUM_COINS);
+    acct.boxes += ALBUM_BOXES;
+    return { type };
+  }
+
   function newAccount() {
     return {
       inv: { bolt: 1 }, boxes: 0, daily: '', selected: 'bolt', level: 1, xp: 0, xpv: 2,
@@ -1394,6 +1417,7 @@
       if (Number.isInteger(raw.eventBeaten) && raw.eventBeaten > 0) acct.eventBeaten = raw.eventBeaten;
       if (Number.isInteger(raw.tourneyStarted) && raw.tourneyStarted > 0) acct.tourneyStarted = raw.tourneyStarted;
       acct.winsToBox = Math.max(0, Math.min(1, Math.floor(Number(raw.winsToBox)) || 0));
+      if (Array.isArray(raw.albumClaimed)) acct.albumClaimed = [...new Set(raw.albumClaimed.filter((t) => typeof t === 'string' && TYPES[t]))];
       const se = raw.season;
       if (se && typeof se.id === 'string' && /^\d{4}-[0-3]$/.test(se.id)) {
         const level = Math.max(0, Math.min(SEASON_LEVELS, Math.floor(Number(se.level)) || 0));
@@ -2232,6 +2256,7 @@
       wildcardHead: acct.wildcardHead || null,
       wildcardExtra: acct.wildcardExtra || null,
       mimikCustom: acct.mimikCustom || null,
+      albumClaimed: Array.isArray(acct.albumClaimed) ? [...acct.albumClaimed] : [],
       equipmentInv: { ...(acct.equipmentInv || {}) },
       equippedItem: acct.equippedItem || null,
       superPieces: { ...(acct.superPieces || {}) },
@@ -2580,7 +2605,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
-    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS,
+    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,

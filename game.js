@@ -1748,6 +1748,7 @@ const screens = {
   team: document.getElementById('screen-team'),
   tourney: document.getElementById('screen-tourney'),
   tops: document.getElementById('screen-tops'),
+  album: document.getElementById('screen-album'),
   mimik: document.getElementById('screen-mimik'),
   travel: document.getElementById('screen-travel'),
   royals: document.getElementById('screen-royals'),
@@ -3018,6 +3019,68 @@ async function saveMimik() {
   showSelect();
 }
 
+// ---------- Samlaralbumet ----------
+// En sida per typ: robotarna du har syns, de du saknar är silhuetter. En hel sida ger ett pris
+// (mynt och en låda) som man hämtar en gång.
+function showAlbum() {
+  game.phase = 'album';
+  renderAlbum();
+  showScreen('album');
+}
+
+function renderAlbum() {
+  const acct = game.acct;
+  const pages = Shared.albumPages();
+  const all = new Set(pages.flatMap((p) => p.ids));
+  const have = [...all].filter((id) => (acct.inv[id] || 0) > 0).length;
+  const claimed = acct.albumClaimed || [];
+  byId('album-status').textContent = `Du har ${have} av ${all.size} robotar. Samla alla på en sida så får du ${Shared.ALBUM_COINS} 🪙 och en låda! (En robot med två typer finns på två sidor.)`;
+  const box = byId('album-pages');
+  box.replaceChildren();
+  for (const page of pages) {
+    const owned = page.ids.filter((id) => (acct.inv[id] || 0) > 0).length;
+    const done = owned === page.ids.length;
+    const el = document.createElement('div');
+    el.className = `album-page${done ? ' done' : ''}`;
+    const head = document.createElement('div');
+    head.className = 'album-head';
+    const title = document.createElement('span');
+    title.textContent = `${Shared.TYPES[page.type].label} · ${owned}/${page.ids.length}`;
+    title.style.color = Shared.TYPES[page.type].color;
+    head.append(title);
+    if (claimed.includes(page.type)) {
+      head.append(el_('span', '✅ Priset hämtat'));
+    } else if (done) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = `🎁 Hämta ${Shared.ALBUM_COINS} 🪙 + låda`;
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        try {
+          const r = await net.claimAlbum(page.type);
+          applyAcct(r.acct);
+          celebrate('📖 ALBUMSIDAN ÄR KLAR!', `${Shared.TYPES[page.type].label}: ${Shared.ALBUM_COINS} 🪙 + en låda!`, true);
+        } catch (e) {
+          byId('album-status').textContent = e.message;
+        }
+        renderAlbum();
+      });
+      head.append(b);
+    } else {
+      head.append(el_('span', `Saknar ${page.ids.length - owned}`));
+    }
+    const cards = document.createElement('div');
+    cards.className = 'album-cards';
+    for (const id of page.ids) {
+      const locked = !((acct.inv[id] || 0) > 0);
+      cards.append(createCard(myDef(robotById[id]), { locked, compact: true }));
+    }
+    el.append(head, cards);
+    box.append(el);
+  }
+}
+const el_ = (tag, text) => { const e = document.createElement(tag); e.textContent = text; return e; };
+
 function showTops() {
   game.phase = 'tops';
   showScreen('tops');
@@ -3192,10 +3255,11 @@ const DISTRICTS = [
   { name: '👾 Äventyr', x: 2110 },
 ];
 const STATIONS = [
-  { id: 'garage', name: 'Garaget', emoji: '🤖', color: '#9fd8ff', x: 200, z: -120 },
-  { id: 'boxes', name: 'Lådor', emoji: '🎁', color: '#ff8ac0', x: 200, z: 120 },
-  { id: 'equipment', name: 'Utrustning', emoji: '🎒', color: '#5fd0ff', x: 420, z: -120 },
-  { id: 'quests', name: 'Uppdragstavlan', emoji: '📜', color: '#e8d27a', x: 420, z: 120 },
+  { id: 'garage', name: 'Garaget', emoji: '🤖', color: '#9fd8ff', x: 160, z: -120 },
+  { id: 'equipment', name: 'Utrustning', emoji: '🎒', color: '#5fd0ff', x: 310, z: -120 },
+  { id: 'quests', name: 'Uppdragstavlan', emoji: '📜', color: '#e8d27a', x: 460, z: -120 },
+  { id: 'boxes', name: 'Lådor', emoji: '🎁', color: '#ff8ac0', x: 160, z: 120 },
+  { id: 'album', name: 'Samlaralbum', emoji: '📖', color: '#ffd93d', x: 310, z: 120 },
 
   // Matcher: två rader med tre portaler, gatan i mitten är fri.
   { id: 'arena', name: 'Arenan', emoji: '⚔', color: '#35d0ff', x: 800, z: -120 },
@@ -3218,6 +3282,7 @@ const STATION_HINT = {
   garage: 'välj vilken robot du spelar med',
   boxes: 'öppna lådor och hämta den dagliga',
   quests: 'nya uppdrag hela tiden',
+  album: 'alla robotar du kan samla — en hel sida ger ett pris',
   equipment: 'välj vad din robot bär',
   boss: 'möt en mystisk robot',
   monsters: 'res till Monstervärlden',
@@ -3407,6 +3472,7 @@ function enterStation(id) {
     case 'tower': showTower(); break;
     case 'tourney': showTourney(); break;
     case 'tops': showTops(); break;
+    case 'album': showAlbum(); break;
     case 'garage': game.fromHub = true; showSelect(); break;
     case 'boxes':
       // Den dagliga lådan hämtas automatiskt när man går in i Lådor.
@@ -3815,6 +3881,7 @@ byId('btn-tower-back').addEventListener('click', showHub);
 byId('btn-team-back').addEventListener('click', showHub);
 byId('btn-tourney-back').addEventListener('click', showHub);
 byId('btn-tops-back').addEventListener('click', showHub);
+byId('btn-album-back').addEventListener('click', showHub);
 byId('btn-mimik').addEventListener('click', showMimik);
 byId('btn-mimik-back').addEventListener('click', showSelect);
 byId('btn-mimik-save').addEventListener('click', saveMimik);
@@ -5320,7 +5387,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);

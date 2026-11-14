@@ -1045,3 +1045,11 @@ button.linklike, button.linklike:hover:not(:disabled) {
 @media (prefers-reduced-motion: reduce) {
   .card::after { animation: none !important; }
 }
+
+/* Samlaralbumet: en sida per typ, med robotarna som små kort. */
+.album-pages { display: flex; flex-direction: column; gap: 14px; width: min(900px, 100%); }
+.album-page { border: 1px solid rgba(62, 232, 255, 0.25); border-radius: 10px; padding: 10px; background: rgba(12, 18, 38, 0.7); }
+.album-page.done { border-color: var(--energy); box-shadow: 0 0 14px rgba(255, 217, 61, 0.35); }
+.album-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; font-weight: 700; flex-wrap: wrap; }
+.album-head button { margin-top: 0; padding: 6px 14px; }
+.album-cards { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }

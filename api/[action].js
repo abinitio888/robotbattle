@@ -109,6 +109,12 @@ module.exports = dispatch({
     method: 'POST',
     handler: acctAction((acct, body) => S.setMimikCustom(acct, body.text)),
   },
+  // Samlaralbumet: hämta priset för en hel sida (se claimAlbum i shared.js).
+  'album-claim': {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.claimAlbum(acct, typeof body.type === 'string' ? body.type : null)),
+  },
+
   'buy-box': {
     method: 'POST',
     handler: acctAction((acct, body) => S.buyBox(acct, typeof body.kind === 'string' ? body.kind : null)),
