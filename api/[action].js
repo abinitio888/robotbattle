@@ -109,6 +109,12 @@ module.exports = dispatch({
     method: 'POST',
     handler: acctAction((acct, body) => S.setMimikCustom(acct, body.text)),
   },
+  // Hemmet: vilka robotar som står på piedestalerna (se setHome i shared.js).
+  'home-set': {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.setHome(acct, body.show)),
+  },
+
   // Samlaralbumet: hämta priset för en hel sida (se claimAlbum i shared.js).
   'album-claim': {
     method: 'POST',

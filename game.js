@@ -1784,6 +1784,7 @@ const screens = {
   tops: document.getElementById('screen-tops'),
   album: document.getElementById('screen-album'),
   daily: document.getElementById('screen-daily'),
+  home: document.getElementById('screen-home'),
   mimik: document.getElementById('screen-mimik'),
   travel: document.getElementById('screen-travel'),
   royals: document.getElementById('screen-royals'),
@@ -3057,6 +3058,86 @@ async function saveMimik() {
   showSelect();
 }
 
+// ---------- Hemmet ----------
+// Tre piedestaler (mitten störst) med favoritrobotarna, en hylla med rekord och medaljerna.
+// Har man inte valt något står ens tre finaste robotar där.
+function homeShow() {
+  const saved = (game.acct.home && game.acct.home.show) || [];
+  if (saved.some(Boolean)) return [0, 1, 2].map((i) => saved[i] || null);
+  const owned = Object.keys(game.acct.inv).filter((id) => game.acct.inv[id] > 0 && robotById[id]);
+  owned.sort((a, b) => Shared.rankOf(robotById[b]) - Shared.rankOf(robotById[a]));
+  return [owned[1] || null, owned[0] || null, owned[2] || null];
+}
+
+function showHome() {
+  game.phase = 'home';
+  byId('home-error').textContent = '';
+  renderHome();
+  showScreen('home');
+}
+
+function renderHome() {
+  const acct = game.acct;
+  const show = homeShow();
+  const owned = Object.keys(acct.inv).filter((id) => acct.inv[id] > 0 && robotById[id])
+    .sort((a, b) => Shared.rankOf(robotById[b]) - Shared.rankOf(robotById[a]) || robotById[a].name.localeCompare(robotById[b].name));
+  const box = byId('home-show');
+  box.replaceChildren();
+  show.forEach((id, i) => {
+    const ped = document.createElement('div');
+    ped.className = `pedestal${i === 1 ? ' middle' : ''}`;
+    if (id) ped.append(createCard(myDef(robotById[id]), { compact: true })); // bara bild, namn och sällsynthet
+    else ped.append(el_('div', '＋ Välj robot'));
+    if (!id) ped.lastChild.className = 'empty';
+    const base = document.createElement('div');
+    base.className = 'base';
+    const sel = document.createElement('select');
+    sel.append(new Option('— tom —', ''));
+    for (const o of owned) sel.append(new Option(`${robotById[o].name} (${RARITY[robotById[o].rarity].label})`, o, false, o === id));
+    sel.addEventListener('change', async () => {
+      const next = [...show];
+      next[i] = sel.value || null;
+      for (let k = 0; k < next.length; k++) if (k !== i && next[k] === next[i]) next[k] = null; // ingen dubblett
+      try {
+        const r = await net.setHome(next);
+        applyAcct(r.acct);
+      } catch (e) {
+        byId('home-error').textContent = e.message;
+      }
+      renderHome();
+    });
+    ped.append(base, sel);
+    box.append(ped);
+  });
+  const stats = acct.stats || {};
+  const albumAll = new Set(Shared.albumPages().flatMap((p) => p.ids));
+  const albumHave = [...albumAll].filter((id) => (acct.inv[id] || 0) > 0).length;
+  const tiles = [
+    ['🏆', stats.trophies || 0, 'pokaler'],
+    ['⚔', stats.wins || 0, 'vinster'],
+    ['⭐', acct.level || 1, 'nivå'],
+    ['🗼', Math.max(0, (acct.tower || 1) - 1), 'tornvåningar'],
+    ['📖', `${albumHave}/${albumAll.size}`, 'i albumet'],
+    ['🎖', `${(acct.medals || []).length}/${Shared.MEDALS.length}`, 'medaljer'],
+  ];
+  const shelf = byId('home-shelf');
+  shelf.replaceChildren();
+  for (const [icon, value, label] of tiles) {
+    const t = document.createElement('div');
+    t.className = 'home-tile';
+    t.append(el_('b', `${icon} ${value}`), el_('span', label));
+    shelf.append(t);
+  }
+  const medals = byId('home-medals');
+  medals.replaceChildren();
+  for (const m of Shared.MEDALS) {
+    const s = el_('span', m.icon);
+    s.title = `${m.name}: ${m.desc}`;
+    if (!(acct.medals || []).includes(m.id)) s.className = 'off';
+    medals.append(s);
+  }
+}
+
 // ---------- Dagens utmaning ----------
 // Dagens robot (från servern, samma för alla). Vinner man blir den ens egen, en gång per dag.
 function showDaily() {
@@ -3321,6 +3402,7 @@ const STATIONS = [
   { id: 'quests', name: 'Uppdragstavlan', emoji: '📜', color: '#e8d27a', x: 460, z: -120 },
   { id: 'boxes', name: 'Lådor', emoji: '🎁', color: '#ff8ac0', x: 160, z: 120 },
   { id: 'album', name: 'Samlaralbum', emoji: '📖', color: '#ffd93d', x: 310, z: 120 },
+  { id: 'home', name: 'Mitt hem', emoji: '🏠', color: '#ffb86b', x: 460, z: 120 },
 
   // Matcher: två rader med tre portaler, gatan i mitten är fri.
   { id: 'arena', name: 'Arenan', emoji: '⚔', color: '#35d0ff', x: 800, z: -120 },
@@ -3346,6 +3428,7 @@ const STATION_HINT = {
   quests: 'nya uppdrag hela tiden',
   album: 'alla robotar du kan samla — en hel sida ger ett pris',
   daily: 'en ny stark robot varje dag — vinn och den blir din',
+  home: 'dina favoritrobotar, pokaler och medaljer',
   equipment: 'välj vad din robot bär',
   boss: 'möt en mystisk robot',
   monsters: 'res till Monstervärlden',
@@ -3537,6 +3620,7 @@ function enterStation(id) {
     case 'tops': showTops(); break;
     case 'album': showAlbum(); break;
     case 'daily': showDaily(); break;
+    case 'home': showHome(); break;
     case 'garage': game.fromHub = true; showSelect(); break;
     case 'boxes':
       // Den dagliga lådan hämtas automatiskt när man går in i Lådor.
@@ -3947,6 +4031,7 @@ byId('btn-tourney-back').addEventListener('click', showHub);
 byId('btn-tops-back').addEventListener('click', showHub);
 byId('btn-album-back').addEventListener('click', showHub);
 byId('btn-daily-back').addEventListener('click', showHub);
+byId('btn-home-back').addEventListener('click', showHub);
 byId('btn-daily-fight').addEventListener('click', () => { const dc = game.acct.dailyChallenge; if (dc && !dc.won) startMatch('daily', dc.day); });
 byId('btn-mimik').addEventListener('click', showMimik);
 byId('btn-mimik-back').addEventListener('click', showSelect);
@@ -5459,7 +5544,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'daily' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'daily' || game.phase === 'home' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);

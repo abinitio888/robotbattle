@@ -1317,6 +1317,21 @@
     return pool[hashName(`dag-${day}`) % pool.length].id;
   }
 
+  // ---------- Hemmet ----------
+  // Tre piedestaler med ens favoritrobotar (home.show). Bara robotar man äger, inga dubbletter.
+  const HOME_SLOTS = 3;
+  function setHome(acct, show) {
+    if (!Array.isArray(show) || show.length > HOME_SLOTS) return { error: 'Välj högst tre robotar.' };
+    const ids = show.map((id) => (typeof id === 'string' && id ? id : null));
+    for (const id of ids) {
+      if (id && !(robotById[id] && count(acct, id) > 0)) return { error: 'Du äger inte den roboten.' };
+    }
+    const picked = ids.filter(Boolean);
+    if (new Set(picked).size !== picked.length) return { error: 'Samma robot kan bara stå på en piedestal.' };
+    acct.home = { show: ids };
+    return { show: ids };
+  }
+
   // ---------- Samlaralbumet ----------
   // Alla robotar man kan samla (inte monster, bossar eller jokern), en sida per typ. Har man
   // alla robotar på en sida får man hämta sidans pris EN gång (albumClaimed håller koll).
@@ -1428,6 +1443,9 @@
       if (Number.isInteger(raw.tourneyStarted) && raw.tourneyStarted > 0) acct.tourneyStarted = raw.tourneyStarted;
       acct.winsToBox = Math.max(0, Math.min(1, Math.floor(Number(raw.winsToBox)) || 0));
       if (isDay(raw.dailyWon)) acct.dailyWon = raw.dailyWon;
+      if (raw.home && Array.isArray(raw.home.show)) {
+        acct.home = { show: raw.home.show.slice(0, HOME_SLOTS).map((id) => (typeof id === 'string' && robotById[id] ? id : null)) };
+      }
       if (Array.isArray(raw.albumClaimed)) acct.albumClaimed = [...new Set(raw.albumClaimed.filter((t) => typeof t === 'string' && TYPES[t]))];
       const se = raw.season;
       if (se && typeof se.id === 'string' && /^\d{4}-[0-3]$/.test(se.id)) {
@@ -2283,6 +2301,7 @@
       wildcardExtra: acct.wildcardExtra || null,
       mimikCustom: acct.mimikCustom || null,
       albumClaimed: Array.isArray(acct.albumClaimed) ? [...acct.albumClaimed] : [],
+      home: { show: acct.home && Array.isArray(acct.home.show) ? acct.home.show.filter((id) => !id || count(acct, id) > 0) : [] },
       dailyChallenge: isDay(today) ? { day: today, opp: dailyChallenge(today), won: acct.dailyWon === today } : null,
       equipmentInv: { ...(acct.equipmentInv || {}) },
       equippedItem: acct.equippedItem || null,
@@ -2632,7 +2651,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
-    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS,
+    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS, setHome, HOME_SLOTS, MEDALS,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,
