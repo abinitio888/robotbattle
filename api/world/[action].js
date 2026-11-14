@@ -13,13 +13,14 @@
 //   clan:<id>            { id, name, owner, members: [{ key, name, joined }], created }
 //   clanname:<namn>      klanens id (namnet med små bokstäver, så två klaner aldrig heter likadant)
 //   clans:points         sorterad mängd: klan-id -> klanpoäng (se api/match finish)
+//   clanwar:<vecka>      sorterad mängd: klan-id -> krigspoäng den veckan (klankriget)
 //   tops:tower           sorterad mängd: spelarnamn -> högsta klarade våningen i Utmaningstornet
 //   tops:weekly:<vecka>  sorterad mängd: spelarnamn -> högsta klarade våningen i veckans torn
 //   tops:trophies        sorterad mängd: spelarnamn -> antal vunna turneringar
 //   tops:wins:<vecka>    sorterad mängd: spelarnamn -> antal vunna matcher den veckan
 //   tops:season:<id>     sorterad mängd: spelarnamn -> säsongsnivå den säsongen
 const crypto = require('crypto');
-const { dispatch, requireSession, sessionOf, redis, HttpError, S, tooMany, saveUser } = require('../_lib.js');
+const { dispatch, requireSession, sessionOf, redis, HttpError, S, tooMany, saveUser, acctView } = require('../_lib.js');
 
 const LEADERS = 'world:leaders';
 const ANSWER_SECONDS = 45;          // så länge en utmaning väntar på svar
@@ -51,6 +52,48 @@ function cleanClanName(raw) {
 async function clanView(clan) {
   const [points, rank] = await Promise.all([redis.zscore('clans:points', clan.id), redis.zrevrank('clans:points', clan.id)]);
   return { name: clan.name, owner: clan.members.find((m) => m.key === clan.owner)?.name || '', members: clan.members.map((m) => ({ name: m.name, owner: m.key === clan.owner })), points: Number(points) || 0, rank: rank === null ? null : rank + 1 };
+}
+
+// ---------- Klankriget ----------
+const DAY_MS = 24 * 3600 * 1000;
+// Måndag 00:00 (UTC) den här veckan — samma veckor som S.weekOf.
+function weekStartMs(now) {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+}
+// Veckans krig: topplistan, den egna klanens plats, förra veckans vinnare och om man får
+// hämta vinnarpriset (medlem i vinnarklanen sedan före veckans slut, inte redan hämtat).
+async function clanWar(session, now = Date.now()) {
+  const week = S.weekOf(now);
+  const lastWeek = S.weekOf(now - 7 * DAY_MS);
+  const raw = await redis.zrange(`clanwar:${week}`, 0, 9, { rev: true, withScores: true });
+  const top = [];
+  for (let i = 0; i < raw.length; i += 2) {
+    const clan = await readClan(raw[i]);
+    if (clan) top.push({ name: clan.name, points: Number(raw[i + 1]) || 0 });
+  }
+  const myId = session && session.user.clan;
+  let mine = null;
+  if (myId) {
+    const [points, rank] = await Promise.all([redis.zscore(`clanwar:${week}`, myId), redis.zrevrank(`clanwar:${week}`, myId)]);
+    mine = { points: Number(points) || 0, rank: rank === null ? null : rank + 1 };
+  }
+  const lastRaw = await redis.zrange(`clanwar:${lastWeek}`, 0, 0, { rev: true, withScores: true });
+  const winner = lastRaw.length ? await readClan(lastRaw[0]) : null;
+  let canClaim = false;
+  let claimNote = '';
+  if (winner && session && myId === winner.id) {
+    const me = winner.members.find((m) => m.key === session.key);
+    if (session.user.acct.clanWarClaimed === lastWeek) claimNote = 'Du har redan hämtat priset.';
+    else if (!me || me.joined >= weekStartMs(now)) claimNote = 'Du gick med i klanen efter förra veckans krig, så priset är inte ditt.';
+    else canClaim = true;
+  }
+  const daysLeft = Math.max(1, Math.ceil((weekStartMs(now) + 7 * DAY_MS - now) / DAY_MS));
+  return {
+    week, daysLeft, top, mine,
+    last: winner ? { week: lastWeek, name: winner.name, points: Number(lastRaw[1]) || 0 } : null,
+    canClaim, claimNote,
+  };
 }
 
 async function topClans() {
@@ -145,7 +188,23 @@ module.exports = dispatch({
     async handler(req) {
       const session = await sessionOf(req);
       const mine = session && session.user.clan ? await readClan(session.user.clan) : null;
-      return { loggedIn: !!session, clan: mine ? await clanView(mine) : null, top: await topClans() };
+      return { loggedIn: !!session, clan: mine ? await clanView(mine) : null, top: await topClans(), war: await clanWar(session) };
+    },
+  },
+
+  // Vinnarpriset i klankriget (förra veckans vinnarklan, en gång per medlem och vecka).
+  'clanwar-claim': {
+    method: 'POST',
+    async handler(req) {
+      const session = await requireSession(req);
+      const war = await clanWar(session);
+      if (!war.canClaim) throw new HttpError(400, war.claimNote || 'Din klan vann inte förra veckans krig.');
+      const acct = session.user.acct;
+      acct.clanWarClaimed = war.last.week;
+      acct.coins = Math.min(1e9, (acct.coins || 0) + S.CLANWAR_COINS);
+      acct.boxes = (acct.boxes || 0) + S.CLANWAR_BOXES;
+      await saveUser(session.key, session.user);
+      return { acct: acctView(session.user) };
     },
   },
 

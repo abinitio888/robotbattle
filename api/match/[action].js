@@ -43,6 +43,10 @@ module.exports = dispatch({
         const opp = S.robotById[entry.match.opp];
         const points = opp && opp.royal ? 10 : entry.match.boss ? 3 : entry.match.monster ? 2 : 1;
         await redis.zincrby('clans:points', points, session.user.clan).catch(() => {});
+        // Klankriget: samma poäng i veckans krig (sparas i två månader).
+        const warKey = `clanwar:${S.weekOf(Date.now())}`;
+        await redis.zincrby(warKey, points, session.user.clan).catch(() => {});
+        await redis.expire(warKey, 60 * 24 * 3600).catch(() => {});
         session.user.acct.coins = (session.user.acct.coins || 0) + CLAN_BONUS_COINS;
         result.coins = (result.coins || 0) + CLAN_BONUS_COINS;
         result.clanPoints = points;

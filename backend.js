@@ -327,6 +327,7 @@
     clanCreate(name) { return this.api('/api/world/clan-create', { name }); }
     clanJoin(name) { return this.api('/api/world/clan-join', { name }); }
     clanLeave() { return this.api('/api/world/clan-leave', {}); }
+    clanWarClaim() { return this.api('/api/world/clanwar-claim', {}); }
   }
 
   // Används bara av Claude-artefaktversionen (ingen egen server där): sparar kontot i

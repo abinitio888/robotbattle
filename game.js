@@ -3365,7 +3365,34 @@ async function showClan(message) {
       worldButton('Gå med', act((n) => net.clanJoin(n), 'Du är med i klanen!'), { secondary: true }));
     box.append(el('p', '', 'Du är inte med i någon klan än.'), input, buttons);
   }
-  box.append(el('p', 'quests-title', '🏆 Topplista'));
+  // Klankriget: veckans krig, den egna klanens plats och förra veckans vinnare.
+  const war = data.war;
+  if (war) {
+    box.append(el('p', 'quests-title', `⚔ Klankrig — ${war.daysLeft} ${war.daysLeft === 1 ? 'dag' : 'dagar'} kvar den här veckan`));
+    box.append(el('p', 'hint', `Varje vinst ger din klan krigspoäng. Klanen som har flest när veckan är slut vinner — alla som var med får ${Shared.CLANWAR_COINS} 🪙 och ${Shared.CLANWAR_BOXES} lådor!`));
+    if (!war.top.length) box.append(el('p', 'hint', 'Ingen klan har fått krigspoäng den här veckan än — vinn en match!'));
+    war.top.forEach((t, i) => {
+      const row = el('div', 'quest');
+      const me = data.clan && t.name === data.clan.name;
+      row.append(el('span', 'qname', `${['🥇', '🥈', '🥉'][i] || `${i + 1}.`} ${t.name}${me ? ' (din klan)' : ''}`), el('span', 'qprog', `${t.points} krigspoäng`));
+      box.append(row);
+    });
+    if (data.clan && war.mine && !(war.mine.rank && war.mine.rank <= 10)) box.append(el('p', 'hint', `Din klan: ${war.mine.points} krigspoäng${war.mine.rank ? ` · plats ${war.mine.rank}` : ''}.`));
+    if (war.last) {
+      box.append(el('p', 'hint', `👑 Förra veckans vinnare: ${war.last.name} (${war.last.points} krigspoäng).`));
+      if (war.canClaim) {
+        box.append(worldButton(`🎁 Hämta segerpriset: ${Shared.CLANWAR_COINS} 🪙 + ${Shared.CLANWAR_BOXES} lådor`, async () => {
+          try {
+            const r = await net.clanWarClaim();
+            applyAcct(r.acct);
+            celebrate('⚔ KLANKRIGET ÄR VUNNET!', `${Shared.CLANWAR_COINS} 🪙 + ${Shared.CLANWAR_BOXES} lådor`, true);
+          } catch (e) { showClan(e.message); return; }
+          showClan('Priset är ditt!');
+        }));
+      } else if (war.claimNote) box.append(el('p', 'hint', war.claimNote));
+    }
+  }
+  box.append(el('p', 'quests-title', '🏆 Topplista (alla tider)'));
   if (!data.top.length) box.append(el('p', 'hint', 'Inga klaner än — skapa den första!'));
   data.top.forEach((t, i) => {
     const row = el('div', 'quest');

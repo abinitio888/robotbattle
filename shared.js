@@ -1317,6 +1317,12 @@
     return pool[hashName(`dag-${day}`) % pool.length].id;
   }
 
+  // ---------- Klankriget ----------
+  // Varje vecka tävlar klanerna om krigspoäng (samma poäng som klanpoängen, se api/match). Den
+  // klan som vann förra veckan: varje medlem hämtar priset en gång (clanWarClaimed = veckan).
+  const CLANWAR_COINS = 400;
+  const CLANWAR_BOXES = 2;
+
   // ---------- Hemmet ----------
   // Tre piedestaler med ens favoritrobotar (home.show). Bara robotar man äger, inga dubbletter.
   const HOME_SLOTS = 3;
@@ -1443,6 +1449,7 @@
       if (Number.isInteger(raw.tourneyStarted) && raw.tourneyStarted > 0) acct.tourneyStarted = raw.tourneyStarted;
       acct.winsToBox = Math.max(0, Math.min(1, Math.floor(Number(raw.winsToBox)) || 0));
       if (isDay(raw.dailyWon)) acct.dailyWon = raw.dailyWon;
+      if (typeof raw.clanWarClaimed === 'string' && /^\d{4}-v\d{1,2}$/.test(raw.clanWarClaimed)) acct.clanWarClaimed = raw.clanWarClaimed;
       if (raw.home && Array.isArray(raw.home.show)) {
         acct.home = { show: raw.home.show.slice(0, HOME_SLOTS).map((id) => (typeof id === 'string' && robotById[id] ? id : null)) };
       }
@@ -2651,7 +2658,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
-    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS, setHome, HOME_SLOTS, MEDALS,
+    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS, setHome, HOME_SLOTS, MEDALS, CLANWAR_COINS, CLANWAR_BOXES,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,
