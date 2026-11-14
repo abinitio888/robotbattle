@@ -45,6 +45,15 @@ function sparks(x, y, color, n, z = 0) {
 }
 
 // ---------- Strid ----------
+const COMBO_WINDOW = 1.1; // sekunder mellan slagen i en kombination
+
+// Visar en kombination: guldgnistor, och en skylt om det är du (eller din motståndare) som gör den.
+function comboBanner(f, target, text) {
+  sparks(f.x + f.facing * 26, f.y - f.h * 0.6, '#ffd93d', 20, f.z);
+  game.shake = Math.max(game.shake, 0.3);
+  if (f === game.player || f === game.ai) game.superBanner = { name: text, t: 1.1, mine: f === game.player };
+  if (f === game.player) Sound.special();
+}
 // Står o i samma fil som z (djupled)? extra = hur bred attacken själv är i djupled.
 const inLane = (o, z, extra = 0) => Math.abs(o.z - z) < o.d / 2 + extra;
 
@@ -86,6 +95,24 @@ function hurt(target, dmg, dirX, knock, source) {
   if (target.passive === 'rooted' && target.stillT >= 1) { dmg *= 0.6; knock = 0; } // Rotad
   if (source.passive === 'execute' && target.hp < target.maxHp * 0.3) dmg *= 1.5; // Själsfångst
   const punching = source.act && source.act.kind === 'punch';
+  // Kombinationer: tre slag i rad som träffar (inom COMBO_WINDOW) → det tredje gör dubbel skada
+  // och knuffar långt. Två slag och sedan specialen → specialen gör 50 % mer (comboBoostT, se
+  // startAct). Den som blir träffad tappar sin egen kedja.
+  if (source !== target && source.def) {
+    if (punching) {
+      source.comboHits = source.time - (source.comboLastT ?? -9) < COMBO_WINDOW ? (source.comboHits || 0) + 1 : 1;
+      source.comboLastT = source.time;
+      if (source.comboHits >= 3) {
+        dmg *= 2;
+        knock *= 2.2;
+        source.comboHits = 0;
+        comboBanner(source, target, '💥 KOMBO x3! Dubbel skada');
+      }
+    } else if (source.comboBoostT > 0) {
+      dmg *= 1.5;
+    }
+    target.comboHits = 0;
+  }
   if (target.passive === 'dragonscale' && !punching && source !== target) dmg *= 0.7; // Drakfjäll
   if (punching && source.passive === 'bloodrage' && source.hp < source.maxHp * 0.5) dmg *= 1.5; // Vargblod
   if (punching && source.def.crit && Math.random() < source.def.crit) {
@@ -713,6 +740,12 @@ class Fighter {
       if (this === game.player) Sound.swing();
     } else {
       Sound.special();
+      // Två slag som träffade alldeles innan: kombo-special (+50 % i 2,5 sekunder).
+      if ((this.comboHits || 0) >= 2 && this.time - (this.comboLastT ?? -9) < COMBO_WINDOW) {
+        this.comboBoostT = 2.5;
+        this.comboHits = 0;
+        comboBanner(this, null, '💥 KOMBO-SPECIAL! +50 % skada');
+      }
       const spec = SPECIALS[this.def.special.type];
       this.act = { kind: 'special', dur: spec.dur, fires: spec.fires, t: 0, i: 0, hit: false };
     }
@@ -737,6 +770,7 @@ class Fighter {
 
   step(dt, input, opp, canFight) {
     this.time += dt;
+    this.comboBoostT = Math.max(0, (this.comboBoostT || 0) - dt);
     this.hurt = Math.max(0, this.hurt - dt);
     this.invuln = Math.max(0, this.invuln - dt);
     this.flash = Math.max(0, this.flash - dt);
@@ -2843,6 +2877,7 @@ const GUIDE = [
   { icon: '👀', title: 'Du är roboten', text: 'Du ser allt genom din robots ögon. W går framåt, S bakåt och A/D svänger. I en match tittar du alltid på motståndaren och A/D kliver åt sidan. V byter till vyn från sidan.' },
   { icon: '⚔️', title: 'Slåss', text: 'J eller MELLANSLAG slår, Shift eller L hoppar, E är din specialattack (när linjerna på roboten lyser starkt är den laddad) och Q är ditt supervapen om du bär ett.' },
   { icon: '🛡', title: 'Blockera och undvik', text: 'Håll F för att blockera: du tar bara en fjärdedel av skadan, men blocket går sönder om du tar för många slag i rad. Ett steg åt sidan räddar dig ofta — skott flyger längs en linje.' },
+  { icon: '💥', title: 'Kombinationer', text: 'Slå tre slag i rad som träffar snabbt: det tredje gör DUBBEL skada och knuffar iväg motståndaren. Eller slå två slag och tryck sedan E direkt — då gör specialattacken 50 % mer skada!' },
   { icon: '🎁', title: 'Lådor, mynt och nivåer', text: 'Varannan vinst ger en låda. Lådor kan också köpas i Butiken för mynt. Vinster ger XP så att du går upp i nivå — det tar ett tag, så kämpa på! Uppdragstavlan ger mynt, och var tredje uppdrag ger en bonuslåda.' },
   { icon: '🚶', title: 'Robotarna på gatan', text: 'Robotarna som går omkring kan du utmana: gå fram och tryck J. Vinner du får du roboten! Från nivå 20 kommer elitrobotar och från nivå 30 stadens mästare.' },
   { icon: '⚔', title: 'Arenan', text: 'I Arenan väljer du vanlig match, insatsmatch (sätt en robot på spel och vinn motståndarens), lagstrid 3 mot 3 eller 5 mot 5, eller träning på en docka.' },
