@@ -2505,6 +2505,37 @@ function setHudType(el, def) {
   el.style.color = Shared.TYPES[def.types[0]].color;
 }
 
+// Robotkortet i Garaget: porträtt, personlighet, stjärnor, förmågor och svaghet (se
+// Shared.robotProfile). Visar den valda roboten, eller den man håller musen över.
+function renderProfile(def) {
+  const box = byId('robot-profile');
+  if (!box) return;
+  box.replaceChildren();
+  box.className = `robot-profile ${def.rarity}`;
+  const prof = Shared.robotProfile(def);
+  const head = el('div', 'rp-head', displayName(def, true));
+  const cv = document.createElement('canvas');
+  cv.width = 340;
+  cv.height = 418;
+  cv.className = 'rp-portrait';
+  if (r3d) r3d.drawCard(cv.getContext('2d'), def);
+  else drawRobot(cv.getContext('2d'), def, { x: 110, y: 255, facing: 1 });
+  const info = el('div', 'rp-info');
+  info.append(el('p', 'rp-desc', `${RARITY[def.rarity].label} · ${typesText(def)} · HP ${def.hp} · Fart ${def.speed} · Slag ${def.punch}`));
+  const row = (label, value, cls = '') => {
+    const r = el('div', `rp-row ${cls}`);
+    r.append(el('span', 'rp-label', label), el('span', 'rp-value', value));
+    info.append(r);
+  };
+  row('Personlighet', prof.personality);
+  row('Stjärnor', '★'.repeat(prof.stars) + '☆'.repeat(5 - prof.stars), 'rp-stars');
+  row('Förmågor', prof.abilities.join(', '));
+  row('Svaghet', prof.weakness);
+  const body = el('div', 'rp-body');
+  body.append(cv, info);
+  box.append(head, body);
+}
+
 function detailText(def) {
   return `${displayName(def, true)} (${RARITY[def.rarity].label} · ${typesText(def)}) · HP ${def.hp} · Fart ${def.speed} · Slag ${def.punch} · ${def.special.name}: ${def.special.desc}${def.passive ? ` · ✦ ${def.passive.name}: ${def.passive.desc}` : ''}`;
 }
@@ -2590,8 +2621,8 @@ function showSelect() {
     const card = createCard(myDef(def), { locked: n === 0, selected: n > 0 && def.id === game.selectedId, compact: true, n });
     if (n > 0) {
       card.classList.add('pickable');
-      card.addEventListener('mouseenter', () => { byId('detail').textContent = detailText(myDef(def)); });
-      card.addEventListener('mouseleave', () => { byId('detail').textContent = detailText(myDef(robotById[game.selectedId])); });
+      card.addEventListener('mouseenter', () => { byId('detail').textContent = detailText(myDef(def)); renderProfile(myDef(def)); });
+      card.addEventListener('mouseleave', () => { byId('detail').textContent = detailText(myDef(robotById[game.selectedId])); renderProfile(myDef(robotById[game.selectedId])); });
       card.addEventListener('click', () => {
         game.selectedId = def.id;
         net.select(def.id).then((r) => applyAcct(r.acct));
@@ -2602,6 +2633,7 @@ function showSelect() {
   }
 
   byId('detail').textContent = detailText(myDef(robotById[game.selectedId]));
+  renderProfile(myDef(robotById[game.selectedId]));
   renderGaragePanel();
   byId('btn-rename-wildcard').hidden = invCount('wildcard') < 1;
   byId('btn-choose-wildcard-attack').hidden = invCount('wildcard') < 1;

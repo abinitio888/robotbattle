@@ -281,36 +281,42 @@
       id: 'larv', name: 'Larv', rarity: 'common', types: ['stål'],
       color: '#6f7d4a', accent: '#2c3318', eye: '#ffe14d', head: 'box', extra: 'none',
       scale: 1, hp: 110, speed: 195, punch: 7, parts: { legs: 'tracks', turret: true },
+      trait: 'Trogen och envis — kör vidare genom allt.', weak: 'Svänger långsamt. Kommer man bakom honom hinner han inte vända.',
       special: { type: 'projectile', name: 'Kanonskott', dmg: 20, desc: 'Ett tungt skott rakt fram ur kanonen.' },
     },
     {
       id: 'haubis', name: 'Haubis', rarity: 'common', types: ['sten', 'stål'],
       color: '#9a8a62', accent: '#3a3020', eye: '#ffffff', head: 'cyclops', extra: 'antenna',
       scale: 1.05, hp: 112, speed: 185, punch: 7, parts: { legs: 'tracks', turret: true },
+      trait: 'Tystlåten planerare som siktar länge innan han skjuter.', weak: 'Granaterna flyger högt — står man nära slår de ner bakom en.',
       special: { type: 'lob', name: 'Haubitsgranat', dmg: 28, desc: 'En granat i en hög båge som exploderar.' },
     },
     {
       id: 'bandis', name: 'Bandis', rarity: 'rare', types: ['mark', 'stål'],
       color: '#5b6b7a', accent: '#1d252e', eye: '#7fe8ff', head: 'horn', extra: 'shoulders',
       scale: 1.1, hp: 115, speed: 190, punch: 8, parts: { legs: 'tracks', turret: true },
+      trait: 'Skrytig men modig, älskar att dundra fram.', weak: 'Blir yr av att hoppa — larvbanden är gjorda för marken.',
       special: { type: 'shockwave', name: 'Bandskalv', dmg: 20, desc: 'Larvbanden dundrar ner och skickar stötvågor längs marken.' },
     },
     {
       id: 'salva', name: 'Salva', rarity: 'rare', types: ['eld', 'stål'],
       color: '#8a3a2a', accent: '#2a0e08', eye: '#ffd28a', head: 'box', extra: 'none',
       scale: 1, hp: 105, speed: 205, punch: 7, parts: { legs: 'tracks', turret: true },
+      trait: 'Otålig och het, skjuter först och tänker sen.', weak: 'Måste ladda om efter salvan.',
       special: { type: 'burst', name: 'Tornsalva', dmg: 7, desc: 'Tre snabba skott i rad ur tornet.' },
     },
     {
       id: 'jarnorn', name: 'Järnörn', rarity: 'epic', types: ['flygande', 'stål'],
       color: '#4a6a8a', accent: '#14202c', eye: '#ffffff', head: 'crown', extra: 'none',
       scale: 1.05, hp: 105, speed: 240, punch: 9, parts: { turret: true },
+      trait: 'Stolt och skarpsynt, ser allt från ovan.', weak: 'Behöver stå still och sikta — då är hon lätt att träffa.',
       special: { type: 'snipe', name: 'Pansarprick', dmg: 46, desc: 'Siktar med laser och skjuter ett pansarbrytande skott.' },
     },
     {
       id: 'askpansar', name: 'Åskpansar', rarity: 'legendary', types: ['elektrisk', 'stål'],
       color: '#2e4a7a', accent: '#0e1630', eye: '#9ff6ff', head: 'horn', extra: 'none',
       scale: 1.15, hp: 118, speed: 225, punch: 10, parts: { legs: 'tracks', turret: true },
+      trait: 'Lugn ledare som laddar upp i tysthet.', weak: 'Strålen går bara rakt fram — den som hoppar högt kommer undan.',
       special: { type: 'beam', name: 'Rälskanon', dmg: 24, desc: 'En blixtsnabb stråle från kanonen tvärs över banan. Hoppa högt!' },
     },
     // Nya robotar (november 2026).
@@ -558,6 +564,7 @@
       id: 'bastion', name: 'Bastion', rarity: 'divine', types: ['stål', 'eld'],
       color: '#7a6a3a', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'shoulders',
       scale: 1.25, hp: 145, speed: 220, punch: 12, parts: { legs: 'tracks', turret: true, wings: true },
+      trait: 'Lagets orubbliga beskyddare. Står alltid längst fram.', weak: 'Tung och långsam. Snabba robotar kan springa runt honom.',
       special: { type: 'meteorslam', name: 'Bombardemang', dmg: 30, desc: 'Kanontornet pekar mot himlen och en jättegranat slår ner där motståndaren står.' },
       passive: { type: 'shell', name: 'Pansarskal', desc: 'Var sjätte sekund tar pansaret emot nästa träff, som bara gör halv skada.' },
     },
@@ -1230,6 +1237,53 @@
     if ('heal' in base && typeof heal === 'number' && Number.isFinite(heal)) out.heal = clamp(heal, 5, 30);
     out.types = cleanTypes(types);
     return out;
+  }
+
+  // ---------- Robotkort ----------
+  // En profil per robot, som ett samlarkort: personlighet, stjärnor, förmågor och svaghet.
+  // Personligheten kommer från robotens egen trait, annars från dess första element.
+  const TYPE_TRAITS = {
+    eld: 'Het på gröten — rusar alltid först in i striden.',
+    gräs: 'Lugn och tålmodig, växer sig starkare ju längre det håller på.',
+    vatten: 'Följsam och klok, hittar alltid en väg runt hindret.',
+    normal: 'Pålitlig kompis som alltid ställer upp.',
+    elektrisk: 'Blixtsnabb och rastlös, kan inte stå still en sekund.',
+    kryp: 'Liten men envis — ger sig aldrig.',
+    spöke: 'Hemlighetsfull och lite busig, dyker upp när man minst anar det.',
+    flygande: 'Frihetsälskande, vill helst se striden ovanifrån.',
+    strid: 'Modig och rättvis, slåss alltid för sina vänner.',
+    psykisk: 'Tänker tre drag framåt och läser motståndaren som en bok.',
+    stål: 'Stabil och lugn, lagets trygga klippa.',
+    sten: 'Tystlåten och tålig som ett berg.',
+    mark: 'Jordnära och stark, står stadigt i alla väder.',
+    is: 'Kall och samlad, tappar aldrig fattningen.',
+    gift: 'Listig och oförutsägbar.',
+    mörk: 'Gillar skuggorna och slåss smartare än alla tror.',
+    fe: 'Glad och snäll, men blir oväntat stark när vänner är i fara.',
+    drake: 'Stolt och mäktig, väntar på att bli utmanad.',
+  };
+  const RARITY_STARS = { common: 1, rare: 2, epic: 3, wildcard: 3, custom: 3, legendary: 4, monster: 4, mythic: 5, divine: 5, boss: 5 };
+
+  function robotProfile(def) {
+    const types = def.types && def.types.length ? def.types : ['normal'];
+    const abilities = [def.special.name];
+    if (def.passive) abilities.push(def.passive.name);
+    const parts = def.parts || {};
+    if (parts.legs === 'tracks') abilities.push('larvband');
+    if (parts.turret) abilities.push('kanontorn');
+    if (parts.wings) abilities.push('vingar');
+    if (def.hp >= 115) abilities.push('tålig');
+    if (def.speed >= 260) abilities.push('blixtsnabb');
+    if (def.punch >= 10) abilities.push('hårda slag');
+    const weakTo = Object.keys(TYPES).filter((t) => typeMultiplier([t], types) > 1).map((t) => TYPES[t].label);
+    const weakness = def.weak || (weakTo.length ? `Tar extra skada av ${weakTo.join(', ')}.` : 'Ingen känd svaghet — än.');
+    return {
+      personality: def.trait || TYPE_TRAITS[types[0]] || TYPE_TRAITS.normal,
+      stars: RARITY_STARS[def.rarity] || 1,
+      abilities,
+      weakness,
+      weakTo,
+    };
   }
 
   // ---------- Banor ----------
@@ -2853,7 +2907,7 @@
     EQUIPMENT, SUPER_WEAPONS, SUPER_PIECE_CHANCE, addEquipment, equipItem,
     ARENAS, arenaById, pickArena,
     TYPES, typeMultiplier,
-    WILDCARD_SPECIALS, wildcardSpecialFor, TYPE_DEFAULTS, customWildcardSpecial,
+    WILDCARD_SPECIALS, wildcardSpecialFor, TYPE_DEFAULTS, customWildcardSpecial, robotProfile, TYPE_TRAITS,
     HEAD_SHAPES, EXTRA_FEATURES,
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
