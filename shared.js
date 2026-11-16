@@ -2448,6 +2448,7 @@
   const MIMIK_POINTS = 12;
   const MIMIK_MAX_STAT = 8;
   const MIMIK_TEXT_MAX = 200;
+  const MIMIK_ATTACK_MAX = 100;
 
   const MIMIK_COLORS = [
     [/röd|rött|röda/, 'röd', '#ff3b3b'], [/blå/, 'blå', '#3b7bff'], [/grön/, 'grön', '#3ddc84'],
@@ -2474,7 +2475,7 @@
     punch: /stark|slår hårt|kraftig|muskl|krossa|farlig|dödlig/g,
   };
   const MIMIK_ATTACK_TYPES = [
-    [/eld|brinn|flamm|lava|\bhet\b|hetta/, 'eld'], [/is\b|isig|frost|snö|kyla|frys/, 'is'], [/blixt|åsk|elektr|ström|\bel\b/, 'elektrisk'],
+    [/eld|brinn|flamm|lava|\bhet\b|hetta/, 'eld'], [/(?:^|\s)is(?!tället)|isig|frost|snö|kyla|frys/, 'is'], [/blixt|åsk|elektr|ström|\bel\b/, 'elektrisk'],
     [/vatten|våg|hav|regn/, 'vatten'], [/gräs|växt|blad|skog|träd/, 'gräs'], [/gift/, 'gift'], [/sten|klipp|berg/, 'sten'],
     [/jord|sand|mark/, 'mark'], [/skugg|mörk|natt/, 'mörk'], [/spöke/, 'spöke'], [/flyg|vind|storm|luft/, 'flygande'],
     [/stål|metall|järn/, 'stål'], [/magi|psyk|tanke|hjärn/, 'psykisk'], [/glitter|regnbåg|älva|\bfe\b/, 'fe'],
@@ -2523,6 +2524,21 @@
     { re: /kedja/, mech: 'tether', word: 'kedja', noun: 'kedja', desc: 'Binder fast motståndaren med en kedja.' },
     { re: /skott|skjuter|kula|klot|boll/, mech: 'projectile', word: 'skjuter', noun: 'klot', desc: 'Ett stort skott rakt fram.' }, // sist: "skott" finns i andra ord
   ];
+  // När attacktexten inte har något av attackorden ovan: vardagliga ord som ändå säger hur
+  // den ska fungera ("sparkar", "kastar bananer", "läker sig"). Första träffen i listan vinner.
+  const MIMIK_GUESSES = [
+    [/läk|hela|plåster|liv tillbaka/, 'drain'],
+    [/skydd|sköld|osårbar|bubbla|gömmer/, 'barrier'],
+    [/regn|faller|ovanifrån|himlen/, 'meteor'],
+    [/explo|bomb|spräng|smäll/, 'lob'],
+    [/kasta|släng|slänga|kast/, 'lob'],
+    [/suger|drar till sig|magnet/, 'blackhole'],
+    [/spark|knytnäv|boxa|slå|slag|bit|klös|klo|nyp/, 'flurry'],
+    [/snabb|fart|springer/, 'overdrive'],
+    [/fast|fånga|nät|lim|klister/, 'tether'],
+    [/sjung|skrik|vrål|ljud|musik/, 'shockwave'],
+    [/djur|monster|robotar|kompisar|hjälpare/, 'wolves'],
+  ];
   // Listan som visas i Mimik-byggaren.
   const MIMIK_ATTACKS = MIMIK_MECHANICS.map(({ re, mech, word, desc }) => ({ re, mech, word, desc }));
   const ELEMENT_PREFIX = {
@@ -2536,7 +2552,7 @@
   }
 
   // Läser en beskrivning. Ger bygget och en lista över vad som förstods (för att visa).
-  function describeMimik(rawText) {
+  function describeMimik(rawText, rawAttack) {
     const text = cleanMimikText(rawText);
     const t = ` ${text.toLowerCase()} `;
     const understood = [];
@@ -2579,32 +2595,52 @@
       understood.push(['tålig', 'snabb', 'slår hårt'].filter((w, i) => build[['hp', 'speed', 'punch'][i]] >= 5).join(' och ') || 'jämn styrka');
     }
 
-    // Specialattack: "härma", eller en egen attack av ett attackord och/eller ett element.
-    // Elementet som nämns först i texten (inte först i listan).
-    const element = MIMIK_ATTACK_TYPES
-      .map(([re, type]) => [type, t.search(re)])
-      .filter(([, at]) => at >= 0)
+    // Specialattack. Med en egen attacktext (rutan "Mimiks attack") blir DET man skrev
+    // attacken: namnet, beskrivningen och elementet kommer från texten, och sättet den fungerar
+    // på från ett attackord i den — eller en gissning (MIMIK_GUESSES), och annars en av alla
+    // attacksorter vald av texten själv, så att vad man än skriver blir en egen attack. Utan
+    // attacktext läses attacken ur robotbeskrivningen som förut ("härma", ett attackord, ett element).
+    const attackText = cleanMimikText(rawAttack).slice(0, MIMIK_ATTACK_MAX);
+    if (attackText) build.attack = attackText;
+    const at = ` ${attackText.toLowerCase()} `;
+    const src = attackText ? at : t;
+    const firstElement = (s) => MIMIK_ATTACK_TYPES
+      .map(([re, type]) => [type, s.search(re)])
+      .filter(([, i]) => i >= 0)
       .sort((a, b) => a[1] - b[1])
-      .map(([type]) => [null, type])[0];
+      .map(([type]) => type)[0];
+    const element = firstElement(src) || (attackText ? firstElement(t) : null);
     const found = MIMIK_MECHANICS
-      .map((m) => ({ m, at: t.search(m.re) }))
-      .filter((x) => x.at >= 0)
-      .sort((a, b) => a.at - b.at)[0];
-    // Bara ett element ("eld") blir ett eget skott av det elementet.
-    const mech = found ? found.m : element ? MIMIK_MECHANICS[MIMIK_MECHANICS.length - 1] : null;
-    const attackName = text.match(/attack(?:en)?\s+(?:som\s+)?heter\s+([A-Za-zÅÄÖåäö]{2,16}(?:\s[A-Za-zÅÄÖåäö]{2,16})?)/i);
-    if (/härma/.test(t)) {
+      .map((m) => ({ m, i: src.search(m.re) }))
+      .filter((x) => x.i >= 0)
+      .sort((a, b) => a.i - b.i)[0];
+    let mech = found ? found.m : null;
+    if (!mech && attackText) {
+      const guess = MIMIK_GUESSES.find(([re]) => re.test(at));
+      mech = guess ? MIMIK_MECHANICS.find((m) => m.mech === guess[1])
+        : firstElement(at) ? MIMIK_MECHANICS[MIMIK_MECHANICS.length - 1] // bara "is" = ett isskott
+          : MIMIK_MECHANICS[hashName(attackText) % MIMIK_MECHANICS.length];
+    }
+    if (!mech && element) mech = MIMIK_MECHANICS[MIMIK_MECHANICS.length - 1]; // bara "eld" = ett eldskott
+    const nameRe = /attack(?:en)?\s+(?:som\s+)?heter\s+([A-Za-zÅÄÖåäö]{2,16}(?:\s[A-Za-zÅÄÖåäö]{2,16})?)/i;
+    const attackName = (attackText && attackText.match(/(?:^|\s)heter\s+([A-Za-zÅÄÖåäö]{2,16}(?:\s[A-Za-zÅÄÖåäö]{2,16})?)/i)) || text.match(nameRe);
+    if (/härma/.test(src)) {
       understood.push('härmar motståndarens attack');
     } else if (mech) {
-      // En helt egen attack: sorten från ordet, elementet (om det finns) och ett namn.
-      const type = element ? element[1] : 'normal';
-      const name = attackName
-        ? attackName[1][0].toUpperCase() + attackName[1].slice(1)
-        : ELEMENT_PREFIX[type] + mech.noun;
+      const type = element || 'normal';
+      const cap = (s) => s[0].toUpperCase() + s.slice(1);
+      // Utan "heter …" blir de första orden i attacktexten namnet (som får plats).
+      let short = '';
+      for (const w of attackText.replace(/^(?:(?:jag|en|ett|min|mitt|mina|den|det|attacken|attack)\s+)+/i, '').split(' ')) {
+        if (`${short} ${w}`.trim().length > 24) break;
+        short = `${short} ${w}`.trim();
+      }
+      const name = attackName ? cap(attackName[1]) : short ? cap(short) : ELEMENT_PREFIX[type] + mech.noun;
       const base = TYPE_DEFAULTS[mech.mech];
       build.special = 'custom';
-      build.customSpecial = customWildcardSpecial(mech.mech, name, mech.desc, base.dmg, base.heal, [type]);
+      build.customSpecial = customWildcardSpecial(mech.mech, name, attackText || mech.desc, base.dmg, base.heal, [type]);
       understood.push(`egen attack: ${name} (${TYPES[type].label})`);
+      if (attackText) understood.push(`fungerar som: ${mech.word}`);
     }
 
     // Hur den är byggd (ritas i render3d.js buildRobot): kropp, ben, armar, vingar, svans.
@@ -2629,7 +2665,7 @@
   }
 
   // Ett sparat bygge läses alltid om från texten (så att ingen kan spara egna siffror).
-  const cleanMimik = (c) => (c && typeof c.text === 'string' && c.text.trim() ? describeMimik(c.text).build : null);
+  const cleanMimik = (c) => (c && typeof c.text === 'string' && (c.text.trim() || (typeof c.attack === 'string' && c.attack.trim())) ? describeMimik(c.text, c.attack).build : null);
 
   // Mimiks def med bygget: utseende, namn, storlek, styrka och specialattack.
   function mimikDef(base, c) {
@@ -2649,11 +2685,11 @@
     return out;
   }
 
-  function setMimikCustom(acct, text) {
+  function setMimikCustom(acct, text, attack) {
     if (count(acct, 'mimik') < 1) return { error: 'Du äger inte Mimik än.' };
     const clean = cleanMimikText(text);
-    if (!clean) return { error: 'Skriv en beskrivning av din Mimik först.' };
-    const { build, understood } = describeMimik(clean);
+    if (!clean && !cleanMimikText(attack)) return { error: 'Skriv en beskrivning av din Mimik först.' };
+    const { build, understood } = describeMimik(clean, attack);
     acct.mimikCustom = build;
     return { mimik: build, understood };
   }
@@ -2721,7 +2757,7 @@
     newAccount, sanitize, count, total, canStake, addRobot, removeRobot,
     rollBox, rollBoxFrom, pickOpponent, startMatch, finishMatch, openBox, claimDaily, view, nameWildcard,
     chooseWildcardSpecial, setCustomWildcardSpecial, setWildcardColor, setWildcardHead, setWildcardExtra,
-    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS, setHome, HOME_SLOTS, MEDALS, CLANWAR_COINS, CLANWAR_BOXES, setBygge, byggeDef, BYGGE_ATTACKS,
+    MIMIK_POINTS, MIMIK_MAX_STAT, MIMIK_TEXT_MAX, MIMIK_ATTACK_MAX, describeMimik, mimikDef, setMimikCustom, MIMIK_ATTACKS, albumPages, claimAlbum, ALBUM_COINS, ALBUM_BOXES, dailyChallenge, DAILY_COINS, setHome, HOME_SLOTS, MEDALS, CLANWAR_COINS, CLANWAR_BOXES, setBygge, byggeDef, BYGGE_ATTACKS,
     xpNeeded, addXp, xpFor, XP,
     TRADE_VALUE, tradeValue, canTradeFor, trade,
     SHOP_ITEMS, COINS, buyItem, BOX_PRICES, buyBox, TEAM_SIZES,

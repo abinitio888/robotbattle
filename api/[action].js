@@ -107,7 +107,7 @@ module.exports = dispatch({
   // Mimik: en beskrivning med egna ord blir utseende, storlek, styrka och attack — se describeMimik() i shared.js.
   'mimik-custom': {
     method: 'POST',
-    handler: acctAction((acct, body) => S.setMimikCustom(acct, body.text)),
+    handler: acctAction((acct, body) => S.setMimikCustom(acct, body.text, body.attack)),
   },
   // Robotbygget: sätt ihop en egen robot av tre robotar man äger (se setBygge i shared.js).
   'bygge-set': {

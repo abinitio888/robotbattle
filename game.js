@@ -3092,16 +3092,17 @@ function showMimik() {
   game.phase = 'mimikbuild';
   byId('mimik-error').textContent = '';
   byId('mimik-text').value = (game.acct.mimikCustom && game.acct.mimikCustom.text) || '';
+  byId('mimik-attack-text').value = (game.acct.mimikCustom && game.acct.mimikCustom.attack) || '';
   renderMimik();
   showScreen('mimik');
   byId('mimik-text').focus();
 }
 
 function renderMimik() {
-  const { build, understood } = Shared.describeMimik(byId('mimik-text').value);
+  const { build, understood } = Shared.describeMimik(byId('mimik-text').value, byId('mimik-attack-text').value);
   const box = byId('mimik-understood');
   box.replaceChildren();
-  if (!build.text) {
+  if (!build.text && !build.attack) {
     box.append(el('span', 'hint', 'Skriv något så visar spelet vad det förstår.'));
   } else if (!understood.length) {
     box.append(el('span', 'hint', 'Spelet förstod inga ord än — prova med en färg, ett huvud eller ett element.'));
@@ -3110,7 +3111,10 @@ function renderMimik() {
   }
   const def = Shared.mimikDef(robotById.mimik, build);
   renderMimikAttacks(build);
-  byId('mimik-preview').textContent = `Så blir ${def.name}: storlek ${build.scale} · liv ${def.hp} · fart ${def.speed} · slag ${def.punch} · ${build.special === 'mimic' ? 'härmar motståndarens specialattack' : `${def.special.name}: ${def.special.desc}`}`;
+  const how = build.special === 'custom' && build.attack && Shared.MIMIK_ATTACKS.find((a) => a.mech === def.special.type);
+  const attack = build.special === 'mimic' ? 'härmar motståndarens specialattack'
+    : `${def.special.name}: ${def.special.desc}${how ? ` (${how.desc})` : ''}`;
+  byId('mimik-preview').textContent = `Så blir ${def.name}: storlek ${build.scale} · liv ${def.hp} · fart ${def.speed} · slag ${def.punch} · ${attack}`;
 }
 
 // Alla attacker Mimik kan få, som knappar. Ett klick byter ut attackordet i texten.
@@ -3130,17 +3134,17 @@ function renderMimikAttacks(build) {
 }
 
 function pickMimikAttack(word) {
-  const ta = byId('mimik-text');
+  const ta = byId('mimik-attack-text');
   let text = ta.value.replace(/härma\S*/gi, '');
   for (const a of Shared.MIMIK_ATTACKS) text = text.replace(new RegExp(a.re.source, 'gi'), '');
   text = text.replace(/\s+([,.])/g, '$1').replace(/([,.])\s*[,.]+/g, '$1').replace(/\s+/g, ' ').trim().replace(/[,.]$/, '');
-  ta.value = `${text}${text ? ', ' : ''}${word}`.slice(0, Shared.MIMIK_TEXT_MAX);
+  ta.value = `${text}${text ? ' ' : ''}${word}`.slice(0, Shared.MIMIK_ATTACK_MAX);
   renderMimik();
 }
 
 async function saveMimik() {
   try {
-    const r = await net.setMimikCustom(byId('mimik-text').value);
+    const r = await net.setMimikCustom(byId('mimik-text').value, byId('mimik-attack-text').value);
     applyAcct(r.acct);
   } catch (e) {
     byId('mimik-error').textContent = e.message;
@@ -4218,6 +4222,7 @@ byId('btn-mimik').addEventListener('click', showMimik);
 byId('btn-mimik-back').addEventListener('click', showSelect);
 byId('btn-mimik-save').addEventListener('click', saveMimik);
 byId('mimik-text').addEventListener('input', renderMimik);
+byId('mimik-attack-text').addEventListener('input', renderMimik);
 byId('btn-tourney-play').addEventListener('click', () => startMatch('tourney'));
 byId('btn-team-3').addEventListener('click', () => startMatch('team', '3'));
 byId('btn-arena-normal').addEventListener('click', () => { game.mode = 'normal'; startMatch(); });

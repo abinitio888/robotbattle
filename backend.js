@@ -147,8 +147,8 @@
       return { acct: this.view() };
     }
 
-    async setMimikCustom(text) {
-      const result = S.setMimikCustom(this.acct, text);
+    async setMimikCustom(text, attack) {
+      const result = S.setMimikCustom(this.acct, text, attack);
       if (result.error) throw new Error(result.error);
       this.save();
       return { acct: this.view() };
@@ -311,7 +311,7 @@
     claimAlbum(type) { return this.api('/api/album-claim', { type }); }
     setHome(show) { return this.api('/api/home-set', { show }); }
     setBygge(bygge) { return this.api('/api/bygge-set', { bygge }); }
-    setMimikCustom(text) { return this.api('/api/mimik-custom', { text }); }
+    setMimikCustom(text, attack) { return this.api('/api/mimik-custom', { text, attack }); }
     upgradeRobot(robot) { return this.api('/api/upgrade', { robot }); }
     buySkin(skin) { return this.api('/api/buy-skin', { skin }); }
     setSkin(robot, skin) { return this.api('/api/set-skin', { robot, skin }); }
@@ -449,8 +449,8 @@
       return { acct: this.view() };
     }
 
-    async setMimikCustom(text) {
-      const result = S.setMimikCustom(this.acct, text);
+    async setMimikCustom(text, attack) {
+      const result = S.setMimikCustom(this.acct, text, attack);
       if (result.error) throw new Error(result.error);
       await this.save();
       return { acct: this.view() };
