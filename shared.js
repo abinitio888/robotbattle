@@ -566,8 +566,8 @@
       color: '#7a6a3a', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'shoulders',
       scale: 1.3, hp: 180, speed: 250, punch: 15, parts: { legs: 'tracks', turret: true },
       trait: 'Lagets orubbliga beskyddare. Står alltid längst fram.', weak: 'Tung och långsam. Snabba robotar kan springa runt honom.',
-      special: { type: 'evolve', name: 'Evolutionsgranat', dmg: 26, desc: 'Granaten utvecklas till en av fyra saker: Åskfarkosten (tre blixtar), Skräckklistret (fastnar och gör rädd), Blixtpärlan (snabbare och starkare) eller Ljuskanonen (en jättestråle).' },
-      passive: { type: 'shapeshift', name: 'Formskiftare & Livsgnista', desc: 'Under halva livet växer Bastion sig jättestor: slår 40 % hårdare och tar mindre skada. En gång per match vaknar den till liv igen med 35 % liv.' },
+      special: { type: 'sizeshift', name: 'Formskifte', dmg: 26, desc: 'Byter form varje gång: Jätteform (stor och stark), Miniform (pytteliten och snabb — skott flyger över), Klon (en liten kopia springer med och skjuter) och Evolutionsgranat.' },
+      passive: { type: 'shapeshift', name: 'Livsgnista', desc: 'En gång per match vaknar Bastion till liv igen med 35 % liv.' },
     },
     {
       id: 'tordon', name: 'Tordön', rarity: 'divine', types: ['elektrisk', 'flygande'],

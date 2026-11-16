@@ -91,8 +91,9 @@ function hurt(target, dmg, dirX, knock, source) {
     }
   }
   if (target.passive === 'steadfast') { dmg *= 0.85; knock = 0; } // Orubblig
-  if (target.passive === 'shapeshift' && target.hp < target.maxHp * 0.5) { dmg *= 0.8; knock *= 0.3; } // Formskiftare: jättestor
-  if (source.passive === 'shapeshift' && source.hp < source.maxHp * 0.5 && source.act && source.act.kind === 'punch') dmg *= 1.4;
+  if (target.giantT > 0) { dmg *= 0.7; knock = 0; } // Bastions jätteform
+  if (target.miniT > 0) knock *= 1.3; // liten och lätt
+  if (source.giantT > 0 && source.act && source.act.kind === 'punch') dmg *= 1.6;
   if (target.passive === 'shell' && target.shellCd <= 0 && source !== target) { // Pansarskal
     dmg *= 0.25;
     target.shellCd = 4;
@@ -243,6 +244,55 @@ function shoot(f, dmg, speed, r) {
 
 function wave(f, dir, dmg) {
   game.waves.push({ owner: f, x: f.x, z: f.z, vx: dir * 380, dir, dmg, travelled: 0 });
+}
+
+// Bastions miniform: lägre och smalare kropp, så att vanliga skott flyger rakt över.
+function setMini(f, on) {
+  const k = on ? 0.55 : 1;
+  f.w = BODY_W * f.def.scale * k;
+  f.h = BODY_H * f.def.scale * k;
+  if (!on) f.miniT = 0;
+}
+
+// Bastions klon: en liten kopia som springer mot motståndaren och skjuter i sex sekunder. Den
+// är bara en fantom — den kan inte bli träffad, och försvinner av sig själv.
+function spawnClone(owner, target, dmg) {
+  const def = { ...owner.def, id: `${owner.def.id}-klon`, scale: owner.def.scale * 0.55, passive: null };
+  const c = new Fighter(def, clamp(owner.x - owner.facing * 50, 30, W - 30), owner.facing);
+  c.z = owner.z;
+  c.target = target;
+  game.clones = game.clones || [];
+  game.clones.push({ f: c, owner, target, life: 6, shotT: 0.5, dmg });
+  sparks(c.x, c.y - c.h / 2, owner.def.color, 20, c.z);
+}
+
+function updateClones(dt) {
+  if (!game.clones) return;
+  for (const c of game.clones) {
+    const f = c.f;
+    c.life -= dt;
+    f.time += dt;
+    if (c.owner.dead || c.target.dead) c.life = 0;
+    const dx = c.target.x - f.x;
+    f.facing = Math.sign(dx) || f.facing;
+    f.moving = Math.abs(dx) > 170;
+    if (f.moving) {
+      f.x = clamp(f.x + f.facing * 260 * dt, 20, W - 20);
+      f.walkT += dt;
+    }
+    f.z += clamp(c.target.z - f.z, -120 * dt, 120 * dt);
+    c.shotT -= dt;
+    if (c.shotT <= 0 && c.life > 0) {
+      c.shotT = 1.1;
+      f.act = { kind: 'special', t: 0, dur: 0.3 };
+      game.projectiles.push({
+        owner: f, x: f.x + f.facing * (f.w / 2 + 6), y: f.y - f.h * 0.6, z: f.z,
+        vx: f.facing * 620, dmg: c.dmg, r: 9, color: c.owner.def.eye, noEnergy: true,
+      });
+    } else if (f.act && (f.act.t += dt) > f.act.dur) f.act = null;
+    if (c.life <= 0) sparks(f.x, f.y - f.h / 2, c.owner.def.color, 16, f.z);
+  }
+  game.clones = game.clones.filter((c) => c.life > 0);
 }
 
 const SPECIALS = {
@@ -625,6 +675,35 @@ const SPECIALS = {
       }
       game.shake = Math.max(game.shake, 0.25);
       sparks(f.x, f.y - f.h, '#ff6a1a', 22, f.z);
+    },
+  },
+  sizeshift: {
+    // Bastions formskifte: varje gång specialen används blir det nästa form i tur och ordning —
+    // jätte (stor och stark), mini (pytteliten och snabb, skott flyger över), klon (en liten
+    // kopia springer med och skjuter) och evolutionsgranat.
+    dur: 0.6, fires: [0.2],
+    fire: (f, o, sp) => {
+      const form = ['grow', 'shrink', 'clone', 'evolve'][(f.formIdx || 0) % 4];
+      f.formIdx = (f.formIdx || 0) + 1;
+      const banner = (name) => { if (f === game.player || f === game.ai) game.superBanner = { name, t: 1.3, mine: f === game.player }; };
+      if (form === 'grow') {
+        banner('Jätteform!');
+        setMini(f, false);
+        f.giantT = 6;
+        sparks(f.x, f.y - f.h, '#ffe28a', 26, f.z);
+        game.shake = Math.max(game.shake, 0.3);
+      } else if (form === 'shrink') {
+        banner('Miniform!');
+        f.giantT = 0;
+        setMini(f, true);
+        f.miniT = 5;
+        sparks(f.x, f.y - f.h / 2, '#9ff6ff', 20, f.z);
+      } else if (form === 'clone') {
+        banner('Klon!');
+        spawnClone(f, o, Math.round(sp.dmg * 0.4));
+      } else {
+        SPECIALS.evolve.fire(f, o, sp);
+      }
     },
   },
   // ---- Förmågor från berättelsen om leksaksstridsvagnarna ----
@@ -1051,6 +1130,8 @@ class Fighter {
     this.flash = Math.max(0, this.flash - dt);
     this.atkCd = Math.max(0, this.atkCd - dt * (this.buffT > 0 ? 2 : 1));
     this.buffT = Math.max(0, this.buffT - dt);
+    if (this.giantT > 0) this.giantT = Math.max(0, this.giantT - dt);
+    if (this.miniT > 0) { this.miniT -= dt; if (this.miniT <= 0) setMini(this, false); }
     this.shieldT = Math.max(0, this.shieldT - dt);
     this.reflectT = Math.max(0, this.reflectT - dt);
     this.frozenT = Math.max(0, this.frozenT - dt);
@@ -1098,8 +1179,8 @@ class Fighter {
         } else {
           // Vargblod: Fenrir springer fortare under halva HP.
           const rage = this.passive === 'bloodrage' && this.hp < this.maxHp * 0.5 ? 1.2 : 1;
-          walk = rooted ? 0 : input.dir * this.def.speed * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow * rage;
-          walkZ = rooted ? 0 : (input.depth || 0) * this.def.speed * DEPTH_SPEED * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow * rage;
+          walk = rooted ? 0 : input.dir * this.def.speed * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow * rage * (this.miniT > 0 ? 1.45 : this.giantT > 0 ? 0.85 : 1);
+          walkZ = rooted ? 0 : (input.depth || 0) * this.def.speed * DEPTH_SPEED * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow * rage * (this.miniT > 0 ? 1.45 : this.giantT > 0 ? 0.85 : 1);
           if (input.jump && this.onGround && !rooted) {
             this.vy = -JUMP_V * (this.def.jumpMul || 1); // Fjäderskorna hoppar högre
             if (this === game.player) Sound.jump();
@@ -1813,6 +1894,7 @@ function wantsSpecial(f, o, dist) {
     case 'chainbolt': return dist > 150 && dist < 800;
     case 'artillery': return dist > 120 || f.hp < f.maxHp * 0.5;
     case 'evolve': return dist > 140 && dist < 800;
+    case 'sizeshift': return dist < 600;
     case 'chrono': return dist < 400;
     case 'phantoms': return dist > 100;
     case 'wormhole': return dist > 150;
@@ -5320,6 +5402,7 @@ function beginFriendMatch(isHost, payload) {
       .catch(() => {});
   }
   game.projectiles = [];
+  game.clones = [];
   game.waves = [];
   game.beams = [];
   game.strikes = [];
@@ -5527,6 +5610,7 @@ function updateFriendMatch(dt) {
       separate(f0, f1);
       if (boss) { separate(f0, boss); separate(f1, boss); }
       updateProjectiles(dt);
+      updateClones(dt);
       updateWaves(dt);
       updateBeams(dt);
       updateStrikes(dt);
@@ -6004,6 +6088,7 @@ function update(dt) {
     if (player.act && player.act.kind === 'special') specialBuffer = 0;
 
     updateProjectiles(dt);
+    updateClones(dt);
     updateWaves(dt);
     updateBeams(dt);
     updateStrikes(dt);
@@ -6370,7 +6455,7 @@ function fighterPose(f, opp) {
     actKind: a ? a.kind : null, actT: a ? a.t : 0, actDur: a ? a.dur : 1,
     ready: f.energy >= specialCost(f),
     blocking: !!f.blocking,
-    sizeMul: f.passive === 'shapeshift' && f.hp < f.maxHp * 0.5 ? 1.3 : 1, // Formskiftare
+    sizeMul: f.giantT > 0 ? 1.6 : f.miniT > 0 ? 0.55 : 1, // Bastions formskifte
   };
 }
 
@@ -6564,6 +6649,7 @@ function draw() {
       fighters.push({ f: ai, pose: aiPose }, { f: player, pose: fighterPose(player, player.target || ai), isPlayer: true });
       for (const a of game.allies) fighters.push({ f: a.f, pose: fighterPose(a.f, a.f.target || ai) });
       for (const x of game.foes) fighters.push({ f: x.f, pose: fighterPose(x.f, x.f.target || player) });
+      for (const c of game.clones || []) fighters.push({ f: c.f, pose: { ...fighterPose(c.f, c.target), ready: true } });
     }
     const none = [];
     r3d.render({
@@ -6644,7 +6730,6 @@ function draw() {
       : player.passive === 'rewind' && player.rewound ? ' — använd'
         : player.passive === 'rooted' && player.stillT >= 1 ? ' (rotad!)'
           : player.passive === 'bloodrage' && player.hp < player.maxHp * 0.5 ? ' (aktiv!)'
-          : player.passive === 'shapeshift' && player.hp < player.maxHp * 0.5 ? ' (jättestor!)'
             : '';
     const pasText = pas ? `✦ ${pas.name}${pasState}` : '';
     const supText = sp ? (player.superReady ? `Q: ${sp.name}` : `${sp.name} — använd`) : '';
