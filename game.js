@@ -91,6 +91,11 @@ function hurt(target, dmg, dirX, knock, source) {
     }
   }
   if (target.passive === 'steadfast') { dmg *= 0.85; knock = 0; } // Orubblig
+  if (target.passive === 'shell' && target.shellCd <= 0 && source !== target) { // Pansarskal
+    dmg *= 0.5;
+    target.shellCd = 6;
+    sparks(target.x, target.y - target.h * 0.6, '#ffd93d', 12, target.z);
+  }
   if (target.def.noKnock) knock = 0; // Magnetstövlarna
   if (target.passive === 'rooted' && target.stillT >= 1) { dmg *= 0.6; knock = 0; } // Rotad
   if (source.passive === 'execute' && target.hp < target.maxHp * 0.3) dmg *= 1.5; // Själsfångst
@@ -756,6 +761,7 @@ class Fighter {
   updatePassive(dt) {
     if (this.dead) return;
     if (this.passive === 'shadow') this.shadowCd = Math.max(0, this.shadowCd - dt);
+    if (this.passive === 'shell') this.shellCd = Math.max(0, this.shellCd - dt);
     if (this.passive === 'tidal') this.hp = Math.min(this.maxHp, this.hp + 1.5 * dt);
     if (this.passive === 'rewind') {
       this.hpLogT -= dt;
@@ -804,6 +810,7 @@ class Fighter {
     this.passive = def.passive ? def.passive.type : null;
     this.jumpHeld = false;   // Änglavingar: dubbelhoppet kräver ett nytt tryck i luften
     this.doubleUsed = false;
+    this.shellCd = 0;        // Pansarskal: klar när den når 0
     this.shadowCd = 0;       // Skuggform: klar när den når 0
     this.rewound = false;    // Återspolning: bara en gång per match
     this.hpLog = [];         // Återspolning: HP de senaste sekunderna
@@ -6409,6 +6416,7 @@ function draw() {
     const sp = player.def.superPower;
     const pas = player.def.passive;
     const pasState = player.passive === 'shadow' && player.shadowCd > 0 ? ` (${Math.ceil(player.shadowCd)} s)`
+      : player.passive === 'shell' && player.shellCd > 0 ? ` (${Math.ceil(player.shellCd)} s)`
       : player.passive === 'rewind' && player.rewound ? ' — använd'
         : player.passive === 'rooted' && player.stillT >= 1 ? ' (rotad!)'
           : player.passive === 'bloodrage' && player.hp < player.maxHp * 0.5 ? ' (aktiv!)'

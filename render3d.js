@@ -993,6 +993,22 @@
       upper.add(tail);
     }
 
+    // Stridsvagnsrobotar (parts.turret): ett kanontorn över axeln med en lång pipa framåt.
+    if (parts.turret) {
+      const t = new THREE.Group();
+      t.position.set(-8, 108, -24 * bodyW);
+      t.add(mesh(box(28, 12, 22), M.dark, 0, 0, 0));
+      t.add(mesh(box(20, 6, 18), M.body, -2, 8, 0));
+      const barrel = mesh(cyl(3.2, 3.2, 56, 12), M.body, 40, 2, 0);
+      barrel.rotation.z = Math.PI / 2;
+      t.add(barrel);
+      const muzzle = mesh(cyl(4.6, 4.6, 8, 12), M.dark, 68, 2, 0);
+      muzzle.rotation.z = Math.PI / 2;
+      t.add(muzzle);
+      t.add(mesh(box(1.4, 1.4, 16), M.line, 0, 6.5, 0));
+      upper.add(t);
+    }
+
     switch (def.extra) {
       case 'cannon': {
         const g = new THREE.Group();
