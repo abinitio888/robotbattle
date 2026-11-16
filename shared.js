@@ -290,7 +290,7 @@
       color: '#9a8a62', accent: '#3a3020', eye: '#ffffff', head: 'cyclops', extra: 'antenna',
       scale: 1.1, hp: 152, speed: 225, punch: 12, parts: { legs: 'tracks', turret: true },
       trait: 'Tystlåten planerare som siktar länge innan han skjuter.', weak: 'Granaterna flyger högt — står man nära slår de ner bakom en.',
-      special: { type: 'barrage', name: 'Granatregn', dmg: 18, desc: 'Tre granater i höga bågar: bakom, på och framför motståndaren. Spring!' },
+      special: { type: 'wormhole', name: 'Maskhålsgranat', dmg: 34, desc: 'En superpansarbrytande granat åker genom ett maskhål och kommer ut rakt ovanför motståndaren. Flytta dig!' },
     },
     {
       id: 'bandis', name: 'Bandis', rarity: 'super', types: ['mark', 'stål'],
@@ -311,14 +311,14 @@
       color: '#4a6a8a', accent: '#14202c', eye: '#ffffff', head: 'crown', extra: 'none',
       scale: 1.1, hp: 150, speed: 270, punch: 13, parts: { turret: true },
       trait: 'Stolt och skarpsynt, ser allt från ovan.', weak: 'Behöver stå still och sikta — då är hon lätt att träffa.',
-      special: { type: 'divebomb', name: 'Störtdykning', dmg: 20, desc: 'Skjuter upp i luften och släpper tre bomber mot motståndaren.' },
+      special: { type: 'phantoms', name: 'Skuggkloner', dmg: 16, desc: 'Tre fantomkopior dyker upp runt motståndaren och skjuter från olika håll.' },
     },
     {
       id: 'askpansar', name: 'Åskpansar', rarity: 'super', types: ['elektrisk', 'stål'],
       color: '#2e4a7a', accent: '#0e1630', eye: '#9ff6ff', head: 'horn', extra: 'none',
       scale: 1.2, hp: 162, speed: 245, punch: 13, parts: { legs: 'tracks', turret: true },
       trait: 'Lugn ledare som laddar upp i tysthet.', weak: 'Strålen går bara rakt fram — den som hoppar högt kommer undan.',
-      special: { type: 'chainbolt', name: 'Kedjeblixt', dmg: 26, desc: 'En stråle som bedövar, och strax efter slår en blixt ner där motståndaren står.' },
+      special: { type: 'chrono', name: 'Tidsstopp', dmg: 10, desc: 'Tiden står still för motståndaren i nästan två sekunder — passa på att slå!' },
     },
     // Nya robotar (november 2026).
     {
@@ -566,8 +566,8 @@
       color: '#7a6a3a', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'shoulders',
       scale: 1.3, hp: 180, speed: 250, punch: 15, parts: { legs: 'tracks', turret: true },
       trait: 'Lagets orubbliga beskyddare. Står alltid längst fram.', weak: 'Tung och långsam. Snabba robotar kan springa runt honom.',
-      special: { type: 'artillery', name: 'Fullt bombardemang', dmg: 24, desc: 'Gömmer sig bakom en sköld medan fem granater slår ner i en rad mot motståndaren.' },
-      passive: { type: 'shell', name: 'Pansarskal', desc: 'Var fjärde sekund tar pansaret emot nästa träff, som bara gör en fjärdedel av skadan.' },
+      special: { type: 'evolve', name: 'Evolutionsgranat', dmg: 26, desc: 'Granaten utvecklas till en av fyra saker: Åskfarkosten (tre blixtar), Skräckklistret (fastnar och gör rädd), Blixtpärlan (snabbare och starkare) eller Ljuskanonen (en jättestråle).' },
+      passive: { type: 'shapeshift', name: 'Formskiftare & Livsgnista', desc: 'Under halva livet växer Bastion sig jättestor: slår 40 % hårdare och tar mindre skada. En gång per match vaknar den till liv igen med 35 % liv.' },
     },
     {
       id: 'tordon', name: 'Tordön', rarity: 'divine', types: ['elektrisk', 'flygande'],

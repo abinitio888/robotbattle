@@ -91,6 +91,8 @@ function hurt(target, dmg, dirX, knock, source) {
     }
   }
   if (target.passive === 'steadfast') { dmg *= 0.85; knock = 0; } // Orubblig
+  if (target.passive === 'shapeshift' && target.hp < target.maxHp * 0.5) { dmg *= 0.8; knock *= 0.3; } // Formskiftare: jättestor
+  if (source.passive === 'shapeshift' && source.hp < source.maxHp * 0.5 && source.act && source.act.kind === 'punch') dmg *= 1.4;
   if (target.passive === 'shell' && target.shellCd <= 0 && source !== target) { // Pansarskal
     dmg *= 0.25;
     target.shellCd = 4;
@@ -177,6 +179,14 @@ function hurt(target, dmg, dirX, knock, source) {
     target.reviveT = 1.4;
     sparks(target.x, target.y - target.h * 0.6, '#ffe28a', 24, target.z);
     game.superBanner = { name: 'Återspolning', t: 1.4, mine: target === game.player };
+  }
+  if (target.passive === 'shapeshift' && !target.revived && target.hp <= 0) {
+    // Livsgnistan: en gång per match vaknar den till liv igen.
+    target.revived = true;
+    target.hp = target.maxHp * 0.35;
+    target.reviveT = 1.4;
+    sparks(target.x, target.y - target.h * 0.6, '#ffe28a', 30, target.z);
+    game.superBanner = { name: 'Livsgnistan!', t: 1.4, mine: target === game.player };
   }
   if (target.hp <= 0) target.dead = true;
   if (target === game.player) game.hitTaken = true; // inte längre Felfri
@@ -617,6 +627,79 @@ const SPECIALS = {
       sparks(f.x, f.y - f.h, '#ff6a1a', 22, f.z);
     },
   },
+  // ---- Förmågor från berättelsen om leksaksstridsvagnarna ----
+  evolve: {
+    // Evolutionsgranat: granaten utvecklas till en av fyra saker — en åskfarkost som slår ner
+    // blixtar, skräckklister som fastnar, en blixtpärla som gör en snabbare, eller ljuskanonen.
+    dur: 0.8, fires: [0.3],
+    fire: (f, o, sp) => {
+      const pick = ['ufo', 'sticky', 'bead', 'light'][Math.floor(Math.random() * 4)];
+      const banner = (name) => { if (f === game.player || f === game.ai) game.superBanner = { name, t: 1.3, mine: f === game.player }; };
+      sparks(f.x + f.facing * f.w, f.y - f.h * 0.7, '#ffe28a', 20, f.z);
+      if (pick === 'ufo') {
+        banner('Evolution: Åskfarkosten!');
+        for (let k = 0; k < 3; k++) game.strikes.push({ owner: f, x: clamp(o.x, 30, W - 30), z: o.z, t: 0, delay: 0.45 + k * 0.4, dmg: Math.round(sp.dmg * 0.7), done: false });
+      } else if (pick === 'sticky') {
+        banner('Evolution: Skräckklistret!');
+        shoot(f, sp.dmg, 620, 14);
+        const p = game.projectiles[game.projectiles.length - 1];
+        p.freeze = 1.3;
+        p.color = '#b46bff';
+        p.scare = true;
+      } else if (pick === 'bead') {
+        banner('Evolution: Blixtpärlan!');
+        f.buffT = Math.max(f.buffT, 6);
+        f.energy = Math.min(MAX_ENERGY, f.energy + 25);
+        sparks(f.x, f.y - f.h / 2, '#fff36b', 24, f.z);
+      } else {
+        banner('Evolution: Ljuskanonen!');
+        const x0 = f.x + f.facing * (f.w / 2);
+        const x1 = f.x + f.facing * 960;
+        game.beams.push({ x0, x1, y: f.y - f.h * 0.6, z: f.z, t: 0.45, max: 0.45, color: '#fff6c0' });
+        game.shake = Math.max(game.shake, 0.35);
+        if (inLane(o, f.z, 40) && overlaps(o, x0, x1, f.y - f.h * 1.0, f.y - f.h * 0.1)) hurt(o, Math.round(sp.dmg * 1.8), f.facing, 600, f);
+      }
+    },
+  },
+  chrono: {
+    // Tidsstopp: tiden står still för motståndaren — den kan inte röra sig, men kan bli träffad.
+    dur: 0.6, fires: [0.2],
+    fire: (f, o, sp) => {
+      const energy = f.energy;
+      hurt(o, sp.dmg, f.facing, 0, f);
+      f.energy = energy;
+      o.invuln = 0;
+      o.hurt = 1.7;
+      o.frozenT = 1.7;
+      o.kx = 0;
+      if (f === game.player || f === game.ai) game.superBanner = { name: 'Tiden står still!', t: 1.4, mine: f === game.player };
+      for (let k = 0; k < 16; k++) sparks(o.x + Math.cos(k) * 50, o.y - o.h * 0.5 + Math.sin(k) * 50, '#9ff6ff', 1, o.z);
+    },
+  },
+  phantoms: {
+    // Skuggkloner: tre fantomkopior dyker upp runt motståndaren och skjuter från olika håll,
+    // medan den riktiga Järnörn blir genomskinlig en stund.
+    dur: 0.8, fires: [0.25],
+    fire: (f, o, sp) => {
+      f.invuln = Math.max(f.invuln, 0.7);
+      const y = o.y - o.h * 0.6;
+      const from = [[clamp(o.x - 240, 10, W - 10), y, 620, 0], [clamp(o.x + 240, 10, W - 10), y, -620, 0], [o.x - 120, y - 220, 300, 560]];
+      for (const [x, y0, vx, vy] of from) {
+        sparks(x, y0, f.def.color, 14, o.z);
+        game.projectiles.push({ owner: f, x, y: y0, z: o.z, vx, vy, dmg: sp.dmg, r: 9, color: f.def.eye });
+      }
+    },
+  },
+  wormhole: {
+    // Maskhålsgranat: en superpansarbrytande granat skjuts in i ett maskhål och kommer ut rakt
+    // ovanför motståndaren.
+    dur: 0.8, fires: [0.3],
+    fire: (f, o, sp) => {
+      sparks(f.x + f.facing * (f.w / 2 + 30), f.y - f.h * 0.7, '#b46bff', 26, f.z);
+      game.strikes.push({ owner: f, x: clamp(o.x, 30, W - 30), z: o.z, t: 0, delay: 0.7, dmg: sp.dmg, done: false });
+      game.shake = Math.max(game.shake, 0.2);
+    },
+  },
   rockets: {
     // Fem raketer från ryggen i en hög båge, som slår ner runt motståndaren en i taget.
     dur: 0.7, fires: [0.25],
@@ -906,6 +989,7 @@ class Fighter {
     this.doubleUsed = false;
     this.shellCd = 0;        // Pansarskal: klar när den når 0
     this.shadowCd = 0;       // Skuggform: klar när den når 0
+    this.revived = false;    // Livsgnistan: bara en gång per match
     this.rewound = false;    // Återspolning: bara en gång per match
     this.hpLog = [];         // Återspolning: HP de senaste sekunderna
     this.hpLogT = 0;
@@ -1236,6 +1320,7 @@ function updateProjectiles(dt) {
         p.dead = true;
         if (p.noEnergy) p.owner.energy = energy; // byggets raketer ger ingen energi tillbaka
         if (p.root) target.rootT = Math.max(target.rootT || 0, p.root); // elnätet
+        if (p.scare) target.vulnT = Math.max(target.vulnT || 0, 2.5); // skräckklistret gör en rädd och sårbar
         if (p.freeze) {
           target.hurt = p.freeze;
           target.invuln = p.freeze + 0.1;
@@ -1727,6 +1812,10 @@ function wantsSpecial(f, o, dist) {
     case 'divebomb': return dist > 120 && dist < 520;
     case 'chainbolt': return dist > 150 && dist < 800;
     case 'artillery': return dist > 120 || f.hp < f.maxHp * 0.5;
+    case 'evolve': return dist > 140 && dist < 800;
+    case 'chrono': return dist < 400;
+    case 'phantoms': return dist > 100;
+    case 'wormhole': return dist > 150;
     default: return false;
   }
 }
@@ -6281,6 +6370,7 @@ function fighterPose(f, opp) {
     actKind: a ? a.kind : null, actT: a ? a.t : 0, actDur: a ? a.dur : 1,
     ready: f.energy >= specialCost(f),
     blocking: !!f.blocking,
+    sizeMul: f.passive === 'shapeshift' && f.hp < f.maxHp * 0.5 ? 1.3 : 1, // Formskiftare
   };
 }
 
@@ -6554,6 +6644,7 @@ function draw() {
       : player.passive === 'rewind' && player.rewound ? ' — använd'
         : player.passive === 'rooted' && player.stillT >= 1 ? ' (rotad!)'
           : player.passive === 'bloodrage' && player.hp < player.maxHp * 0.5 ? ' (aktiv!)'
+          : player.passive === 'shapeshift' && player.hp < player.maxHp * 0.5 ? ' (jättestor!)'
             : '';
     const pasText = pas ? `✦ ${pas.name}${pasState}` : '';
     const supText = sp ? (player.superReady ? `Q: ${sp.name}` : `${sp.name} — använd`) : '';

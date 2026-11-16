@@ -1183,7 +1183,7 @@
       yaw = face + (Math.cos(face) >= 0 ? -0.35 : 0.35);
     }
     rig.root.rotation.y = yaw;
-    rig.inner.scale.setScalar(def.scale);
+    rig.inner.scale.setScalar(def.scale * (p.sizeMul || 1));
     rig.inner.rotation.z = p.dead ? 1.35 : p.hurt ? 0.16 : 0;
 
     const swing = air ? 0.5 : p.moving ? Math.sin((p.walkT || 0) * 12) * 0.6 : 0;
