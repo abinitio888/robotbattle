@@ -523,6 +523,100 @@ const SPECIALS = {
     },
   },
   // ---- Robotbyggets egna attacker (se BYGGE_ATTACKS i shared.js) ----
+  // ---- Superpansarens egna attacker (stridsvagnsrobotarna) ----
+  tankshell: {
+    // Ett tungt pansarbrytande skott som slänger iväg motståndaren — rekylen knuffar Larv bakåt.
+    dur: 0.7, fires: [0.25],
+    fire: (f, o, sp) => {
+      shoot(f, sp.dmg, 760, 16);
+      const p = game.projectiles[game.projectiles.length - 1];
+      p.knock = 760;
+      p.color = '#ffb347';
+      f.kx = -f.facing * 320;
+      game.shake = Math.max(game.shake, 0.3);
+      sparks(f.x + f.facing * f.w, f.y - f.h * 0.6, '#ffd28a', 18, f.z);
+    },
+  },
+  barrage: {
+    // Tre haubitsgranater i höga bågar: en bakom, en på och en framför motståndaren.
+    dur: 1.0, fires: [0.2, 0.45, 0.7],
+    fire: (f, o, sp) => {
+      const off = [-80, 0, 80][f.act.i - 1] || 0;
+      const x0 = f.x + f.facing * (f.w / 2 + 8);
+      const y0 = f.y - f.h * 0.9;
+      const vy = -760;
+      const grav = 1400;
+      const tx = clamp(o.x + off, 20, W - 20);
+      const t = (-vy + Math.sqrt(vy * vy - 2 * grav * (y0 - FLOOR))) / grav;
+      game.projectiles.push({ owner: f, x: x0, y: y0, z: f.z, vx: (tx - x0) / t, vy, vz: (o.z - f.z) / t, grav, dmg: sp.dmg, r: 10, blast: 70, color: '#ff8a1a' });
+      sparks(x0, y0, '#ffd28a', 8, f.z);
+    },
+  },
+  treadcharge: {
+    // Dundrar fram på larvbanden och avslutar med stötvågor åt båda hållen.
+    dur: 0.95, fires: [0.1, 0.6],
+    fire: (f, o, sp) => {
+      if (f.act.i === 1) { f.dashT = 0.42; f.act.hit = false; return; }
+      wave(f, -1, sp.dmg * 0.6);
+      wave(f, 1, sp.dmg * 0.6);
+      game.shake = Math.max(game.shake, 0.3);
+    },
+  },
+  flak: {
+    // Luftvärnseld: fem skott i en solfjäder uppåt — träffar den som hoppar.
+    dur: 0.7, fires: [0.15, 0.4],
+    fire: (f, o, sp) => {
+      for (const vy of [-420, -280, -150, -50, 40]) {
+        game.projectiles.push({
+          owner: f, x: f.x + f.facing * (f.w / 2 + 8), y: f.y - f.h * 0.8, z: f.z,
+          vx: f.facing * 640, vy, dmg: sp.dmg, r: 7, color: '#ffd93d',
+        });
+      }
+    },
+  },
+  divebomb: {
+    // Störtdykning: Järnörn skjuter upp i luften och släpper tre bomber framåt.
+    dur: 0.9, fires: [0.05, 0.35, 0.5, 0.65],
+    fire: (f, o, sp) => {
+      if (f.act.i === 1) { f.vy = -1050; f.onGround = false; sparks(f.x, f.y, '#ffffff', 14, f.z); return; }
+      game.projectiles.push({
+        owner: f, x: f.x + f.facing * 20, y: f.y - f.h * 0.3, z: f.z,
+        vx: f.facing * 260 + (o.x - f.x) * 0.6, vy: 120, vz: (o.z - f.z) * 0.8, grav: 1500,
+        dmg: sp.dmg, r: 9, blast: 60, color: '#ff5030',
+      });
+    },
+  },
+  chainbolt: {
+    // Kedjeblixt: en stråle som bedövar, och strax efter en blixt ner där motståndaren står.
+    dur: 0.8, fires: [0.3],
+    fire: (f, o, sp) => {
+      const x0 = f.x + f.facing * (f.w / 2);
+      const x1 = f.x + f.facing * 860;
+      game.beams.push({ x0, x1, y: f.y - f.h * 0.55, z: f.z, t: 0.25, max: 0.25, color: '#9ff6ff' });
+      if (inLane(o, f.z, 24) && overlaps(o, x0, x1, f.y - f.h * 0.8, f.y - f.h * 0.3) && hurt(o, sp.dmg, f.facing, 200, f)) {
+        o.hurt = 0.6;
+        o.frozenT = 0.6;
+        sparks(o.x, o.y - o.h * 0.6, '#9ff6ff', 18, o.z);
+      }
+      game.strikes.push({ owner: f, x: clamp(o.x, 30, W - 30), z: o.z, t: 0, delay: 0.75, dmg: Math.round(sp.dmg * 0.6), done: false });
+    },
+  },
+  artillery: {
+    // Fullt bombardemang: Bastion gräver ner sig bakom en sköld medan fem granater slår ner i
+    // en rad som vandrar fram mot motståndaren.
+    dur: 0.9, fires: [0.2],
+    fire: (f, o, sp) => {
+      f.shieldT = 1.2;
+      f.invuln = Math.max(f.invuln, 1.2);
+      const dir = Math.sign(o.x - f.x) || f.facing;
+      for (let k = 0; k < 5; k++) {
+        const x = clamp(o.x + dir * (k - 2) * 70, 30, W - 30);
+        game.strikes.push({ owner: f, x, z: o.z, t: 0, delay: 0.5 + k * 0.18, dmg: sp.dmg, done: false });
+      }
+      game.shake = Math.max(game.shake, 0.25);
+      sparks(f.x, f.y - f.h, '#ff6a1a', 22, f.z);
+    },
+  },
   rockets: {
     // Fem raketer från ryggen i en hög båge, som slår ner runt motståndaren en i taget.
     dur: 0.7, fires: [0.25],
@@ -1626,6 +1720,13 @@ function wantsSpecial(f, o, dist) {
     case 'tether': return dist > 250;
     case 'meteor': return true;
     case 'tide': return true;
+    case 'tankshell': return dist > 160 && dist < 700;
+    case 'barrage': return dist > 180;
+    case 'treadcharge': return dist > 140 && dist < 460;
+    case 'flak': return dist > 150 && dist < 640;
+    case 'divebomb': return dist > 120 && dist < 520;
+    case 'chainbolt': return dist > 150 && dist < 800;
+    case 'artillery': return dist > 120 || f.hp < f.maxHp * 0.5;
     default: return false;
   }
 }
