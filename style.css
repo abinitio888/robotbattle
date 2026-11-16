@@ -11,6 +11,7 @@
   --epic: #b46bff;
   --legendary: #ffd93d;
   --divine: #3ee8ff;
+  --super: #ff6a1a;
 }
 
 * { box-sizing: border-box; }
@@ -1031,8 +1032,8 @@ button.linklike, button.linklike:hover:not(:disabled) {
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .card.pickable:hover { transform: translateY(-3px); border-color: var(--neon-a); box-shadow: 0 0 16px rgba(62, 232, 255, 0.4); }
-.card.legendary, .card.divine, .card.mythic { position: relative; overflow: hidden; }
-.card.legendary::after, .card.divine::after, .card.mythic::after {
+.card.legendary, .card.divine, .card.super, .card.mythic { position: relative; overflow: hidden; }
+.card.legendary::after, .card.divine::after, .card.super::after, .card.mythic::after {
   content: '';
   position: absolute;
   inset: -40%;
@@ -1097,3 +1098,9 @@ button.linklike, button.linklike:hover:not(:disabled) {
 .rp-value { font-size: 13px; color: #e8ecff; line-height: 1.35; }
 .rp-stars .rp-value { color: #ffd93d; letter-spacing: 2px; font-size: 16px; }
 @media (max-width: 480px) { .rp-body { flex-direction: column; } .rp-row { flex-direction: column; gap: 2px; } .rp-label { width: auto; align-self: flex-start; } }
+
+/* Superpansar: stridsvagnsrobotarna, nivån över gudomlig */
+.card.super { border-color: var(--super); box-shadow: 0 0 16px rgba(255, 106, 26, 0.6); }
+.card.super .rarity { color: var(--super); font-weight: bold; }
+.card.reveal.super { border-color: var(--super); box-shadow: 0 0 48px rgba(255, 106, 26, 1); }
+.robot-profile.super { --rp: #ff6a1a; }

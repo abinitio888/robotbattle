@@ -13,6 +13,7 @@
     epic: { label: 'Episk', weight: 8, rank: 2 },
     legendary: { label: 'Legendarisk', weight: 2, rank: 3 },
     divine: { label: 'Gudomlig', weight: 1, rank: 4 },
+    super: { label: 'Superpansar', weight: 0.4, rank: 5 }, // stridsvagnsrobotarna, nivån över gudomlig
     boss: { label: 'Mystisk', weight: 0, rank: 5 },
     wildcard: { label: 'Joker', weight: 0, rank: 2 },
     mythic: { label: 'Mytisk', weight: 0, rank: 4 }, // bara Mimik, se MIMIK_CHANCE
@@ -278,46 +279,46 @@
     // Stridsvagnsrobotarna: leksaksstridsvagnar som blivit pansrade mechas — larvband i
     // stället för ben och ett kanontorn över axeln (parts i render3d.js).
     {
-      id: 'larv', name: 'Larv', rarity: 'common', types: ['stål'],
+      id: 'larv', name: 'Larv', rarity: 'super', types: ['stål'],
       color: '#6f7d4a', accent: '#2c3318', eye: '#ffe14d', head: 'box', extra: 'none',
-      scale: 1, hp: 110, speed: 195, punch: 7, parts: { legs: 'tracks', turret: true },
+      scale: 1.05, hp: 150, speed: 230, punch: 12, parts: { legs: 'tracks', turret: true },
       trait: 'Trogen och envis — kör vidare genom allt.', weak: 'Svänger långsamt. Kommer man bakom honom hinner han inte vända.',
-      special: { type: 'projectile', name: 'Kanonskott', dmg: 20, desc: 'Ett tungt skott rakt fram ur kanonen.' },
+      special: { type: 'projectile', name: 'Kanonskott', dmg: 30, desc: 'Ett tungt skott rakt fram ur kanonen.' },
     },
     {
-      id: 'haubis', name: 'Haubis', rarity: 'common', types: ['sten', 'stål'],
+      id: 'haubis', name: 'Haubis', rarity: 'super', types: ['sten', 'stål'],
       color: '#9a8a62', accent: '#3a3020', eye: '#ffffff', head: 'cyclops', extra: 'antenna',
-      scale: 1.05, hp: 112, speed: 185, punch: 7, parts: { legs: 'tracks', turret: true },
+      scale: 1.1, hp: 152, speed: 225, punch: 12, parts: { legs: 'tracks', turret: true },
       trait: 'Tystlåten planerare som siktar länge innan han skjuter.', weak: 'Granaterna flyger högt — står man nära slår de ner bakom en.',
-      special: { type: 'lob', name: 'Haubitsgranat', dmg: 28, desc: 'En granat i en hög båge som exploderar.' },
+      special: { type: 'lob', name: 'Haubitsgranat', dmg: 36, desc: 'En granat i en hög båge som exploderar.' },
     },
     {
-      id: 'bandis', name: 'Bandis', rarity: 'rare', types: ['mark', 'stål'],
+      id: 'bandis', name: 'Bandis', rarity: 'super', types: ['mark', 'stål'],
       color: '#5b6b7a', accent: '#1d252e', eye: '#7fe8ff', head: 'horn', extra: 'shoulders',
-      scale: 1.1, hp: 115, speed: 190, punch: 8, parts: { legs: 'tracks', turret: true },
+      scale: 1.15, hp: 158, speed: 230, punch: 12, parts: { legs: 'tracks', turret: true },
       trait: 'Skrytig men modig, älskar att dundra fram.', weak: 'Blir yr av att hoppa — larvbanden är gjorda för marken.',
-      special: { type: 'shockwave', name: 'Bandskalv', dmg: 20, desc: 'Larvbanden dundrar ner och skickar stötvågor längs marken.' },
+      special: { type: 'shockwave', name: 'Bandskalv', dmg: 28, desc: 'Larvbanden dundrar ner och skickar stötvågor längs marken.' },
     },
     {
-      id: 'salva', name: 'Salva', rarity: 'rare', types: ['eld', 'stål'],
+      id: 'salva', name: 'Salva', rarity: 'super', types: ['eld', 'stål'],
       color: '#8a3a2a', accent: '#2a0e08', eye: '#ffd28a', head: 'box', extra: 'none',
-      scale: 1, hp: 105, speed: 205, punch: 7, parts: { legs: 'tracks', turret: true },
+      scale: 1.05, hp: 148, speed: 245, punch: 12, parts: { legs: 'tracks', turret: true },
       trait: 'Otålig och het, skjuter först och tänker sen.', weak: 'Måste ladda om efter salvan.',
-      special: { type: 'burst', name: 'Tornsalva', dmg: 7, desc: 'Tre snabba skott i rad ur tornet.' },
+      special: { type: 'burst', name: 'Tornsalva', dmg: 10, desc: 'Tre snabba skott i rad ur tornet.' },
     },
     {
-      id: 'jarnorn', name: 'Järnörn', rarity: 'epic', types: ['flygande', 'stål'],
+      id: 'jarnorn', name: 'Järnörn', rarity: 'super', types: ['flygande', 'stål'],
       color: '#4a6a8a', accent: '#14202c', eye: '#ffffff', head: 'crown', extra: 'none',
-      scale: 1.05, hp: 105, speed: 240, punch: 9, parts: { turret: true },
+      scale: 1.1, hp: 150, speed: 270, punch: 13, parts: { turret: true },
       trait: 'Stolt och skarpsynt, ser allt från ovan.', weak: 'Behöver stå still och sikta — då är hon lätt att träffa.',
-      special: { type: 'snipe', name: 'Pansarprick', dmg: 46, desc: 'Siktar med laser och skjuter ett pansarbrytande skott.' },
+      special: { type: 'snipe', name: 'Pansarprick', dmg: 55, desc: 'Siktar med laser och skjuter ett pansarbrytande skott.' },
     },
     {
-      id: 'askpansar', name: 'Åskpansar', rarity: 'legendary', types: ['elektrisk', 'stål'],
+      id: 'askpansar', name: 'Åskpansar', rarity: 'super', types: ['elektrisk', 'stål'],
       color: '#2e4a7a', accent: '#0e1630', eye: '#9ff6ff', head: 'horn', extra: 'none',
-      scale: 1.15, hp: 118, speed: 225, punch: 10, parts: { legs: 'tracks', turret: true },
+      scale: 1.2, hp: 162, speed: 245, punch: 13, parts: { legs: 'tracks', turret: true },
       trait: 'Lugn ledare som laddar upp i tysthet.', weak: 'Strålen går bara rakt fram — den som hoppar högt kommer undan.',
-      special: { type: 'beam', name: 'Rälskanon', dmg: 24, desc: 'En blixtsnabb stråle från kanonen tvärs över banan. Hoppa högt!' },
+      special: { type: 'beam', name: 'Rälskanon', dmg: 32, desc: 'En blixtsnabb stråle från kanonen tvärs över banan. Hoppa högt!' },
     },
     // Nya robotar (november 2026).
     {
@@ -561,12 +562,12 @@
       passive: { type: 'rooted', name: 'Rotad', desc: 'Står Gaia still en sekund slår hon rot och tar 40 % mindre skada.' },
     },
     {
-      id: 'bastion', name: 'Bastion', rarity: 'divine', types: ['stål', 'eld'],
+      id: 'bastion', name: 'Bastion', rarity: 'super', types: ['stål', 'eld'],
       color: '#7a6a3a', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'shoulders',
-      scale: 1.25, hp: 145, speed: 220, punch: 12, parts: { legs: 'tracks', turret: true, wings: true },
+      scale: 1.3, hp: 180, speed: 250, punch: 15, parts: { legs: 'tracks', turret: true },
       trait: 'Lagets orubbliga beskyddare. Står alltid längst fram.', weak: 'Tung och långsam. Snabba robotar kan springa runt honom.',
-      special: { type: 'meteorslam', name: 'Bombardemang', dmg: 30, desc: 'Kanontornet pekar mot himlen och en jättegranat slår ner där motståndaren står.' },
-      passive: { type: 'shell', name: 'Pansarskal', desc: 'Var sjätte sekund tar pansaret emot nästa träff, som bara gör halv skada.' },
+      special: { type: 'meteorslam', name: 'Bombardemang', dmg: 42, desc: 'Kanontornet pekar mot himlen och en jättegranat slår ner där motståndaren står.' },
+      passive: { type: 'shell', name: 'Pansarskal', desc: 'Var fjärde sekund tar pansaret emot nästa träff, som bara gör en fjärdedel av skadan.' },
     },
     {
       id: 'tordon', name: 'Tordön', rarity: 'divine', types: ['elektrisk', 'flygande'],
@@ -1262,7 +1263,7 @@
     fe: 'Glad och snäll, men blir oväntat stark när vänner är i fara.',
     drake: 'Stolt och mäktig, väntar på att bli utmanad.',
   };
-  const RARITY_STARS = { common: 1, rare: 2, epic: 3, wildcard: 3, custom: 3, legendary: 4, monster: 4, mythic: 5, divine: 5, boss: 5 };
+  const RARITY_STARS = { common: 1, rare: 2, epic: 3, wildcard: 3, custom: 3, legendary: 4, monster: 4, mythic: 5, divine: 5, boss: 5, super: 6 };
 
   function robotProfile(def) {
     const types = def.types && def.types.length ? def.types : ['normal'];

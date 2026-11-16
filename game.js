@@ -92,8 +92,8 @@ function hurt(target, dmg, dirX, knock, source) {
   }
   if (target.passive === 'steadfast') { dmg *= 0.85; knock = 0; } // Orubblig
   if (target.passive === 'shell' && target.shellCd <= 0 && source !== target) { // Pansarskal
-    dmg *= 0.5;
-    target.shellCd = 6;
+    dmg *= 0.25;
+    target.shellCd = 4;
     sparks(target.x, target.y - target.h * 0.6, '#ffd93d', 12, target.z);
   }
   if (target.def.noKnock) knock = 0; // Magnetstövlarna
@@ -2528,7 +2528,7 @@ function renderProfile(def) {
     info.append(r);
   };
   row('Personlighet', prof.personality);
-  row('Stjärnor', '★'.repeat(prof.stars) + '☆'.repeat(5 - prof.stars), 'rp-stars');
+  row('Stjärnor', '★'.repeat(prof.stars) + '☆'.repeat(Math.max(0, 5 - prof.stars)), 'rp-stars');
   row('Förmågor', prof.abilities.join(', '));
   row('Svaghet', prof.weakness);
   const body = el('div', 'rp-body');
@@ -4517,6 +4517,7 @@ function renderBox(revealed) {
     const head = document.createElement('div');
     head.className = 'reward-title';
     head.textContent = revealed.def.id === 'wildcard' ? 'JOKERN!'
+      : revealed.def.rarity === 'super' ? 'SUPERPANSAR!'
       : revealed.def.rarity === 'divine' ? 'GUDOMLIG ROBOT!'
       : revealed.def.rarity === 'legendary' ? 'LEGENDARISK ROBOT!'
       : revealed.n === 1 ? 'NY ROBOT!' : `DUBBLETT! Du har nu ${revealed.n} st — uppgradera den i Garaget.`;
@@ -4569,7 +4570,7 @@ async function openBox() {
   }, 1150);
   setTimeout(() => {
     game.opening = false;
-    if (['legendary', 'divine', 'wildcard', 'mythic'].includes(def.rarity)) {
+    if (['legendary', 'divine', 'super', 'wildcard', 'mythic'].includes(def.rarity)) {
       const flash = el('div', 'box-flash');
       flash.style.setProperty('--rc', color);
       document.body.append(flash);
@@ -4580,7 +4581,7 @@ async function openBox() {
   }, 1450);
 }
 
-const RARITY_COLOR = { custom: '#ff9a2a', common: '#9aa7c7', rare: '#4da3ff', epic: '#b46bff', legendary: '#ffd93d', divine: '#3ee8ff', wildcard: '#ff5fd2', mythic: '#c77dff', boss: '#ff1744', monster: '#ff7a1a' };
+const RARITY_COLOR = { custom: '#ff9a2a', common: '#9aa7c7', rare: '#4da3ff', epic: '#b46bff', legendary: '#ffd93d', divine: '#3ee8ff', super: '#ff6a1a', wildcard: '#ff5fd2', mythic: '#c77dff', boss: '#ff1744', monster: '#ff7a1a' };
 const rarityColor = (def) => RARITY_COLOR[def.rarity] || '#5b6bd6';
 
 // isRename: true när man själv öppnar rutan igen för att byta namn (och därmed attack, se

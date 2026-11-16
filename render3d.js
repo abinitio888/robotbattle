@@ -761,7 +761,7 @@
   // skydd på underarmar och smalben, en kjol av plåtar och en V-kam på hjälmen. Ju ovanligare
   // roboten är, desto mer prakt: vanliga får mörka kanter, sällsynta lysande, episka och uppåt
   // guldkanter och mekaniska vingar på ryggen.
-  const ARMOR_RANK = { common: 0, rare: 1, epic: 2, legendary: 3, divine: 4, mythic: 3, custom: 2, wildcard: 2, boss: 3, monster: 2 };
+  const ARMOR_RANK = { common: 0, rare: 1, epic: 2, legendary: 3, divine: 4, super: 5, mythic: 3, custom: 2, wildcard: 2, boss: 3, monster: 2 };
   const CREST_AT = { box: [15, 116], horn: [15, 115], cyclops: [16, 116], dome: [12, 108], round: [13, 117] };
   function addMechaArmor(def, M, ctx) {
     const { upper, legs, arms, head, bodyW, parts, wings } = ctx;
@@ -838,10 +838,26 @@
       }
     }
 
+    // Superpansar: ett eldigt sken under fötterna och lysande blixtlinjer över pansaret.
+    if (rank >= 5) {
+      const ringMat = new THREE.MeshBasicMaterial({ color: '#ff6a1a', transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(26, 46, 48), ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 1.5;
+      ctx.inner.add(ring);
+      for (const side of [-1, 1]) {
+        for (const y of [70, 84]) {
+          const bolt = mesh(box(1.6, 14, 1.6), M.line, fx + 3, y, side * 15);
+          bolt.rotation.x = side * (y === 70 ? 0.6 : -0.6);
+          upper.add(bolt);
+        }
+      }
+    }
+
     // Mekaniska vingar på ryggen: tre fjädrar per sida som fläktar ut.
     const backFree = !['jet', 'cannon', 'spikes'].includes(def.extra) && (def.extra !== 'cape' || rank >= 3);
     if (rank >= 2 && backFree && !parts.wings && def.rarity !== 'divine' && !def.royal) {
-      const big = rank >= 3 ? 1.35 : 1;
+      const big = rank >= 5 ? 1.5 : rank >= 3 ? 1.35 : 1;
       for (const side of [-1, 1]) {
         const w = new THREE.Group();
         w.position.set(-24 * bodyW, 94, side * 10);
@@ -1085,7 +1101,7 @@
       head.add(f);
     }
 
-    addMechaArmor(def, M, { upper, legs, arms: [front, back, ...extraArms.map((x) => x.arm)], head, bodyW, parts, wings });
+    addMechaArmor(def, M, { inner, upper, legs, arms: [front, back, ...extraArms.map((x) => x.arm)], head, bodyW, parts, wings });
 
     const glow = new THREE.Mesh(sphere(1), M.glow);
     upper.add(glow);
