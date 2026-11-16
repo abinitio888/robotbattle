@@ -4292,14 +4292,14 @@ function showResult() {
   const r = game.result;
   const friend = !!r.friend;
   byId('result-title').textContent = r.won ? 'DU VANN!' : 'DU FÖRLORADE';
-  // En låda varannan vinst: säg om man fick en nu eller får en nästa gång.
-  const boxLine = (res) => res.box ? 'Du fick en låda!' : 'Vinn en match till så får du en låda!';
+  // En låda var fjärde vinst (Shared.WINS_PER_BOX): säg om man fick en nu.
+  const boxLine = (res) => res.box ? 'Du fick en låda!' : `Var ${Shared.WINS_PER_BOX}:e vinst ger en låda — fortsätt vinna!`;
   byId('reward').replaceChildren();
 
   let text;
   if (r.coop && !r.error) {
     byId('result-title').textContent = r.won ? 'NI VANN!' : 'NI FÖRLORADE';
-    text = r.won ? `🤝 Du och ${r.oppName} besegrade ${r.bossName} tillsammans! ${r.box ? 'Du fick en låda!' : 'Vinn en gång till så får du en låda!'}`
+    text = r.won ? `🤝 Du och ${r.oppName} besegrade ${r.bossName} tillsammans! ${r.box ? 'Du fick en låda!' : `Var ${Shared.WINS_PER_BOX}:e vinst ger en låda!`}`
       : `${r.bossName} var för stark den här gången. Försök igen tillsammans!`;
   } else if (r.ranked && !r.error) {
     // En riktig match räknas som en vanlig match: låda och erfarenhet vid vinst.

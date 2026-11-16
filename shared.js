@@ -8,11 +8,11 @@
 
   // weight = chans i procent att en låda ger just den sällsynthetsnivån.
   const RARITY = {
-    common: { label: 'Vanlig', weight: 65, rank: 0 },
-    rare: { label: 'Sällsynt', weight: 24, rank: 1 },
-    epic: { label: 'Episk', weight: 8, rank: 2 },
-    legendary: { label: 'Legendarisk', weight: 2, rank: 3 },
-    divine: { label: 'Gudomlig', weight: 1, rank: 4 },
+    common: { label: 'Vanlig', weight: 72, rank: 0 },
+    rare: { label: 'Sällsynt', weight: 20, rank: 1 },
+    epic: { label: 'Episk', weight: 6, rank: 2 },
+    legendary: { label: 'Legendarisk', weight: 1.5, rank: 3 },
+    divine: { label: 'Gudomlig', weight: 0.5, rank: 4 },
     boss: { label: 'Mystisk', weight: 0, rank: 5 },
     wildcard: { label: 'Joker', weight: 0, rank: 2 },
     mythic: { label: 'Mytisk', weight: 0, rank: 4 }, // bara Mimik, se MIMIK_CHANCE
@@ -274,6 +274,55 @@
       color: '#cfd6e6', accent: '#7a5aff', eye: '#3ee8ff', head: 'dome', extra: 'antenna',
       scale: 1.05, hp: 115, speed: 240, punch: 9,
       special: { type: 'projectile', name: 'Härma', dmg: 20, desc: 'Härmar motståndarens specialattack — varje match en ny kraft!' },
+    },
+    // Nya robotar (november 2026).
+    {
+      id: 'bulla', name: 'Bulla', rarity: 'common', types: ['normal'],
+      color: '#e8b27a', accent: '#6a3d17', eye: '#ffffff', head: 'round', extra: 'none',
+      scale: 0.95, hp: 105, speed: 220, punch: 7,
+      special: { type: 'flurry', name: 'Kanelsnurr', dmg: 7, desc: 'Fyra snabba slag i följd, det sista hårdast.' },
+    },
+    {
+      id: 'snorre', name: 'Snorre', rarity: 'common', types: ['is'],
+      color: '#bfe8ff', accent: '#2a5a7a', eye: '#1b2a3a', head: 'box', extra: 'antenna',
+      scale: 1, hp: 95, speed: 225, punch: 7,
+      special: { type: 'freeze', name: 'Snöboll', dmg: 12, desc: 'Fryser motståndaren i 1,1 sekunder.' },
+    },
+    {
+      id: 'myrsyra', name: 'Myrsyra', rarity: 'common', types: ['kryp', 'gift'],
+      color: '#a3462e', accent: '#3a140a', eye: '#ffe14d', head: 'horn', extra: 'spikes',
+      scale: 0.9, hp: 90, speed: 250, punch: 7,
+      special: { type: 'spread', name: 'Syrastänk', dmg: 8, desc: 'Tre droppar syra i solfjäder.' },
+    },
+    {
+      id: 'ankra', name: 'Ankra', rarity: 'rare', types: ['vatten', 'stål'],
+      color: '#2f6f8f', accent: '#0d2633', eye: '#ffd28a', head: 'cyclops', extra: 'shoulders',
+      scale: 1.1, hp: 110, speed: 190, punch: 8,
+      special: { type: 'grapple', name: 'Ankarkast', dmg: 18, desc: 'Ett ankare som drar in motståndaren och slår till.' },
+    },
+    {
+      id: 'kvist', name: 'Kvist', rarity: 'rare', types: ['gräs'],
+      color: '#5aa040', accent: '#2c1c0c', eye: '#e8ff7a', head: 'hood', extra: 'fins',
+      scale: 1, hp: 100, speed: 230, punch: 7,
+      special: { type: 'roots', name: 'Slingerrot', dmg: 16, desc: 'Rötter rusar fram längs motståndarens fil och håller fast den. Kliv ur filen i djupled!' },
+    },
+    {
+      id: 'spegla', name: 'Spegla', rarity: 'epic', types: ['psykisk', 'fe'],
+      color: '#e0e6ff', accent: '#6b4fd8', eye: '#ff7ad8', head: 'dome', extra: 'shield',
+      scale: 1, hp: 100, speed: 240, punch: 9,
+      special: { type: 'reflect', name: 'Spegelvägg', desc: 'Skickar tillbaka skott i 2 sekunder.' },
+    },
+    {
+      id: 'skorpa', name: 'Skorpa', rarity: 'epic', types: ['mark', 'gift'],
+      color: '#c9a04a', accent: '#3d2a0c', eye: '#ff3b3b', head: 'horn', extra: 'cannon',
+      scale: 1.05, hp: 100, speed: 245, punch: 9,
+      special: { type: 'mine', name: 'Sandfälla', dmg: 26, desc: 'Gräver ner en fälla som smäller när motståndaren kommer nära.' },
+    },
+    {
+      id: 'solvarg', name: 'Solvarg', rarity: 'legendary', types: ['eld', 'strid'],
+      color: '#ff9a2e', accent: '#5a1d00', eye: '#fff6a0', head: 'crown', extra: 'cape',
+      scale: 1.1, hp: 110, speed: 255, punch: 10,
+      special: { type: 'wolves', name: 'Solflocken', dmg: 13, desc: 'Tre eldvargar jagar motståndaren genom hela banan och smäller när de når fram. Spring och hoppa!' },
     },
     {
       id: 'boomer', name: 'Boomer', rarity: 'common', types: ['flygande'],
@@ -670,7 +719,7 @@
   // ---------- Mynt ----------
   // Tjänas i matcher (se finishMatch) och på den dagliga lådan, och används bara i Butiken.
   const COINS = { win: 10, loss: 2, stakeWin: 20, bossWin: 30, monsterWin: 15, royalWin: 100, daily: 20, team3Win: 25, team5Win: 40 };
-  const WINS_PER_BOX = 2; // en låda varannan vinst (stadsrobotar och monster ger annat i stället)
+  const WINS_PER_BOX = 4; // en låda var fjärde vinst (stadsrobotar och monster ger annat i stället)
   const TEAM_SIZES = [3, 5];
   const MAX_COINS = 10000000;
   const addCoins = (acct, n) => { acct.coins = Math.min(MAX_COINS, (acct.coins || 0) + n); return n; };
@@ -702,7 +751,7 @@
   ];
   const questById = Object.fromEntries(QUEST_POOL.map((q) => [q.id, q]));
   const QUEST_SLOTS = 4;
-  const QUEST_BONUS_EVERY = 3;
+  const QUEST_BONUS_EVERY = 5;
   const QUESTS_PER_LEVEL = 5;
   const QUEST_MAX_LEVEL = 6;
   // Minst två av de här ligger alltid på tavlan, så att det alltid finns något som går att klara.
@@ -972,7 +1021,7 @@
   // Lådor går alltid att köpa, så att mynten aldrig blir värdelösa när man köpt allt annat.
   // En guldlåda räknas som en vanlig låda i acct.boxes, men acct.goldBoxes säger hur många
   // av dem som är guld — de öppnas först och ger minst en episk robot (se openBox).
-  const BOX_PRICES = { box: 250, gold: 900 };
+  const BOX_PRICES = { box: 500, gold: 1800 };
 
   function buyBox(acct, kind) {
     const price = BOX_PRICES[kind];
@@ -1859,12 +1908,12 @@
     return { id: `${year}-${q}`, name: `${SEASON_NAMES[q]} ${year}`, endsInMs: ends - now };
   }
 
-  // Priset för en säsongsnivå: nivå 20 = säsongsskinnet, nivå 10 = en guldlåda, jämna nivåer en
+  // Priset för en säsongsnivå: nivå 20 = säsongsskinnet, nivå 10 = en guldlåda, var fjärde nivå en
   // låda, udda nivåer mynt.
   function seasonReward(level) {
     if (level === SEASON_LEVELS) return { skin: 'sasong' };
     if (level === 10) return { gold: 1 };
-    if (level % 2 === 0) return { boxes: 1 };
+    if (level % 4 === 0) return { boxes: 1 };
     return { coins: 50 + level * 5 };
   }
 
@@ -2224,7 +2273,7 @@
     const teamWin = match.team === 5 ? COINS.team5Win : COINS.team3Win;
     result.coins = addCoins(acct, !won ? COINS.loss : match.boss ? COINS.bossWin : match.stake ? COINS.stakeWin : match.team ? teamWin : COINS.win);
     if (won) {
-      // En låda varannan vinst (winsToBox räknar). Stadsrobotarna ger roboten i stället.
+      // En låda var fjärde vinst (winsToBox räknar). Stadsrobotarna ger roboten i stället.
       if (match.street === undefined) {
         acct.winsToBox = (acct.winsToBox || 0) + 1;
         if (acct.winsToBox >= WINS_PER_BOX) { acct.winsToBox = 0; acct.boxes += 1; } else result.box = false;
