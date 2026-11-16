@@ -1028,7 +1028,7 @@
   // Lådor går alltid att köpa, så att mynten aldrig blir värdelösa när man köpt allt annat.
   // En guldlåda räknas som en vanlig låda i acct.boxes, men acct.goldBoxes säger hur många
   // av dem som är guld — de öppnas först och ger minst en episk robot (se openBox).
-  const BOX_PRICES = { box: 500, gold: 1800 };
+  const BOX_PRICES = { box: 250, gold: 900 };
 
   function buyBox(acct, kind) {
     const price = BOX_PRICES[kind];
