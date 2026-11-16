@@ -756,6 +756,118 @@
   }
 
   // Bygger en robot. Returnerar en "rigg" med alla delar som poseRobot() rör på.
+  // ---------- Mecha-pansar ----------
+  // Lägger vinklade pansarplåtar på varje robot: bröstplåtar i V, axelplåtar i lager med en fena,
+  // skydd på underarmar och smalben, en kjol av plåtar och en V-kam på hjälmen. Ju ovanligare
+  // roboten är, desto mer prakt: vanliga får mörka kanter, sällsynta lysande, episka och uppåt
+  // guldkanter och mekaniska vingar på ryggen.
+  const ARMOR_RANK = { common: 0, rare: 1, epic: 2, legendary: 3, divine: 4, mythic: 3, custom: 2, wildcard: 2, boss: 3, monster: 2 };
+  const CREST_AT = { box: [15, 116], horn: [15, 115], cyclops: [16, 116], dome: [12, 108], round: [13, 117] };
+  function addMechaArmor(def, M, ctx) {
+    const { upper, legs, arms, head, bodyW, parts, wings } = ctx;
+    const rank = ARMOR_RANK[def.rarity] ?? 1;
+    const trim = rank >= 2 ? M.gold : rank === 1 ? M.line : M.dark;
+    const fx = 22 * bodyW; // framsidan av bröstet
+
+    // Bröstplåtar i V ovanför kärnan, med kant längst ner.
+    for (const side of [-1, 1]) {
+      const g = new THREE.Group();
+      g.position.set(fx + 2, 86, side * 9);
+      g.rotation.x = side * 0.32;
+      g.add(mesh(box(4, 16, 13), M.dark, 0, 0, 0));
+      g.add(mesh(box(4.6, 2, 13.4), trim, 0.4, -8, 0));
+      upper.add(g);
+    }
+    // Magplåtar under kärnan och en kjol av plåtar under bältet.
+    for (const y of [60, 52]) upper.add(mesh(box(3, 5, 20), M.dark, fx + 1.5, y, 0));
+    for (const side of [-1, 1]) {
+      const plate = mesh(box(5, 16, 13), M.dark, 18 * bodyW, 32, side * 9);
+      plate.rotation.z = -0.15;
+      upper.add(plate);
+      upper.add(mesh(box(5.4, 1.8, 13.4), trim, 17 * bodyW, 24.5, side * 9));
+      const hip = mesh(box(16, 15, 4), M.dark, 0, 33, side * 19.5 * bodyW);
+      hip.rotation.x = side * 0.2;
+      upper.add(hip);
+    }
+
+    // Axelplåtar i två lager med en fena uppåt.
+    for (const side of [-1, 1]) {
+      const g = new THREE.Group();
+      g.position.set(2, 99, side * 25 * bodyW);
+      g.rotation.x = side * 0.38;
+      g.add(mesh(box(28, 6, 20), M.body, 0, 0, 0));
+      g.add(mesh(box(24, 5, 16), M.dark, 0, -5, side * 3));
+      g.add(mesh(box(29, 1.8, 2), trim, 0, 2, side * 10));
+      if (rank >= 1) {
+        const fin = mesh(cone(4, 16, 4), trim, -3, 9, 0);
+        fin.rotation.z = 0.35;
+        g.add(fin);
+      }
+      upper.add(g);
+    }
+
+    // Underarmsskydd (följer med när armen sträcks).
+    for (const a of arms) {
+      a.limb.add(mesh(box(12, 15, 12), M.dark, 0, -9, 0));
+      a.limb.add(mesh(box(12.6, 2, 12.6), trim, 0, -16, 0));
+      if (rank >= 2) {
+        const blade = mesh(box(3, 14, 3), trim, -6, -6, 0);
+        blade.rotation.z = -0.4;
+        a.limb.add(blade);
+      }
+    }
+
+    // Smalbensskydd med en knäspets.
+    if (parts.legs !== 'wheels' && parts.legs !== 'tracks') {
+      for (const { pivot } of legs) {
+        pivot.add(mesh(box(4, 18, 14), M.body, 8.5, -26, 0));
+        pivot.add(mesh(box(1.4, 12, 2.4), M.line, 10.8, -26, 0));
+        const spike = mesh(cone(3.5, 10, 4), trim, 9, -14, 0);
+        spike.rotation.z = -Math.PI / 2 - 0.5;
+        pivot.add(spike);
+      }
+    }
+
+    // V-kam på hjälmen.
+    const at = CREST_AT[def.head];
+    if (at && rank >= 1) {
+      for (const side of [-1, 1]) {
+        const c = mesh(box(2.4, 16, 2.4), trim, at[0], at[1] + 6, side * 4);
+        c.rotation.x = side * -0.55;
+        head.add(c);
+      }
+    }
+
+    // Mekaniska vingar på ryggen: tre fjädrar per sida som fläktar ut.
+    const backFree = !['jet', 'cannon', 'spikes'].includes(def.extra) && (def.extra !== 'cape' || rank >= 3);
+    if (rank >= 2 && backFree && !parts.wings && def.rarity !== 'divine' && !def.royal) {
+      const big = rank >= 3 ? 1.35 : 1;
+      for (const side of [-1, 1]) {
+        const w = new THREE.Group();
+        w.position.set(-24 * bodyW, 94, side * 10);
+        const fan = new THREE.Group();
+        fan.rotation.y = side * 0.45; // svept bakåt
+        w.add(fan);
+        // Fem breda fjädrar som en riktig vinge: den översta längst och mest uppåt, sedan
+        // allt kortare och mer nedåt, med en guldkant ovanpå och en lysande linje.
+        for (let k = 0; k < 5; k++) {
+          const f = new THREE.Group();
+          f.rotation.x = side * (-0.7 + k * 0.26);
+          f.position.y = -k * 5;
+          const len = [80, 70, 60, 50, 40][k] * big;
+          const plate = mesh(box(2.4, 12, len), k % 2 ? M.dark : M.body, 0, 0, side * len / 2);
+          f.add(plate);
+          f.add(mesh(box(3, 2.2, len), trim, 0, 6.5, side * len / 2));
+          f.add(mesh(box(3.2, 1.4, len * 0.6), M.line, 0.3, -2, side * len * 0.55));
+          fan.add(f);
+        }
+        w.add(mesh(box(10, 14, 10), M.dark, 0, 0, 0)); // fästet på ryggen
+        upper.add(w);
+        wings.push({ w, side });
+      }
+    }
+  }
+
   function buildRobot(def) {
     const M = makeMaterials(def);
     const root = new THREE.Group();
@@ -859,9 +971,8 @@
     // Fyra armar: ett extra par lite längre ner, som rör sig som de vanliga.
     const extraArms = parts.arms === 'four' ? [{ arm: arm(-26, M.dark, 66), like: 'back' }, { arm: arm(26, M.body, 66), like: 'front' }] : [];
     // Vingar på ryggen och en svans, som rör sig lite (se poseRobot).
-    let wings = null;
+    const wings = [];
     if (parts.wings) {
-      wings = [];
       for (const side of [-1, 1]) {
         const w = new THREE.Group();
         w.position.set(-22 * bodyW, 88, side * 10);
@@ -957,6 +1068,8 @@
       f.scale.z = 0.25;
       head.add(f);
     }
+
+    addMechaArmor(def, M, { upper, legs, arms: [front, back, ...extraArms.map((x) => x.arm)], head, bodyW, parts, wings });
 
     const glow = new THREE.Mesh(sphere(1), M.glow);
     upper.add(glow);
@@ -1072,7 +1185,7 @@
     rig.front.fist.position.y = -frontLen;
     // Fyra armar: det extra paret gör som de vanliga. Vingarna flaxar och svansen viftar.
     for (const x of rig.extraArms) x.arm.pivot.rotation.z = x.like === 'front' ? -front : -back;
-    if (rig.wings) for (const { w, side } of rig.wings) w.rotation.x = side * (air ? 0.5 + Math.sin(t * 18) * 0.4 : 0.15 + Math.sin(t * 2.5) * 0.08);
+    for (const { w, side } of rig.wings) w.rotation.x = side * (air ? 0.5 + Math.sin(t * 18) * 0.4 : 0.15 + Math.sin(t * 2.5) * 0.08);
     if (rig.tail) rig.tail.rotation.y = Math.sin(t * (p.moving ? 8 : 2.2)) * 0.35;
 
     rig.core.scale.setScalar(p.ready ? 1.4 : 1);
@@ -2376,7 +2489,7 @@
       poseRobot(rig, { x: W / 2, y: FLOOR, facing: 1, time: 0, silhouette }, -0.6);
       rig.root.position.set(0, 0, 0);
       // Stora robotar ska ändå få plats på kortet.
-      rig.root.scale.setScalar(Math.min(1, (def.rarity === 'divine' ? 0.82 : 1.05) / def.scale));
+      rig.root.scale.setScalar(Math.min(1, (def.rarity === 'divine' ? 0.82 : 1.05) / def.scale) * (rig.wings.length ? 0.82 : 1)); // vingar ska också få plats
       c.r.render(c.sc, c.cam);
       ctx2d.drawImage(c.r.domElement, 0, 0, ctx2d.canvas.width, ctx2d.canvas.height);
     }
