@@ -135,6 +135,14 @@ function hurt(target, dmg, dirX, knock, source) {
     source.hp = Math.max(0, source.hp - dmg * target.def.thorns);
     if (source.hp <= 0) source.dead = true;
   }
+  // Tordöns Åskhud: den som slår med vanliga slag får en stöt tillbaka.
+  if (target.passive === 'storm' && punching && source !== target && !source.dead && source.def) {
+    source.hp = Math.max(0, source.hp - dmg * 0.35);
+    source.energy = Math.max(0, source.energy - 10);
+    source.flash = 0.1;
+    sparks(source.x, source.y - source.h * 0.6, '#fff36b', 12, source.z);
+    if (source.hp <= 0) source.dead = true;
+  }
   // Vampyrtanden: vanliga slag läker den som slår.
   if (source.def.lifesteal && source.act && source.act.kind === 'punch') {
     source.hp = Math.min(source.maxHp, source.hp + dmg * source.def.lifesteal);

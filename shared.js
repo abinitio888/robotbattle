@@ -517,6 +517,13 @@
       passive: { type: 'rooted', name: 'Rotad', desc: 'Står Gaia still en sekund slår hon rot och tar 40 % mindre skada.' },
     },
     {
+      id: 'tordon', name: 'Tordön', rarity: 'divine', types: ['elektrisk', 'flygande'],
+      color: '#2a3a8a', accent: '#3ee8ff', eye: '#fff36b', head: 'crown', extra: 'antenna',
+      scale: 1.2, hp: 132, speed: 262, punch: 11,
+      special: { type: 'orbital', name: 'Åskvigg', dmg: 25, desc: 'Tre blixtar slår ner från himlen. Flytta dig i tid!' },
+      passive: { type: 'storm', name: 'Åskhud', desc: 'Den som slår Tordön med vanliga slag får en stöt: 35 % av skadan tillbaka och tappar 10 energi.' },
+    },
+    {
       id: 'valkyria', name: 'Valkyria', rarity: 'divine', types: ['strid', 'flygande'],
       color: '#d9dde6', accent: '#3ee8ff', eye: '#ffd93d', head: 'crown', extra: 'cape',
       scale: 1.15, hp: 128, speed: 275, punch: 11,
