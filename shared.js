@@ -8,11 +8,11 @@
 
   // weight = chans i procent att en låda ger just den sällsynthetsnivån.
   const RARITY = {
-    common: { label: 'Vanlig', weight: 72, rank: 0 },
-    rare: { label: 'Sällsynt', weight: 20, rank: 1 },
-    epic: { label: 'Episk', weight: 6, rank: 2 },
-    legendary: { label: 'Legendarisk', weight: 1.5, rank: 3 },
-    divine: { label: 'Gudomlig', weight: 0.5, rank: 4 },
+    common: { label: 'Vanlig', weight: 65, rank: 0 },
+    rare: { label: 'Sällsynt', weight: 24, rank: 1 },
+    epic: { label: 'Episk', weight: 8, rank: 2 },
+    legendary: { label: 'Legendarisk', weight: 2, rank: 3 },
+    divine: { label: 'Gudomlig', weight: 1, rank: 4 },
     boss: { label: 'Mystisk', weight: 0, rank: 5 },
     wildcard: { label: 'Joker', weight: 0, rank: 2 },
     mythic: { label: 'Mytisk', weight: 0, rank: 4 }, // bara Mimik, se MIMIK_CHANCE
@@ -726,7 +726,7 @@
   // ---------- Mynt ----------
   // Tjänas i matcher (se finishMatch) och på den dagliga lådan, och används bara i Butiken.
   const COINS = { win: 10, loss: 2, stakeWin: 20, bossWin: 30, monsterWin: 15, royalWin: 100, daily: 20, team3Win: 25, team5Win: 40 };
-  const WINS_PER_BOX = 4; // en låda var fjärde vinst (stadsrobotar och monster ger annat i stället)
+  const WINS_PER_BOX = 2; // en låda varannan vinst (stadsrobotar och monster ger annat i stället)
   const TEAM_SIZES = [3, 5];
   const MAX_COINS = 10000000;
   const addCoins = (acct, n) => { acct.coins = Math.min(MAX_COINS, (acct.coins || 0) + n); return n; };
@@ -758,7 +758,7 @@
   ];
   const questById = Object.fromEntries(QUEST_POOL.map((q) => [q.id, q]));
   const QUEST_SLOTS = 4;
-  const QUEST_BONUS_EVERY = 5;
+  const QUEST_BONUS_EVERY = 3;
   const QUESTS_PER_LEVEL = 5;
   const QUEST_MAX_LEVEL = 6;
   // Minst två av de här ligger alltid på tavlan, så att det alltid finns något som går att klara.
@@ -1915,12 +1915,12 @@
     return { id: `${year}-${q}`, name: `${SEASON_NAMES[q]} ${year}`, endsInMs: ends - now };
   }
 
-  // Priset för en säsongsnivå: nivå 20 = säsongsskinnet, nivå 10 = en guldlåda, var fjärde nivå en
+  // Priset för en säsongsnivå: nivå 20 = säsongsskinnet, nivå 10 = en guldlåda, jämna nivåer en
   // låda, udda nivåer mynt.
   function seasonReward(level) {
     if (level === SEASON_LEVELS) return { skin: 'sasong' };
     if (level === 10) return { gold: 1 };
-    if (level % 4 === 0) return { boxes: 1 };
+    if (level % 2 === 0) return { boxes: 1 };
     return { coins: 50 + level * 5 };
   }
 
@@ -2280,7 +2280,7 @@
     const teamWin = match.team === 5 ? COINS.team5Win : COINS.team3Win;
     result.coins = addCoins(acct, !won ? COINS.loss : match.boss ? COINS.bossWin : match.stake ? COINS.stakeWin : match.team ? teamWin : COINS.win);
     if (won) {
-      // En låda var fjärde vinst (winsToBox räknar). Stadsrobotarna ger roboten i stället.
+      // En låda varannan vinst (winsToBox räknar). Stadsrobotarna ger roboten i stället.
       if (match.street === undefined) {
         acct.winsToBox = (acct.winsToBox || 0) + 1;
         if (acct.winsToBox >= WINS_PER_BOX) { acct.winsToBox = 0; acct.boxes += 1; } else result.box = false;
