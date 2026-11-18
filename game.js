@@ -1093,7 +1093,7 @@ class Fighter {
       this.act = { kind, dur: 0.32, fires: [0.1], t: 0, i: 0, hit: false };
       if (this === game.player) Sound.swing();
     } else {
-      Sound.special();
+      Sound.special(this.def.special.type, this.def.types[0]);
       // Två slag som träffade alldeles innan: kombo-special (+50 % i 2,5 sekunder).
       if ((this.comboHits || 0) >= 2 && this.time - (this.comboLastT ?? -9) < COMBO_WINDOW) {
         this.comboBoostT = 2.5;
@@ -1795,6 +1795,40 @@ function towerTier(floor) {
   };
   return { skill, enrageMax: 2 + 2 * t, enrageSeconds: 60, hpMul: 1 + 1.25 * t };
 }
+// Berättelsen: första kapitlet är lätt, och sedan blir det svårare för varje kapitel ända upp
+// till de svåraste bossarnas AI. Sista kapitlet (Rostkungen) har mycket mer liv.
+function storyTier(ch) {
+  const t = clamp((ch - 1) / (Shared.STORY_TOP - 1), 0, 1);
+  const a = SKILL_EASY;
+  const b = BOSS_TIERS.hard.skill;
+  const mix = (x, y) => x + (y - x) * t;
+  const skill = {
+    think: [mix(a.think[0], b.think[0]), mix(a.think[1], b.think[1])],
+    attack: mix(a.attack, b.attack), dodge: mix(a.dodge, b.dodge), special: mix(a.special, b.special),
+    speed: mix(a.speed, b.speed), jitter: mix(a.jitter, b.jitter),
+  };
+  const boss = Shared.STORY[ch - 1].boss;
+  return { skill, enrageMax: 1 + 1.4 * t, enrageSeconds: 70, hpMul: boss ? 2.4 : 1 + 0.5 * t };
+}
+// Veckans utmaning: en stark motståndare, ungefär som en boss.
+const WCHALLENGE_TIER = { skill: SKILL_HARD, enrageMax: 1.8, enrageSeconds: 60, hpMul: 1.3 };
+
+// Veckans regel ändrar båda robotarna (def) och/eller banan.
+function applyRule(rule, def) {
+  if (!rule) return def;
+  if (rule.id === 'mini') return { ...def, scale: def.scale * 0.6, speed: def.speed * 1.3 };
+  if (rule.id === 'giant') return { ...def, scale: def.scale * 1.45, hp: Math.round(def.hp * 1.6) };
+  if (rule.id === 'glass') return { ...def, hp: Math.round(def.hp * 0.5) };
+  return def;
+}
+function ruleArena(rule, arena) {
+  if (!rule) return arena;
+  if (rule.id === 'energy') return { ...arena, infiniteEnergy: true };
+  if (rule.id === 'moon') return { ...arena, gravityMul: arena.gravityMul * 0.4 };
+  if (rule.id === 'turbo') return { ...arena, speedMul: arena.speedMul * 1.8 };
+  return arena;
+}
+
 // Monstervärldens kungar och drottning: den skarpaste AI:n av alla, och en ilska som snabbt
 // växer till 2x skada (drottningen 2,5x).
 const ROYAL_TIERS = {
@@ -2158,6 +2192,8 @@ const screens = {
   tops: document.getElementById('screen-tops'),
   album: document.getElementById('screen-album'),
   daily: document.getElementById('screen-daily'),
+  story: document.getElementById('screen-story'),
+  wchallenge: document.getElementById('screen-wchallenge'),
   home: document.getElementById('screen-home'),
   bygge: document.getElementById('screen-bygge'),
   mimik: document.getElementById('screen-mimik'),
@@ -2205,6 +2241,8 @@ const game = {
   champion: false,         // ... och då kanske mot stadens mästare (nivå 30+)
   tower: 0,                // våningen i Utmaningstornet som pågående match gäller (0 = ingen tornmatch)
   weekly: 0,               // våningen i veckans torn som pågående match gäller (0 = ingen sådan match)
+  story: 0,                // kapitlet i berättelsen som pågående match gäller (0 = inget)
+  wchallenge: null,        // veckans utmanings regel ({id, ...}) under en sådan match
   tourney: 0,              // turneringsrundan som pågående match gäller (1–3, 0 = ingen)
   event: false,            // pågående match är mot jättebossen i staden (se Shared.eventWindow)
   explore: null,           // {player, monsters, near, attackHeld} medan man går runt i Monstervärlden
@@ -2324,14 +2362,19 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.tourney = started.match.tourney || 0;
   game.event = started.match.event !== undefined;
   game.daily = !!started.match.daily;
+  game.story = started.match.story || 0;
+  game.wchallenge = started.match.wchallenge ? Shared.CHALLENGE_RULES.find((r) => r.id === started.match.wchallenge.rule) : null;
+  game.arena = ruleArena(game.wchallenge, game.arena);
   // Veckans torn är svårt redan från början: våning 1 är som tornets våning 32, våning 10 som toppen.
-  game.bossTier = game.event ? GIANT_TIER : game.daily ? towerTier(20) : game.tourney ? tourneyTier(game.tourney) : game.weekly ? towerTier(30 + game.weekly * 2) : game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
+  game.bossTier = game.story ? storyTier(game.story) : game.wchallenge ? WCHALLENGE_TIER : game.event ? GIANT_TIER : game.daily ? towerTier(20) : game.tourney ? tourneyTier(game.tourney) : game.weekly ? towerTier(30 + game.weekly * 2) : game.tower ? towerTier(game.tower) : game.boss ? bossTier(oppDef) : oppDef.royal ? ROYAL_TIERS[oppDef.royal]
     : game.elite ? eliteTier(game.acct.level, game.champion) : null;
   const tierDef = game.bossTier && game.bossTier.hpMul ? { ...oppDef, hp: Math.round(oppDef.hp * game.bossTier.hpMul) } : oppDef;
-  const aDef = game.event ? { ...tierDef, scale: tierDef.scale * GIANT_SCALE } : tierDef; // jättebossen är jättestor
+  const aDef = applyRule(game.wchallenge, game.event ? { ...tierDef, scale: tierDef.scale * GIANT_SCALE } : tierDef); // jättebossen är jättestor
+  // Bossar byter fas när de har halva livet kvar (se updateBossEnrage).
+  game.bossPhases = game.boss || game.event || !!oppDef.royal || !!oppDef.boss || (game.story && !!Shared.STORY[game.story - 1].boss) || game.tourney === 3;
   game.online = null;
   game.fighters = null;
-  const [pMim, aMim] = mimicSpecials(pDef, aDef);
+  const [pMim, aMim] = mimicSpecials(applyRule(game.wchallenge, pDef), aDef);
   game.player = new Fighter(pMim, W * 0.25, 1);
   game.ai = new Fighter(aMim, W * 0.75, -1);
   game.brain = makeBrain(game.bossTier ? game.bossTier.skill : skillForLevel(game.acct.level));
@@ -2344,6 +2387,8 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   announceMimic(game.player, game.ai);
   hud.namePlayer.textContent = `DU (nivå ${game.acct.level}) · ${displayName(pDef, true)}${game.stake ? ' (insats)' : ''}`;
   hud.nameAi.textContent = game.event ? `👹 JÄTTEBOSSEN · ${aDef.name}`
+    : game.story ? `📚 KAPITEL ${game.story} · ${game.story === Shared.STORY_TOP ? 'ROSTKUNGEN' : aDef.name}`
+    : game.wchallenge ? `🎯 ${game.wchallenge.icon} ${game.wchallenge.name.toUpperCase()} · ${aDef.name}`
     : game.daily ? `📅 DAGENS UTMANING · ${aDef.name}`
     : game.tourney ? `🏆 ${Shared.TOURNEY_ROUNDS[game.tourney - 1].toUpperCase()} · ${aDef.name}`
     : game.team ? `👥 LAGSTRID ${game.team} MOT ${game.team} · ${aDef.name} leder`
@@ -2353,6 +2398,7 @@ async function startMatch(modeOverride, monsterId, forceAi) {
     : `${game.elite ? '⭐ ' : ''}${aDef.name} · ${game.monster ? 'MONSTER' : game.elite ? 'ELIT' : 'AI'}`;
   setHudType(hud.typePlayer, game.player.def); // Mimik kan ha bytt typ (mimicSpecials)
   setHudType(hud.typeAi, game.ai.def);
+  if (game.wchallenge) game.superBanner = { name: `${game.wchallenge.icon} ${game.wchallenge.name}: ${game.wchallenge.desc}`, t: 3, mine: true };
   showScreen(null);
 }
 
@@ -2408,6 +2454,7 @@ function startTraining(moving, attacking = false) {
   game.boss = false;
   game.monster = false;
   game.bossTier = null;
+  game.bossPhases = false;
   game.allies = [];
   game.foes = [];
   game.team = 0;
@@ -2643,6 +2690,28 @@ function updateBossEnrage(dt) {
   game.bossTime += dt;
   const { enrageMax, enrageSeconds } = game.bossTier;
   game.ai.enrage = clamp(1 + (enrageMax - 1) * (game.bossTime / enrageSeconds), 1, enrageMax);
+  // Fas 2: när bossen har halva livet kvar blir den arg. En chockvåg slår bort dig, energin
+  // fylls, ilskan hoppar upp, den tänker snabbare och använder specialen oftare. Den lyser rött.
+  const boss = game.ai;
+  if (game.bossPhases && !boss.phase2 && boss.hp > 0 && boss.hp <= boss.maxHp * 0.5) {
+    boss.phase2 = true;
+    boss.energy = MAX_ENERGY;
+    game.bossTime += enrageSeconds * 0.3;
+    const sk = game.bossTier.skill;
+    game.brain = makeBrain({
+      ...sk, think: [sk.think[0] * 0.75, sk.think[1] * 0.75], special: Math.min(0.95, sk.special + 0.25), speed: sk.speed * 1.1,
+    });
+    for (const f of [game.player, ...(game.allies || [])]) {
+      if (!f || f.dead) continue;
+      const dir = Math.sign(f.x - boss.x) || 1;
+      f.kx = dir * 520;
+      if (f.onGround) { f.vy = -380; f.onGround = false; }
+    }
+    game.shake = Math.max(game.shake, 0.7);
+    game.slowMo = Math.max(game.slowMo || 0, 0.6);
+    game.superBanner = { name: '🔥 FAS 2 — BOSSEN BLIR ARG!', t: 2.4, mine: false };
+    Sound.bossPhase();
+  }
 }
 
 // Matchen mot AI:n är slut. Resultatet (låda, ev. vunnen/förlorad robot) avgörs av servern
@@ -2665,7 +2734,14 @@ function endMatch() {
 
 // "Kämpa igen": efter en tornmatch blir det nästa (eller samma) våning, annars en vanlig match.
 function fightAgain() {
-  if (game.event) {
+  if (game.story) {
+    if (game.result && game.result.story) showStory(); // läs nästa kapitel först
+    else if ((game.acct.story || 1) <= Shared.STORY_TOP) startMatch('story');
+    else showHub();
+  } else if (game.wchallenge) {
+    if (game.acct.wchallenge.won) showHub();
+    else startMatch('wchallenge');
+  } else if (game.event) {
     showHub(); // jättebossen står i staden — gå dit igen
   } else if (game.tourney) {
     showTourney(); // till lottningen: nästa runda, eller en ny turnering
@@ -3633,6 +3709,59 @@ function showDaily() {
   showScreen('daily');
 }
 
+// ---------- Berättelsen ----------
+// Kapitlen i ordning: en karta med alla kapitel, texten för det man står på och motståndaren.
+function showStory() {
+  game.phase = 'story';
+  const ch = game.acct.story || 1;
+  const done = ch > Shared.STORY_TOP;
+  const map = byId('story-map');
+  map.replaceChildren();
+  Shared.STORY.forEach((c, i) => {
+    const n = i + 1;
+    const dot = el('span', `story-dot${n < ch ? ' done' : n === ch ? ' now' : ''}`, n < ch ? '✓' : c.boss ? '👑' : String(n));
+    dot.title = c.title;
+    map.append(dot);
+  });
+  const card = byId('story-card');
+  card.replaceChildren();
+  const btn = byId('btn-story-fight');
+  if (done) {
+    const last = Shared.STORY[Shared.STORY_TOP - 1];
+    byId('story-title').textContent = '🏆 Slut — du räddade Robotstad!';
+    byId('story-text').textContent = last.outro;
+    btn.hidden = true;
+  } else {
+    const c = Shared.STORY[ch - 1];
+    byId('story-title').textContent = `Kapitel ${ch}: ${c.title}`;
+    byId('story-text').textContent = c.intro;
+    const def = robotById[c.opp];
+    card.append(createCard(c.boss ? { ...def, name: 'Rostkungen' } : def, {}));
+    btn.hidden = false;
+    btn.textContent = c.boss ? '👑 Möt Rostkungen!' : `⚔ Strid mot ${def.name}! (+${Shared.storyCoins(ch)} 🪙)`;
+  }
+  showScreen('story');
+}
+
+// ---------- Veckans utmaning ----------
+function showWChallenge() {
+  game.phase = 'wchallenge';
+  const wc = game.acct.wchallenge;
+  const rule = Shared.CHALLENGE_RULES.find((r) => r.id === wc.rule);
+  const def = robotById[wc.opp];
+  byId('wchallenge-rule').textContent = `${rule.icon} ${rule.name}: ${rule.desc}`;
+  byId('wchallenge-error').textContent = '';
+  const card = byId('wchallenge-card');
+  card.replaceChildren(createCard(def, {}));
+  const btn = byId('btn-wchallenge-fight');
+  byId('wchallenge-status').textContent = wc.won
+    ? '✅ Du har klarat veckans utmaning! En ny regel och en ny motståndare kommer på måndag.'
+    : `Den här veckan möter du ${def.name}. Vinn så får du ${Shared.CHALLENGE_COINS} 🪙 och en låda! Du kan försöka hur många gånger du vill.`;
+  btn.disabled = wc.won;
+  btn.textContent = wc.won ? '✅ Klarad den här veckan' : '⚔ Anta utmaningen';
+  showScreen('wchallenge');
+}
+
 // ---------- Samlaralbumet ----------
 // En sida per typ: robotarna du har syns, de du saknar är silhuetter. En hel sida ger ett pris
 // (mynt och en låda) som man hämtar en gång.
@@ -3914,6 +4043,8 @@ const STATIONS = [
   { id: 'shop', name: 'Butiken', emoji: '🛒', color: '#9be15d', x: 1400, z: -120 },
   { id: 'trade', name: 'Handlaren', emoji: '🔁', color: '#ff9a2a', x: 1400, z: 120 },
   { id: 'clan', name: 'Klanhuset', emoji: '🛡', color: '#a07bff', x: 1620, z: -120 },
+  { id: 'story', name: 'Berättelsen', emoji: '📚', color: '#ffb347', x: 1620, z: 120 },
+  { id: 'wchallenge', name: 'Veckans utmaning', emoji: '🎯', color: '#ff4f7a', x: 1810, z: 120 },
 
   { id: 'monsters', name: 'Monstervärlden', emoji: '👾', color: '#ff7a1a', x: 2000, z: -120 },
   { id: 'boss', name: 'Mystiska robotar', emoji: '❓', color: '#ff1744', x: 2000, z: 120 },
@@ -3940,6 +4071,8 @@ const STATION_HINT = {
   trade: 'byt robotar med Handlaren',
   clan: 'gå med i en klan',
   royals: 'du och 4 robotar mot en kung eller drottningen',
+  story: 'äventyret om Kraftkärnan — ett kapitel i taget',
+  wchallenge: 'en ny knasig regel varje vecka — vinn och få ett fint pris',
 };
 const HUB_HINT = 'Gå med WASD eller piltangenterna. Gå fram till en portal och tryck MELLANSLAG/J.';
 
@@ -4119,6 +4252,8 @@ function enterStation(id) {
     case 'tops': showTops(); break;
     case 'album': showAlbum(); break;
     case 'daily': showDaily(); break;
+    case 'story': showStory(); break;
+    case 'wchallenge': showWChallenge(); break;
     case 'home': showHome(); break;
     case 'garage': game.fromHub = true; showSelect(); break;
     case 'boxes':
@@ -4530,6 +4665,14 @@ byId('btn-tourney-back').addEventListener('click', showHub);
 byId('btn-tops-back').addEventListener('click', showHub);
 byId('btn-album-back').addEventListener('click', showHub);
 byId('btn-daily-back').addEventListener('click', showHub);
+byId('btn-story-back').addEventListener('click', showHub);
+byId('btn-story-fight').addEventListener('click', () => startMatch('story'));
+byId('btn-wchallenge-back').addEventListener('click', showHub);
+byId('btn-wchallenge-fight').addEventListener('click', async () => {
+  await startMatch('wchallenge');
+  const err = byId('select-error').textContent;
+  if (game.phase === 'wchallenge' && err) byId('wchallenge-error').textContent = err;
+});
 byId('btn-home-back').addEventListener('click', showHub);
 byId('btn-bygge').addEventListener('click', showBygge);
 byId('btn-bygge-back').addEventListener('click', showSelect);
@@ -4668,6 +4811,19 @@ function showResult() {
       ? `👹 Ni besegrade jättebossen! Du fick ${Shared.EVENT_COINS} 🪙 och ${Shared.EVENT_BOXES === 1 ? 'en extra låda' : `${Shared.EVENT_BOXES} extra lådor`}!`
       : '👹 Ni besegrade jättebossen igen!';
     if (r.eventWon) celebrate('👹 JÄTTEBOSSEN ÄR BESEGRAD!', `${Shared.EVENT_COINS} 🪙 + ${Shared.EVENT_BOXES === 1 ? 'en låda' : `${Shared.EVENT_BOXES} lådor`}!`, true);
+  } else if (r.won && r.story) {
+    const c = Shared.STORY[r.story - 1];
+    text = `📚 ${c.outro}`;
+    if (r.story === Shared.STORY_TOP) {
+      text += ` Du fick ${robotById[r.gained].name} och ${Shared.STORY_TOP_BOXES} lådor!`;
+      rewardItem('HJÄLTENS PRIS!', robotById[r.gained], { isNew: true, n: invCount(r.gained) });
+      celebrate('🏆 DU RÄDDADE ROBOTSTAD!', `${robotById[r.gained].name} + ${Shared.STORY_TOP_BOXES} lådor!`, true);
+    } else {
+      celebrate(`📚 KAPITEL ${r.story} KLART!`, `Nästa: ${Shared.STORY[r.story].title}`, false);
+    }
+  } else if (r.won && r.wchallenge) {
+    text = `🎯 Du klarade veckans utmaning! Du fick ${Shared.CHALLENGE_COINS} 🪙 och en låda.`;
+    celebrate('🎯 VECKANS UTMANING KLARAD!', `${Shared.CHALLENGE_COINS} 🪙 + en låda!`, true);
   } else if (r.won && r.daily) {
     text = `📅 Du klarade dagens utmaning! ${robotById[r.gained].name} är din, och du fick ${Shared.DAILY_COINS} 🪙. ${boxLine(r)}`;
     rewardItem('DAGENS ROBOT!', robotById[r.gained], { isNew: true, n: invCount(r.gained) });
@@ -4712,6 +4868,10 @@ function showResult() {
     rewardItem('FÖRLORAD ROBOT', robotById[r.lost], { n: invCount(r.lost) });
   } else if (game.event) {
     text = '👹 Jättebossen var för stark den här gången. Försök igen medan den är kvar i staden!';
+  } else if (game.story) {
+    text = `📚 ${Shared.STORY[game.story - 1].boss ? 'Rostkungen' : robotById[game.matchToken.opp].name} var för stark den här gången. Kapitlet väntar på dig — försök igen!`;
+  } else if (game.wchallenge) {
+    text = '🎯 Veckans utmaning var för svår den här gången. Försök igen — den finns kvar hela veckan!';
   } else if (game.daily) {
     text = '📅 Dagens robot var för stark den här gången. Den finns kvar hela dagen — försök igen!';
   } else if (game.tourney) {
@@ -4758,6 +4918,8 @@ function showResult() {
   const wf = weeklyFloorNow();
   const tr = game.acct.tourney;
   byId('btn-again').textContent = game.event ? '👹 Tillbaka till staden (Enter)'
+    : game.story ? ((game.acct.story || 1) > Shared.STORY_TOP ? '🏆 Tillbaka till staden (Enter)' : r.story ? `📚 Till kapitel ${game.acct.story} (Enter)` : '📚 Försök igen (Enter)')
+    : game.wchallenge ? (r.wchallenge ? '🏙 Tillbaka till staden (Enter)' : '🎯 Försök igen (Enter)')
     : game.tourney
     ? (tr ? `🏆 Till ${Shared.TOURNEY_ROUNDS[tr.round].toLowerCase()}en (Enter)` : '🏆 Till turneringen (Enter)')
     : game.weekly
@@ -5367,6 +5529,9 @@ function beginFriendMatch(isHost, payload) {
   const mateName = isHost ? payload.guest.name : payload.host.name;
   game.allies = [];
   game.bossTier = null;
+  game.bossPhases = false;
+  game.wchallenge = null;
+  game.story = 0;
   if (coop) {
     // Tillsammans: värden och gästen bredvid varandra till vänster, bossen till höger.
     const base = robotById[coop.boss];
@@ -6052,7 +6217,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'daily' || game.phase === 'home' || game.phase === 'bygge' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'daily' || game.phase === 'story' || game.phase === 'wchallenge' || game.phase === 'home' || game.phase === 'bygge' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);
@@ -6754,8 +6919,23 @@ function frame(now) {
     update(STEP);
     acc -= STEP;
   }
+  updateMusic();
   draw();
   requestAnimationFrame(frame);
+}
+
+// Stridsmusiken spelar under matcher (inte i träningen eller i staden). Bossar får en mörkare
+// slinga, och tempot ökar när någon av de två har mindre än en tredjedel av livet kvar.
+let musicPlaying = false;
+function updateMusic() {
+  const want = (game.phase === 'intro' || game.phase === 'fight') && !!game.player && !!game.ai && !game.training;
+  if (want && !musicPlaying) Sound.startMusic(game.bossPhases || game.boss || game.event);
+  else if (!want && musicPlaying) Sound.stopMusic();
+  musicPlaying = want;
+  if (want) {
+    const low = (f) => f && f.hp > 0 && f.hp < f.maxHp / 3;
+    Sound.musicTense(low(game.player) || low(game.ai) || !!(game.ai && game.ai.phase2));
+  }
 }
 
 // ---------- Start ----------

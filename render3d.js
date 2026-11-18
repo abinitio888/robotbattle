@@ -763,6 +763,37 @@
   // guldkanter och mekaniska vingar på ryggen.
   const ARMOR_RANK = { common: 0, rare: 1, epic: 2, legendary: 3, divine: 4, super: 5, mythic: 3, custom: 2, wildcard: 2, boss: 3, monster: 2 };
   const CREST_AT = { box: [15, 116], horn: [15, 115], cyclops: [16, 116], dome: [12, 108], round: [13, 117] };
+  // Robotens nivå (2–5, se Shared.levelUpDef) syns på den: en guldnit per nivå på bältet, från
+  // nivå 3 en guldkant över bröstet, från nivå 4 en gloria över huvudet och på nivå 5 ett
+  // gyllene sken under fötterna.
+  const LEVEL_GOLD = glowMat('#ffd93d', 0.9);
+  const LEVEL_RING = glowMat('#ffd93d', 0.45);
+  function addLevelLook(def, M, ctx) {
+    const lv = def.level || 1;
+    if (lv < 2) return;
+    const { inner, upper, head, bodyW } = ctx;
+    const fx = 22 * bodyW;
+    for (let i = 0; i < lv - 1; i++) {
+      const z = (i - (lv - 2) / 2) * 7;
+      upper.add(mesh(sphere(2.6), M.gold, fx + 3.5, 44, z));
+    }
+    if (lv >= 3) {
+      upper.add(mesh(box(2.5, 2.2, 30), M.gold, fx + 3, 96, 0));
+    }
+    if (lv >= 4) {
+      const halo = new THREE.Mesh(new THREE.TorusGeometry(14, 1.6, 8, 32), LEVEL_GOLD);
+      halo.rotation.x = Math.PI / 2;
+      halo.position.set(0, 162, 0);
+      head.add(halo);
+    }
+    if (lv >= 5) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(30, 40, 40), LEVEL_RING);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 1;
+      inner.add(ring);
+    }
+  }
+
   function addMechaArmor(def, M, ctx) {
     const { upper, legs, arms, head, bodyW, parts, wings } = ctx;
     const rank = ARMOR_RANK[def.rarity] ?? 1;
@@ -1102,6 +1133,7 @@
     }
 
     addMechaArmor(def, M, { inner, upper, legs, arms: [front, back, ...extraArms.map((x) => x.arm)], head, bodyW, parts, wings });
+    addLevelLook(def, M, { inner, upper, head, bodyW });
 
     const glow = new THREE.Mesh(sphere(1), M.glow);
     upper.add(glow);
@@ -1243,7 +1275,7 @@
   }
 
   // Roboten byggs om bara när något som syns i modellen ändras (t.ex. jokerns huvud).
-  const rigKey = (def) => [def.id, def.head, def.extra, def.color, def.accent, def.eye, def.scale, def.skin && def.skin.id, def.gear && def.gear.look, def.gear && def.gear.color, JSON.stringify(def.parts || null)].join('|');
+  const rigKey = (def) => [def.id, def.head, def.extra, def.color, def.accent, def.eye, def.scale, def.skin && def.skin.id, def.gear && def.gear.look, def.gear && def.gear.color, JSON.stringify(def.parts || null), def.level || 1].join('|');
 
   // ---------- Arenan ----------
   function gradientTexture(top, bottom) {
@@ -1924,6 +1956,14 @@
           sp.position.set(cx + Math.cos(a) * f.w * 0.45, wy(f.y) + h / 2, cz + Math.sin(a) * f.w * 0.45);
           sp.rotation.set(Math.sin(a) * -0.4, 0, Math.cos(a) * 0.4);
         }
+      }
+      // Bossens fas 2: ett pulserande rött sken runt hela roboten.
+      if (f.phase2 && !f.dead) {
+        const rage = pools.superGlow.get();
+        rage.position.set(cx, cy, cz);
+        rage.scale.set(f.w * 2.4, f.h * 1.7, 1);
+        rage.material.color.set('#ff1a1a');
+        rage.material.opacity = 0.35 + 0.2 * Math.sin(f.time * 10);
       }
       // ---- Supervapnens superkrafter ----
       if (f.dragonT > 0) {

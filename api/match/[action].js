@@ -14,7 +14,7 @@ module.exports = dispatch({
       const session = await requireSession(req);
       const { robot, mode } = body;
       const acct = session.user.acct;
-      const wantMode = ['stake', 'boss', 'monster', 'street', 'tower', 'weekly', 'team', 'tourney', 'event', 'daily'].includes(mode) ? mode : 'normal';
+      const wantMode = ['stake', 'boss', 'monster', 'street', 'tower', 'weekly', 'team', 'tourney', 'event', 'daily', 'wchallenge', 'story'].includes(mode) ? mode : 'normal';
       // Dagens utmaning: dagen bestäms av servern, aldrig av klienten.
       const target = wantMode === 'daily' ? clock().today
         : typeof body.target === 'string' ? body.target : typeof body.monsterId === 'string' ? body.monsterId : null;

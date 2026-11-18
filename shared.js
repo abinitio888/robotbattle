@@ -1658,6 +1658,8 @@
       }
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
       acct.tower = Math.max(1, Math.min(TOWER_TOP + 1, Math.floor(Number(raw.tower)) || 1));
+      if (Number.isInteger(raw.story) && raw.story > 1) acct.story = Math.min(STORY_TOP + 1, raw.story);
+      if (typeof raw.challengeWon === 'string' && /^\d{4}-v\d{1,2}$/.test(raw.challengeWon)) acct.challengeWon = raw.challengeWon;
       if (Number.isInteger(raw.eventBeaten) && raw.eventBeaten > 0) acct.eventBeaten = raw.eventBeaten;
       if (Number.isInteger(raw.tourneyStarted) && raw.tourneyStarted > 0) acct.tourneyStarted = raw.tourneyStarted;
       acct.winsToBox = Math.max(0, Math.min(1, Math.floor(Number(raw.winsToBox)) || 0));
@@ -1750,6 +1752,8 @@
     if (!won) return XP.loss;
     const opp = robotById[match.opp];
     if (match.weekly) return 40 + match.weekly.floor * 4;
+    if (match.wchallenge) return 60;
+    if (match.story) return 20 + match.story * 6;
     if (match.tower) return 15 + match.tower;
     if (match.champion) return XP.champion;
     if (match.elite) return XP.elite;
@@ -1997,6 +2001,64 @@
   // Våningen man står på i veckans torn just nu (1 när en ny vecka börjat).
   const weeklyFloor = (acct, week) => (acct.weekly && acct.weekly.week === week ? acct.weekly.floor : 1);
 
+  // ---------- Veckans utmaning ----------
+  // Varje vecka en ny regel som gäller båda robotarna (samma för alla, bestämd av veckan) och en
+  // stark motståndare. Vinner man får man CHALLENGE_COINS mynt och CHALLENGE_BOXES låda, en gång
+  // per vecka (challengeWon = veckan). Själva regeln (storlek, fart, liv ...) sköts i game.js.
+  const CHALLENGE_COINS = 300;
+  const CHALLENGE_BOXES = 1;
+  const CHALLENGE_RULES = [
+    { id: 'mini', icon: '🐜', name: 'Pyttestrid', desc: 'Alla robotar är pyttesmå och supersnabba.' },
+    { id: 'giant', icon: '🗿', name: 'Jättestrid', desc: 'Alla robotar är jättar med mycket mer liv.' },
+    { id: 'common', icon: '⚙', name: 'Bara vanliga', desc: 'Bara vanliga robotar får vara med — både din och motståndarens.' },
+    { id: 'energy', icon: '⚡', name: 'Oändlig energi', desc: 'Energin tar aldrig slut: specialattacker hela tiden!' },
+    { id: 'glass', icon: '🥚', name: 'Glasrobotar', desc: 'Alla har halva livet. En miss kan avgöra!' },
+    { id: 'moon', icon: '🌙', name: 'Månstrid', desc: 'Nästan ingen tyngdkraft — man hoppar jättehögt.' },
+    { id: 'turbo', icon: '💨', name: 'Turbo', desc: 'Allt går dubbelt så fort.' },
+  ];
+  const challengeRule = (week) => CHALLENGE_RULES[(hashName(`regel-${week}`) >>> 0) % CHALLENGE_RULES.length];
+  function challengeOpponent(week) {
+    const rule = challengeRule(week);
+    const pool = ROBOTS.filter((r) => !r.monster && !r.boss && !r.mimic && r.id !== 'wildcard'
+      && (rule.id === 'common' ? r.rarity === 'common' : r.rarity === 'epic' || r.rarity === 'legendary'));
+    return pool[(hashName(`utmaning-${week}`) >>> 0) % pool.length].id;
+  }
+
+  // ---------- Berättelsen ----------
+  // Ett äventyr i kapitel: en bit berättelse, en strid, och sedan nästa kapitel. Man spelar dem i
+  // ordning (acct.story = nästa kapitel, 1 från början). Varje kapitel ger mynt första gången;
+  // sista kapitlet ger också en legendarisk robot och lådor. tier styr hur svår motståndaren är
+  // (som tornets våning, se game.js).
+  const STORY = [
+    { title: 'Larmet i Robotstad', opp: 'pip', tier: 2,
+      intro: 'En natt tjuter alla larm i Robotstad. Någon har stulit Kraftkärnan — stenen som ger hela staden ström! Lilla Pip springer därifrån med en blinkande bit i handen.',
+      outro: 'Pip piper förskräckt: "Det var inte jag som tog den! Rostkungen tvingade mig att hålla vakt. Han har delat kärnan i sju bitar och gömt dem över hela världen!"' },
+    { title: 'Hamnen i dimman', opp: 'ankra', tier: 5,
+      intro: 'Första spåret leder till hamnen. I dimman väntar Ankra, Rostkungens tunga vakt, med en kärnbit fastkedjad vid sin ankarkätting.',
+      outro: 'Kedjan går av och kärnbiten rullar fram till dina fötter. Ankra muttrar: "Nästa bit finns i Viskande skogen ... om du vågar."' },
+    { title: 'Viskande skogen', opp: 'kvist', tier: 8,
+      intro: 'Träden viskar och grenarna rör sig. Kvist har vuxit ihop med skogen och gömmer kärnbiten högt uppe i en trädkrona.',
+      outro: 'Skogen blir tyst. Kvist böjer sig ner och ger dig biten: "Rostkungen lovade oss evig solsken. Han ljög."' },
+    { title: 'Spegelgrottan', opp: 'spegla', tier: 12,
+      intro: 'I grottan ser du hundra av dig själv. Bara en av spegelbilderna är Spegla — och den härmar varje rörelse du gör.',
+      outro: 'Speglarna spricker en efter en. Längst in, där den sista spegeln satt, lyser nästa kärnbit.' },
+    { title: 'Vulkanens hjärta', opp: 'magma', tier: 16,
+      intro: 'Det är så varmt att plåten glöder. Magma simmar i lavan och har smält in kärnbiten i sitt eget bröst.',
+      outro: 'Magma svalnar och blir till sten. Kärnbiten är varm, men hel. Fem av sju!' },
+    { title: 'Stormberget', opp: 'stormdrake', tier: 20,
+      intro: 'På bergets topp blixtrar det utan uppehåll. Stormdraken cirklar runt toppen med den sjätte biten fast i klorna.',
+      outro: 'Draken landar trött och släpper biten. "Rostkungen väntar i Nattens torn," säger den. "Han har den sista biten — och han vet att du kommer."' },
+    { title: 'Nattens torn', opp: 'nattdrake', tier: 26,
+      intro: 'Tornet är svart som natten. Vid porten vaktar Nattdraken, Rostkungens allra starkaste krigare.',
+      outro: 'Porten öppnas med ett gnisslande. Högst upp i tornet hör du ett långsamt, rostigt skratt ...' },
+    { title: 'Rostkungen', opp: 'colossus', tier: 32, boss: true,
+      intro: 'Rostkungen reser sig ur sin tron, stor som ett hus. "Du har samlat sex bitar åt mig," mullrar han. "Tack! Nu tar jag dem."',
+      outro: 'Rostkungen rasar ihop i en hög av rostiga bultar. Du sätter ihop alla sju bitarna — och Kraftkärnan lyser igen! Hela Robotstad tänds och alla robotar jublar ditt namn. Du är stadens hjälte!' },
+  ];
+  const STORY_TOP = STORY.length;
+  const storyCoins = (ch) => 50 + ch * 25;
+  const STORY_TOP_BOXES = 3;
+
   // ---------- Säsonger ----------
   // Var tredje månad en ny säsong (vinter dec–feb, vår mar–maj, sommar jun–aug, höst sep–nov,
   // i UTC så att klient och server är överens). Varje match ger säsongs-XP (lika mycket som
@@ -2237,6 +2299,20 @@
       acct.selected = robotId;
       return { robot: robotId, stake: false, opp: weeklyOpponent(week, floor), weekly: { week, floor } };
     }
+    if (mode === 'wchallenge') {
+      const week = weekOf(now);
+      if (acct.challengeWon === week) return { error: 'Du har redan klarat veckans utmaning — en ny kommer på måndag!' };
+      const rule = challengeRule(week);
+      if (rule.id === 'common' && robotById[robotId].rarity !== 'common') return { error: 'Den här veckan får bara vanliga robotar vara med. Välj en vanlig robot!' };
+      acct.selected = robotId;
+      return { robot: robotId, stake: false, opp: challengeOpponent(week), wchallenge: { week, rule: rule.id } };
+    }
+    if (mode === 'story') {
+      const ch = acct.story || 1;
+      if (ch > STORY_TOP) return { error: 'Du har redan klarat hela berättelsen!' };
+      acct.selected = robotId;
+      return { robot: robotId, stake: false, opp: STORY[ch - 1].opp, story: ch };
+    }
     if (mode === 'tower') {
       if (!(acct.level >= TOWER_LEVEL)) return { error: `Utmaningstornet öppnar på nivå ${TOWER_LEVEL}.` };
       const floor = acct.tower || 1;
@@ -2385,7 +2461,29 @@
         acct.winsToBox = (acct.winsToBox || 0) + 1;
         if (acct.winsToBox >= WINS_PER_BOX) { acct.winsToBox = 0; acct.boxes += 1; } else result.box = false;
       }
-      if (match.weekly) {
+      if (match.wchallenge) {
+        const { week } = match.wchallenge;
+        if (acct.challengeWon !== week) {
+          acct.challengeWon = week;
+          acct.boxes += CHALLENGE_BOXES;
+          result.coins += addCoins(acct, CHALLENGE_COINS);
+          result.wchallenge = true;
+        }
+      } else if (match.story) {
+        // Bara om man står på det kapitlet (en gammal match räknas inte två gånger).
+        if ((acct.story || 1) === match.story) {
+          acct.story = match.story + 1;
+          result.story = match.story;
+          result.coins += addCoins(acct, storyCoins(match.story));
+          if (match.story === STORY_TOP) {
+            let prize = rollBoxFrom(rng, 'legendary');
+            while (prize.id === 'wildcard') prize = rollBoxFrom(rng, 'legendary');
+            addRobot(acct, prize.id);
+            result.gained = prize.id;
+            acct.boxes += STORY_TOP_BOXES;
+          }
+        }
+      } else if (match.weekly) {
         // Bara om man står på den våningen samma vecka (en gammal match räknas inte två gånger).
         const { week, floor } = match.weekly;
         if (acct.weekly && acct.weekly.week === week && acct.weekly.floor === floor) {
@@ -2536,6 +2634,8 @@
       streetBeaten: [...(acct.streetBeaten || [])],
       tower: acct.tower || 1,
       weekly: { week: weekOf(Date.now()), floor: weeklyFloor(acct, weekOf(Date.now())) },
+      story: acct.story || 1,
+      wchallenge: { week: weekOf(Date.now()), rule: challengeRule(weekOf(Date.now())).id, opp: challengeOpponent(weekOf(Date.now())), won: acct.challengeWon === weekOf(Date.now()) },
       tourney: acct.tourney ? { round: acct.tourney.round, field: [...acct.tourney.field] } : null,
       eventBeaten: acct.eventBeaten || 0,
       tourneyStarted: acct.tourneyStarted || 0,
@@ -2922,6 +3022,8 @@
     TOWER_LEVEL, TOWER_TOP, TOWER_PRIZE_EVERY, towerOpponent, towerCoins,
     MEDALS, awardMedals,
     WEEKLY_TOP, WEEKLY_TOP_COINS, WEEKLY_TOP_BOXES, weekOf, weeklyOpponent, weeklyFloor,
+    CHALLENGE_RULES, CHALLENGE_COINS, CHALLENGE_BOXES, challengeRule, challengeOpponent,
+    STORY, STORY_TOP, storyCoins, STORY_TOP_BOXES,
     TOURNEY_ROUNDS, TOURNEY_COINS, TOURNEY_WIN_COINS, TOURNEY_WIN_BOXES,
     TOURNEY_EVERY_MS, tourneySlot,
     WINS_PER_BOX,
