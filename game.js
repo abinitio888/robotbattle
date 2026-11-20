@@ -4228,6 +4228,7 @@ function showStory() {
     const last = Shared.STORY[Shared.STORY_TOP - 1];
     byId('story-title').textContent = '🏆 Slut — du räddade Robotstad!';
     byId('story-text').textContent = last.outro;
+    if (!(game.acct.secrets || []).includes('karnvakt')) byId('story-text').textContent += ' 🔓 Spela en match till (vilken som helst) så får du den hemliga roboten Kärnväktaren!';
     btn.hidden = true;
   } else {
     const c = Shared.STORY[ch - 1];
