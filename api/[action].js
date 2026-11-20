@@ -94,6 +94,10 @@ module.exports = dispatch({
     method: 'POST',
     handler: acctAction((acct, body) => S.buySkin(acct, typeof body.skin === 'string' ? body.skin : null)),
   },
+  drone: {
+    method: 'POST',
+    handler: acctAction((acct, body) => S.setDrone(acct, typeof body.drone === 'string' ? body.drone : null)),
+  },
   'set-skin': {
     method: 'POST',
     handler: acctAction((acct, body) => S.setSkin(acct, typeof body.robot === 'string' ? body.robot : null, typeof body.skin === 'string' ? body.skin : null)),

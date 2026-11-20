@@ -386,10 +386,42 @@
         <button id="btn-wchallenge-back" type="button" class="linklike">Tillbaka till staden</button>
       </section>
 
+      <section id="screen-survival" hidden>
+        <h2>🌊 Överlevnad</h2>
+        <p class="hint">Robotarna kommer i vågor: först en, sedan fler och fler, och de blir starkare för varje våg. Mellan vågorna får du tillbaka lite liv. Hur långt klarar du dig?</p>
+        <p id="survival-status" class="wchallenge-rule"></p>
+        <div class="buttons"><button id="btn-survival-start" type="button">🌊 Starta</button></div>
+        <button id="btn-survival-back" type="button" class="linklike">Tillbaka till staden</button>
+      </section>
+
+      <section id="screen-minigames" hidden>
+        <h2>🎮 Minispel</h2>
+        <div id="minigame-list" class="buttons arena-pick"></div>
+        <button id="btn-minigames-back" type="button" class="linklike">Tillbaka till staden</button>
+      </section>
+
+      <section id="screen-editor" hidden>
+        <h2>🧱 Banbyggaren</h2>
+        <p class="hint">Välj en sak och klicka i rutnätet för att bygga. Klicka igen för att byta, eller sudda bort. Robotarna börjar i kanterna.</p>
+        <div id="editor-tools" class="editor-tools"></div>
+        <canvas id="editor-grid" class="editor-grid" width="720" height="300"></canvas>
+        <div id="editor-opts" class="editor-tools"></div>
+        <p class="hint"><span id="editor-count"></span> · Banans kod: <b id="editor-code" class="editor-code"></b></p>
+        <div class="buttons editor-load">
+          <input id="editor-input" type="text" placeholder="Skriv in en kompis kod" maxlength="80" autocapitalize="off">
+          <button id="btn-editor-load" type="button" class="secondary">Ladda</button>
+          <button id="btn-editor-clear" type="button" class="secondary">Töm</button>
+        </div>
+        <p id="editor-error" class="hint"></p>
+        <div class="buttons"><button id="btn-editor-play" type="button">⚔ Spela på banan</button></div>
+        <button id="btn-editor-back" type="button" class="linklike">Tillbaka till staden</button>
+      </section>
+
       <section id="screen-album" hidden>
         <h2>📖 Samlaralbum</h2>
         <p id="album-status" class="hint"></p>
         <div id="album-pages" class="album-pages"></div>
+        <div id="album-secrets" class="album-pages"></div>
         <button id="btn-album-back" type="button" class="linklike">Tillbaka</button>
       </section>
 
@@ -473,6 +505,7 @@
         <p class="hint">Här finns varor som du aldrig kan vinna i en strid — bara köpa. Mynt får du när du spelar: 10 för en vinst, 2 för en förlust, 15 för ett monster, 30 för en boss, 100 för en kung eller drottning och 20 för den dagliga lådan.</p>
         <p id="shop-coins" class="shop-coins"></p>
         <div id="shop-list" class="shop-list"></div>
+        <div id="shop-drones" class="shop-skins"></div>
         <div id="shop-skins" class="shop-skins"></div>
         <p id="shop-error" class="hint"></p>
         <button id="btn-shop-back" type="button" class="linklike">Tillbaka</button>

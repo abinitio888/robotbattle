@@ -17,6 +17,7 @@
     boss: { label: 'Mystisk', weight: 0, rank: 5 },
     wildcard: { label: 'Joker', weight: 0, rank: 2 },
     mythic: { label: 'Mytisk', weight: 0, rank: 4 }, // bara Mimik, se MIMIK_CHANCE
+    secret: { label: 'Hemlig', weight: 0, rank: 4 }, // de hemliga robotarna, se SECRETS
     custom: { label: 'Eget bygge', weight: 0, rank: 3 }, // bara robotbygget, se BYGGE_BASE
     monster: { label: 'Monster', weight: 0, rank: 6 },
   };
@@ -582,6 +583,40 @@
       scale: 1.15, hp: 128, speed: 275, punch: 11,
       special: { type: 'tether', name: 'Gudakedja', dmg: 7, desc: 'En gyllene kedja binder motståndaren i tre sekunder. Är den för långt bort dras den in och tar skada — gå nära!' },
       passive: { type: 'execute', name: 'Själsfångst', desc: 'Mot en motståndare under 30 % HP gör Valkyria 50 % mer skada.' },
+    },
+    // ---------- Hemliga robotar ----------
+    // Finns aldrig i lådor, hos Handlaren, i albumet eller som motståndare (secret). Man låser
+    // upp dem genom att göra något speciellt, se SECRETS och unlockSecrets().
+    {
+      id: 'skuggis', name: 'Skuggis', rarity: 'secret', secret: true, types: ['mörk', 'spöke'],
+      color: '#1c1a2e', accent: '#6b4bd6', eye: '#c9a7ff', head: 'hood', extra: 'cape',
+      scale: 0.95, hp: 105, speed: 300, punch: 7,
+      special: { type: 'teleport', name: 'Skuggsteg', dmg: 24, desc: 'Försvinner och dyker upp bakom motståndaren med ett hugg.' },
+    },
+    {
+      id: 'fenix', name: 'Fenix', rarity: 'secret', secret: true, types: ['eld', 'flygande'],
+      color: '#ff7a1a', accent: '#ffd93d', eye: '#fff6c8', head: 'crown', extra: 'jet',
+      scale: 1.05, hp: 115, speed: 270, punch: 9,
+      special: { type: 'firebreath', name: 'Fenixeld', dmg: 6, desc: 'Sprutar het eld rakt fram en lång stund.' },
+    },
+    {
+      id: 'hoppsan', name: 'Hoppsan', rarity: 'secret', secret: true, types: ['normal', 'flygande'],
+      color: '#7ee2a8', accent: '#2f6b4a', eye: '#ffffff', head: 'round', extra: 'antenna',
+      scale: 0.9, hp: 110, speed: 280, punch: 8, jumpMul: 1.45,
+      special: { type: 'meteorslam', name: 'Studsbomben', dmg: 28, desc: 'Skjuter upp i luften och landar som en meteor.' },
+    },
+    {
+      id: 'glitch', name: 'Glitch', rarity: 'secret', secret: true, types: ['psykisk', 'elektrisk'],
+      color: '#26e0ff', accent: '#ff2bd6', eye: '#ffffff', head: 'box', extra: 'antenna',
+      scale: 1, hp: 112, speed: 265, punch: 9,
+      special: { type: 'copycat', name: 'Felkod', dmg: 22, desc: 'Laddar ner motståndarens specialattack och använder den.' },
+    },
+    {
+      id: 'karnvakt', name: 'Kärnväktaren', rarity: 'divine', secret: true, types: ['sten', 'fe'],
+      color: '#f4e7c3', accent: '#3ee8ff', eye: '#ffb347', head: 'crown', extra: 'shield',
+      scale: 1.2, hp: 140, speed: 250, punch: 11,
+      special: { type: 'halo', name: 'Kärnljus', dmg: 22, desc: 'En ring av ljus från Kraftkärnan som skadar motståndare och lagar dig själv.' },
+      passive: { type: 'coreshield', name: 'Kärnsköld', desc: 'Var åttonde sekund laddas en sköld som tar bort all skada från nästa träff.' },
     },
     // Monstervärlden: en helt egen sorts motståndare, skild från robotarna — går aldrig att få
     // av en låda eller möta i en vanlig match (precis som bossar), men går heller aldrig in i
@@ -1480,7 +1515,7 @@
   const DAILY_COINS = 120;
   const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
   function dailyChallenge(day) {
-    const pool = ROBOTS.filter((r) => !r.monster && !r.boss && !r.mimic && r.id !== 'wildcard' && (r.rarity === 'epic' || r.rarity === 'legendary'));
+    const pool = ROBOTS.filter((r) => !r.monster && !r.boss && !r.secret && !r.mimic && r.id !== 'wildcard' && (r.rarity === 'epic' || r.rarity === 'legendary'));
     return pool[hashName(`dag-${day}`) % pool.length].id;
   }
 
@@ -1557,7 +1592,7 @@
   const ALBUM_COINS = 250;
   const ALBUM_BOXES = 1;
   function albumPages() {
-    const robots = ROBOTS.filter((r) => !r.monster && !r.boss && r.id !== 'wildcard');
+    const robots = ROBOTS.filter((r) => !r.monster && !r.boss && !r.secret && r.id !== 'wildcard');
     return Object.keys(TYPES)
       .map((type) => ({ type, ids: robots.filter((r) => r.types.includes(type)).map((r) => r.id) }))
       .filter((page) => page.ids.length > 0);
@@ -1658,6 +1693,10 @@
       }
       if (typeof raw.huntDay === 'string' && raw.huntDay.length <= 10) acct.huntDay = raw.huntDay;
       acct.tower = Math.max(1, Math.min(TOWER_TOP + 1, Math.floor(Number(raw.tower)) || 1));
+      if (Array.isArray(raw.drones)) acct.drones = [...new Set(raw.drones.filter((id) => droneById[id]))];
+      if (typeof raw.drone === 'string' && (acct.drones || []).includes(raw.drone)) acct.drone = raw.drone;
+      if (Array.isArray(raw.secrets)) acct.secrets = [...new Set(raw.secrets.filter((id) => SECRETS.some((x) => x.id === id)))];
+      for (const k of ['secretJumps', 'lossRow', 'survivalBest']) if (Number.isInteger(raw[k]) && raw[k] > 0) acct[k] = Math.min(1e6, raw[k]);
       if (Number.isInteger(raw.story) && raw.story > 1) acct.story = Math.min(STORY_TOP + 1, raw.story);
       if (typeof raw.challengeWon === 'string' && /^\d{4}-v\d{1,2}$/.test(raw.challengeWon)) acct.challengeWon = raw.challengeWon;
       if (Number.isInteger(raw.eventBeaten) && raw.eventBeaten > 0) acct.eventBeaten = raw.eventBeaten;
@@ -1753,6 +1792,8 @@
     const opp = robotById[match.opp];
     if (match.weekly) return 40 + match.weekly.floor * 4;
     if (match.wchallenge) return 60;
+    if (match.survival) return 5;
+    if (match.mini) return 12;
     if (match.story) return 20 + match.story * 6;
     if (match.tower) return 15 + match.tower;
     if (match.champion) return XP.champion;
@@ -1802,7 +1843,7 @@
       pick -= RARITY[t].weight;
       if (pick <= 0) { tier = t; break; }
     }
-    const pool = ROBOTS.filter((r) => r.rarity === tier && !r.boss && !r.monster && r.id !== 'wildcard');
+    const pool = ROBOTS.filter((r) => r.rarity === tier && !r.boss && !r.secret && !r.monster && r.id !== 'wildcard');
     return pool[Math.floor(rng() * pool.length)];
   }
 
@@ -1840,7 +1881,7 @@
   const TRADE_VALUE = { common: 1, rare: 3, epic: 10, legendary: 100, divine: 500, boss: 150, mythic: 300 };
   // Robotbygget går inte att byta (varken ge eller få) — det är ens eget.
   const tradeValue = (id) => (robotById[id] && id !== 'bygge' ? TRADE_VALUE[robotById[id].rarity] || 0 : 0);
-  const canTradeFor = (id) => !!robotById[id] && !robotById[id].boss && tradeValue(id) > 0;
+  const canTradeFor = (id) => !!robotById[id] && !robotById[id].boss && !robotById[id].secret && tradeValue(id) > 0;
 
   // give: { robotId: antal }. Returnerar { got } eller { error }.
   function trade(acct, give, want) {
@@ -1877,7 +1918,7 @@
       pick -= RARITY[t].weight;
       if (pick <= 0) { tier = t; break; }
     }
-    const pool = ROBOTS.filter((r) => r.rarity === tier && !r.boss && !r.monster && r.id !== 'wildcard');
+    const pool = ROBOTS.filter((r) => r.rarity === tier && !r.boss && !r.secret && !r.monster && r.id !== 'wildcard');
     return pool[Math.floor(rng() * pool.length)];
   }
 
@@ -1886,7 +1927,7 @@
   function pickOpponent(robotId, stake, rng) {
     const def = robotById[robotId];
     const maxRank = rankOf(def) + (stake ? 0 : 1);
-    const pool = ROBOTS.filter((r) => r.id !== robotId && rankOf(r) <= maxRank && !r.boss && !r.monster);
+    const pool = ROBOTS.filter((r) => r.id !== robotId && rankOf(r) <= maxRank && !r.boss && !r.secret && !r.monster);
     return pool[Math.floor(rng() * pool.length)];
   }
 
@@ -2001,6 +2042,66 @@
   // Våningen man står på i veckans torn just nu (1 när en ny vecka börjat).
   const weeklyFloor = (acct, week) => (acct.weekly && acct.weekly.week === week ? acct.weekly.floor : 1);
 
+  // ---------- Drönare ----------
+  // Köps i Butiken och flyger bredvid ens robot i alla matcher mot AI (se updateDrone i game.js).
+  // Man kan äga alla men bara ha en med sig åt gången (acct.drone).
+  const DRONES = [
+    { id: 'skytt', icon: '🔫', name: 'Skyttedrönaren', price: 500, desc: 'Skjuter ett litet skott mot motståndaren var tredje sekund.' },
+    { id: 'lakare', icon: '💚', name: 'Läkardrönaren', price: 500, desc: 'Lagar lite av din robot var fjärde sekund.' },
+    { id: 'skold', icon: '🛡', name: 'Sköldrönaren', price: 700, desc: 'Var tionde sekund stoppar den en hel träff åt dig.' },
+  ];
+  const droneById = Object.fromEntries(DRONES.map((d) => [d.id, d]));
+  // id: köp drönaren om man inte har den, annars ta med den (null = ingen drönare).
+  function setDrone(acct, id) {
+    if (id === null) { acct.drone = null; return { drone: null }; }
+    const d = droneById[id];
+    if (!d) return { error: 'Den drönaren finns inte.' };
+    acct.drones = acct.drones || [];
+    if (!acct.drones.includes(id)) {
+      if ((acct.coins || 0) < d.price) return { error: `Du behöver ${d.price - (acct.coins || 0)} mynt till.` };
+      acct.coins -= d.price;
+      acct.drones.push(id);
+    }
+    acct.drone = id;
+    return { drone: id };
+  }
+
+  // ---------- Hemliga robotar ----------
+  // Hur man låser upp dem. ev kommer från finishMatch (extra = vad klienten säger hände i matchen).
+  const SECRET_JUMPS = 300;
+  const SECRET_LOSSES = 5;
+  const SECRETS = [
+    { id: 'skuggis', hint: 'Vinn en match utan att slå ett enda vanligt slag.', check: (a, ev) => ev.won && ev.noPunch },
+    { id: 'fenix', hint: 'Vinn en match med mindre än 5 % liv kvar.', check: (a, ev) => ev.won && ev.lowHp },
+    { id: 'hoppsan', hint: `Hoppa ${SECRET_JUMPS} gånger i matcher.`, check: (a) => (a.secretJumps || 0) >= SECRET_JUMPS },
+    { id: 'glitch', hint: `Förlora ${SECRET_LOSSES} matcher i rad. (Det är inte så farligt!)`, check: (a) => (a.lossRow || 0) >= SECRET_LOSSES },
+    { id: 'karnvakt', hint: 'Rädda Robotstad i Berättelsen.', check: (a) => (a.story || 1) > STORY_TOP },
+  ];
+  function unlockSecrets(acct, ev) {
+    acct.secrets = acct.secrets || [];
+    const got = [];
+    for (const sc of SECRETS) {
+      if (acct.secrets.includes(sc.id) || !sc.check(acct, ev)) continue;
+      acct.secrets.push(sc.id);
+      addRobot(acct, sc.id);
+      got.push(sc.id);
+    }
+    return got;
+  }
+
+  // ---------- Överlevnad och minispel ----------
+  // Överlevnad: vågor av robotar, fler och starkare för varje våg (sköts i game.js). Klienten
+  // säger hur många vågor man klarade; servern begränsar det efter hur lång tid matchen tog.
+  const SURVIVAL_COINS = 12;     // per våg
+  const SURVIVAL_BOX_EVERY = 5;  // en låda var femte våg
+  const SURVIVAL_MAX = 60;
+  const SURVIVAL_WAVE_MS = 6000; // en våg tar minst så lång tid
+  const MINIGAMES = [
+    { id: 'sumo', icon: '🥋', name: 'Sumo', desc: 'Putta ner motståndaren från plattformen! Den som ramlar av förlorar.' },
+    { id: 'soccer', icon: '⚽', name: 'Robotfotboll', desc: 'Slå in bollen i motståndarens mål. Först till 3 mål vinner!' },
+  ];
+  const MINIGAME_COINS = 30;
+
   // ---------- Veckans utmaning ----------
   // Varje vecka en ny regel som gäller båda robotarna (samma för alla, bestämd av veckan) och en
   // stark motståndare. Vinner man får man CHALLENGE_COINS mynt och CHALLENGE_BOXES låda, en gång
@@ -2019,7 +2120,7 @@
   const challengeRule = (week) => CHALLENGE_RULES[(hashName(`regel-${week}`) >>> 0) % CHALLENGE_RULES.length];
   function challengeOpponent(week) {
     const rule = challengeRule(week);
-    const pool = ROBOTS.filter((r) => !r.monster && !r.boss && !r.mimic && r.id !== 'wildcard'
+    const pool = ROBOTS.filter((r) => !r.monster && !r.boss && !r.secret && !r.mimic && r.id !== 'wildcard'
       && (rule.id === 'common' ? r.rarity === 'common' : r.rarity === 'epic' || r.rarity === 'legendary'));
     return pool[(hashName(`utmaning-${week}`) >>> 0) % pool.length].id;
   }
@@ -2138,7 +2239,7 @@
 
   // Vilken gudomlig robot som är jättebossen den här gången.
   function eventBoss(id) {
-    const pool = ROBOTS.filter((r) => r.rarity === 'divine' && !r.monster && !r.boss);
+    const pool = ROBOTS.filter((r) => r.rarity === 'divine' && !r.monster && !r.boss && !r.secret);
     return pool[hashName(`jatte-${id}`) % pool.length].id;
   }
 
@@ -2299,6 +2400,15 @@
       acct.selected = robotId;
       return { robot: robotId, stake: false, opp: weeklyOpponent(week, floor), weekly: { week, floor } };
     }
+    if (mode === 'survival') {
+      acct.selected = robotId;
+      return { robot: robotId, stake: false, opp: pickOpponent(robotId, false, rng).id, survival: true };
+    }
+    if (mode === 'mini') {
+      if (!MINIGAMES.some((m) => m.id === target)) return { error: 'Okänt minispel.' };
+      acct.selected = robotId;
+      return { robot: robotId, stake: false, opp: pickOpponent(robotId, false, rng).id, mini: target };
+    }
     if (mode === 'wchallenge') {
       const week = weekOf(now);
       if (acct.challengeWon === week) return { error: 'Du har redan klarat veckans utmaning — en ny kommer på måndag!' };
@@ -2358,7 +2468,9 @@
   // rng behövs för nivåpris/föremål/supervapendel — vänmatcher
   // anropar aldrig den här funktionen. perfect: klienten säger att man inte blev träffad (bara
   // för medaljen Felfri, som inte ger något annat än äran).
-  function finishMatch(acct, match, won, rng, today, perfect = false) {
+  function finishMatch(acct, match, won, rng, today, perfect = false, extra = {}) {
+    extra = extra && typeof extra === 'object' ? extra : {};
+    if (match.survival) won = Math.floor(Number(extra.waves)) >= 1;
     // Uppdragen: vad hände i matchen?
     const robotDef = robotById[match.robot];
     const oppDef = robotById[match.opp];
@@ -2377,7 +2489,7 @@
       if (robotDef && robotDef.rarity === 'divine') events.push('divinewin');
     }
     const quest = questEvent(acct, events, robotDef);
-    const result = finishMatchInner(acct, match, won, rng, today);
+    const result = finishMatchInner(acct, match, won, rng, today, extra);
     // Vecko- och månadsuppdragen (bara när dagens datum är känt).
     for (const period of ['week', 'month']) {
       if (!today) break;
@@ -2405,11 +2517,30 @@
     result.levelUps = addXp(acct, result.xp, rng);
     result.seasonUps = addSeasonXp(acct, result.xp, Date.now());
     const weeklyDone = result.weekly === WEEKLY_TOP;
+    // Hemliga robotar: hopp räknas (högst 80 per match), och förluster i rad.
+    acct.secretJumps = Math.min(1e6, (acct.secretJumps || 0) + Math.max(0, Math.min(80, Math.floor(Number(extra.jumps)) || 0)));
+    acct.lossRow = won ? 0 : (acct.lossRow || 0) + 1;
+    const fair = !match.survival && !match.mini;
+    result.secrets = unlockSecrets(acct, { won, noPunch: fair && extra.noPunch === true, lowHp: fair && extra.lowHp === true });
     result.medals = awardMedals(acct, { won, perfect: perfect === true, underdog: !!underdog, weeklyDone });
     return result;
   }
 
-  function finishMatchInner(acct, match, won, rng, today) {
+  function finishMatchInner(acct, match, won, rng, today, extra = {}) {
+    if (match.survival) {
+      const waves = Math.max(0, Math.min(SURVIVAL_MAX, Math.floor(Number(extra.waves)) || 0));
+      const result = { won, stake: false, gained: null, lost: null, box: false, levelUps: [], bossWon: null, itemWon: null, coins: 0, survival: waves };
+      result.coins = addCoins(acct, waves * SURVIVAL_COINS);
+      const boxes = Math.floor(waves / SURVIVAL_BOX_EVERY);
+      if (boxes) { acct.boxes += boxes; result.survivalBoxes = boxes; }
+      if (waves > (acct.survivalBest || 0)) { acct.survivalBest = waves; result.survivalBest = true; }
+      return result;
+    }
+    if (match.mini) {
+      const result = { won, stake: false, gained: null, lost: null, box: false, levelUps: [], bossWon: null, itemWon: null, coins: 0, mini: match.mini };
+      result.coins = addCoins(acct, won ? MINIGAME_COINS : COINS.loss);
+      return result;
+    }
     if (match.monster) {
       const result = {
         won, stake: false, gained: null, lost: null, box: false, levelUps: [], bossWon: null,
@@ -2635,6 +2766,12 @@
       tower: acct.tower || 1,
       weekly: { week: weekOf(Date.now()), floor: weeklyFloor(acct, weekOf(Date.now())) },
       story: acct.story || 1,
+      drones: [...(acct.drones || [])],
+      drone: acct.drone || null,
+      secrets: [...(acct.secrets || [])],
+      secretJumps: acct.secretJumps || 0,
+      lossRow: acct.lossRow || 0,
+      survivalBest: acct.survivalBest || 0,
       wchallenge: { week: weekOf(Date.now()), rule: challengeRule(weekOf(Date.now())).id, opp: challengeOpponent(weekOf(Date.now())), won: acct.challengeWon === weekOf(Date.now()) },
       tourney: acct.tourney ? { round: acct.tourney.round, field: [...acct.tourney.field] } : null,
       eventBeaten: acct.eventBeaten || 0,
@@ -3024,6 +3161,8 @@
     WEEKLY_TOP, WEEKLY_TOP_COINS, WEEKLY_TOP_BOXES, weekOf, weeklyOpponent, weeklyFloor,
     CHALLENGE_RULES, CHALLENGE_COINS, CHALLENGE_BOXES, challengeRule, challengeOpponent,
     STORY, STORY_TOP, storyCoins, STORY_TOP_BOXES,
+    DRONES, droneById, setDrone, SECRETS, SECRET_JUMPS, SECRET_LOSSES, unlockSecrets,
+    SURVIVAL_COINS, SURVIVAL_BOX_EVERY, SURVIVAL_MAX, SURVIVAL_WAVE_MS, MINIGAMES, MINIGAME_COINS,
     TOURNEY_ROUNDS, TOURNEY_COINS, TOURNEY_WIN_COINS, TOURNEY_WIN_BOXES,
     TOURNEY_EVERY_MS, tourneySlot,
     WINS_PER_BOX,

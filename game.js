@@ -135,6 +135,21 @@ function hurt(target, dmg, dirX, knock, source) {
   dmg *= target.vulnT > 0 ? 1.4 : 1; // bara jokerns "Hån"
   if (source.dragonT > 0 && source.act && source.act.kind === 'punch') dmg *= 2; // Drakhjärtats Drakvrede
   if (target.dragonT > 0) knock = 0; // ...och då kan ingenting knuffa en
+  dmg *= weatherMul(source.def && source.def.types); // vädret, se WEATHERS
+  // Kärnväktarens Kärnsköld och Sköldrönaren: en laddad sköld tar hela träffen.
+  if (source !== target && ((target.passive === 'coreshield' && target.coreReady) || target.droneShield)) {
+    if (target.passive === 'coreshield' && target.coreReady) { target.coreReady = false; target.coreT = 8; } else target.droneShield = false;
+    sparks(target.x, target.y - target.h * 0.6, '#3ee8ff', 18, target.z);
+    target.invuln = 0.3;
+    return false;
+  }
+  // Minispelen: i sumo gör träffar ingen skada, men ju fler träffar man tagit desto längre flyger
+  // man (sumoPct). I fotboll gör träffar ingen skada alls, de knuffar bara.
+  if (game.mini === 'sumo') {
+    target.sumoPct = (target.sumoPct || 0) + dmg;
+    knock = (knock + 180) * (1 + target.sumoPct / 45);
+    dmg = 0;
+  } else if (game.mini === 'soccer') dmg = 0;
   if (game.training && target === game.ai) trainingHit(dmg);
   if (game.training && target === game.player) game.training.taken += dmg;
   target.hp = Math.max(0, target.hp - dmg);
@@ -1017,6 +1032,7 @@ class Fighter {
   updatePassive(dt) {
     if (this.dead) return;
     if (this.passive === 'shadow') this.shadowCd = Math.max(0, this.shadowCd - dt);
+    if (this.passive === 'coreshield' && !this.coreReady) { this.coreT = (this.coreT ?? 0) - dt; if (this.coreT <= 0) this.coreReady = true; }
     if (this.passive === 'shell') this.shellCd = Math.max(0, this.shellCd - dt);
     if (this.passive === 'tidal') this.hp = Math.min(this.maxHp, this.hp + 1.5 * dt);
     if (this.passive === 'rewind') {
@@ -1091,7 +1107,7 @@ class Fighter {
   startAct(kind) {
     if (kind === 'punch') {
       this.act = { kind, dur: 0.32, fires: [0.1], t: 0, i: 0, hit: false };
-      if (this === game.player) Sound.swing();
+      if (this === game.player) { Sound.swing(); game.punches = (game.punches || 0) + 1; }
     } else {
       Sound.special(this.def.special.type, this.def.types[0]);
       // Två slag som träffade alldeles innan: kombo-special (+50 % i 2,5 sekunder).
@@ -1183,7 +1199,7 @@ class Fighter {
           walkZ = rooted ? 0 : (input.depth || 0) * this.def.speed * DEPTH_SPEED * (this.buffT > 0 ? 1.35 : 1) * game.arena.speedMul * slow * rage * (this.miniT > 0 ? 1.45 : this.giantT > 0 ? 0.85 : 1);
           if (input.jump && this.onGround && !rooted) {
             this.vy = -JUMP_V * (this.def.jumpMul || 1); // Fjäderskorna hoppar högre
-            if (this === game.player) Sound.jump();
+            if (this === game.player) { Sound.jump(); game.jumps = (game.jumps || 0) + 1; }
             this.onGround = false;
           } else if (input.jump && !this.jumpHeld && !this.onGround && this.passive === 'doublejump' && !this.doubleUsed) {
             // Änglavingar: ett extra hopp mitt i luften.
@@ -2193,6 +2209,9 @@ const screens = {
   album: document.getElementById('screen-album'),
   daily: document.getElementById('screen-daily'),
   story: document.getElementById('screen-story'),
+  survival: document.getElementById('screen-survival'),
+  minigames: document.getElementById('screen-minigames'),
+  editor: document.getElementById('screen-editor'),
   wchallenge: document.getElementById('screen-wchallenge'),
   home: document.getElementById('screen-home'),
   bygge: document.getElementById('screen-bygge'),
@@ -2351,7 +2370,17 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   // bara känslan i just den matchen, så den behöver inte vara server-synkad som i vänmatcher.
   // Monstervärlden har sin egen, fasta bana i stället för en slumpad — "en annan värld".
   game.arena = game.monster ? arenaById.direworld : Shared.pickArena(Math.random);
+  if (game.nextArena) { game.arena = game.nextArena; game.nextArena = null; }
+  game.mini = started.match.mini || null;
+  if (game.mini === 'sumo') game.arena = SUMO_ARENA;
+  if (game.mini === 'soccer') game.arena = SOCCER_ARENA;
+  game.weather = game.mini ? null : pickWeather();
+  if (game.weather === 'snow') game.arena = { ...game.arena, speedMul: game.arena.speedMul * 1.2 };
+  game.lightning = [];
+  game.thunderT = 3;
+  game.ball = null;
   showArenaLabel(game.arena);
+  if (game.weather) hud.arena.textContent += ` · ${WEATHERS[game.weather].icon} ${WEATHERS[game.weather].name}: ${WEATHERS[game.weather].desc}`;
 
   const pDef = applyEquipment(myDef(robotById[started.match.robot]));
   const oppDef = robotById[started.match.opp]; // en eventuell AI-joker är alltid namnlös, får förvalet
@@ -2382,6 +2411,12 @@ async function startMatch(modeOverride, monsterId, forceAi) {
   game.foes = [];
   game.team = started.match.team || 0;
   if (game.team) setupTeamFight(game.team, started.match.foes || []);
+  game.survival = started.match.survival ? { wave: 1 } : null;
+  if (game.survival) {
+    game.team = 1;
+    game.player.side = 'A';
+    game.allies = [];
+  }
   game.training = null;
   resetArena();
   announceMimic(game.player, game.ai);
@@ -2398,6 +2433,10 @@ async function startMatch(modeOverride, monsterId, forceAi) {
     : `${game.elite ? '⭐ ' : ''}${aDef.name} · ${game.monster ? 'MONSTER' : game.elite ? 'ELIT' : 'AI'}`;
   setHudType(hud.typePlayer, game.player.def); // Mimik kan ha bytt typ (mimicSpecials)
   setHudType(hud.typeAi, game.ai.def);
+  setupDrone();
+  if (game.survival) spawnWave();
+  if (game.mini === 'soccer') setupSoccer();
+  if (game.mini === 'sumo') hud.nameAi.textContent = `🥋 SUMO · ${game.ai.def.name}`;
   if (game.wchallenge) game.superBanner = { name: `${game.wchallenge.icon} ${game.wchallenge.name}: ${game.wchallenge.desc}`, t: 3, mine: true };
   showScreen(null);
 }
@@ -2423,6 +2462,8 @@ function resetArena() {
   game.winner = null;
   game.result = null;
   game.hitTaken = false;
+  game.jumps = 0;
+  game.punches = 0;
   game.trapT = 0; // fällornas klocka, se updateTraps
   game.introT = 2.4;
   game.banner = 0;
@@ -2455,6 +2496,11 @@ function startTraining(moving, attacking = false) {
   game.monster = false;
   game.bossTier = null;
   game.bossPhases = false;
+  game.mini = null;
+  game.weather = null;
+  game.survival = null;
+  game.drone = null;
+  game.ball = null;
   game.allies = [];
   game.foes = [];
   game.team = 0;
@@ -2612,6 +2658,429 @@ function stepTeamFight(dt, fighting) {
   for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) separate(all[i], all[j]);
 }
 
+// ---------- Väder ----------
+// Ibland är det väder i en match mot AI. Det påverkar båda lika: regn dämpar eld och stärker
+// vatten, hetta tvärtom, snö gör banan hal och is starkare, och i åskväder slår blixtar ner där
+// robotarna står (en gul gnistring en sekund innan — flytta dig!). El-robotar laddar snabbare i åska.
+const WEATHERS = {
+  rain: { icon: '🌧', name: 'Regn', desc: 'eld blir svagare och vatten starkare', mul: { eld: 0.75, vatten: 1.25 } },
+  sun: { icon: '☀', name: 'Hetta', desc: 'eld blir starkare och vatten svagare', mul: { eld: 1.25, vatten: 0.8, gräs: 1.1 } },
+  snow: { icon: '❄', name: 'Snöstorm', desc: 'halt underlag och is blir starkare', mul: { is: 1.3, eld: 0.9 } },
+  thunder: { icon: '⛈', name: 'Åskväder', desc: 'blixtar slår ner — flytta dig från de gula gnistorna!', mul: { elektrisk: 1.15 } },
+};
+function weatherMul(types) {
+  const w = game.weather && WEATHERS[game.weather];
+  if (!w || !types) return 1;
+  let m = 1;
+  for (const t of types) m *= w.mul[t] || 1;
+  return m;
+}
+function pickWeather() {
+  const r = Math.random();
+  return r < 0.15 ? 'rain' : r < 0.27 ? 'thunder' : r < 0.38 ? 'snow' : r < 0.47 ? 'sun' : null;
+}
+// Blixten har ingen ägare; den här låtsasroboten står för skadan.
+const SKY = { def: { types: ['elektrisk'], scale: 1, name: 'Blixten' }, energy: 0, act: null, enrage: 1, x: 0, z: 0, y: FLOOR, hp: 1, dead: false };
+function allFighters() {
+  return [game.player, game.ai, ...(game.allies || []).map((a) => a.f), ...(game.foes || []).map((x) => x.f)].filter((f) => f && !f.dead);
+}
+function updateWeather(dt) {
+  const w = game.weather;
+  if (!w) return;
+  // Regndroppar och snöflingor faller över banan.
+  const n = w === 'rain' || w === 'thunder' ? 5 : w === 'snow' ? 3 : 0;
+  for (let i = 0; i < n; i++) {
+    const snow = w === 'snow';
+    const life = snow ? 2.2 : 0.55;
+    game.particles.push({
+      x: rand(-100, W + 100), y: FLOOR - rand(380, 560), z: rand(-DEPTH, DEPTH), vx: snow ? rand(-40, 40) : -60, vy: snow ? 140 : 1100, vz: 0,
+      life, max: life, color: snow ? '#ffffff' : '#8fc8ff', float: true,
+    });
+  }
+  if (w !== 'thunder') return;
+  for (const f of allFighters()) if (f.def.types.includes('elektrisk')) f.energy = Math.min(MAX_ENERGY, f.energy + 3 * dt);
+  game.thunderT = (game.thunderT ?? 3) - dt;
+  if (game.thunderT <= 0) {
+    game.thunderT = rand(3.5, 6);
+    const fs = allFighters();
+    const f = fs[Math.floor(Math.random() * fs.length)];
+    if (f) (game.lightning || (game.lightning = [])).push({ x: f.x + rand(-50, 50), z: clamp(f.z + rand(-40, 40), -DEPTH, DEPTH), t: 0 });
+  }
+  for (const l of game.lightning || []) {
+    l.t += dt;
+    if (l.t < 1.1) {
+      if (Math.random() < 0.5) game.particles.push({ x: l.x + rand(-45, 45), y: FLOOR - 4, z: l.z + rand(-30, 30), vx: 0, vy: -60, vz: 0, life: 0.3, max: 0.3, color: '#fff36b', float: true });
+    } else if (!l.done) {
+      l.done = true;
+      game.bolts.push({ owner: SKY, t: 0, x: l.x, z: l.z, done: true });
+      game.shake = Math.max(game.shake, 0.45);
+      sparks(l.x, FLOOR - 10, '#fff36b', 24, l.z);
+      Sound.special('orbital', 'elektrisk');
+      for (const f of allFighters()) {
+        if (Math.abs(f.x - l.x) < 55 && Math.abs(f.z - l.z) < 45) hurt(f, 12, Math.sign(f.x - l.x) || 1, 260, SKY);
+      }
+    }
+  }
+  game.lightning = (game.lightning || []).filter((l) => l.t < 1.4);
+}
+
+// ---------- Drönaren ----------
+// Flyger bredvid din robot i matcher mot AI (inte i minispelen). Se Shared.DRONES.
+function setupDrone() {
+  const id = game.acct.drone;
+  const p = game.player;
+  game.drone = id && !game.mini ? { id, x: p.x - 40, y: p.y - p.h - 30, z: p.z, t: 0, cd: 2 } : null;
+  if (id === 'skold' && game.drone) p.droneShield = true;
+}
+function nearestEnemy(f) {
+  const enemies = (game.team ? teamB() : [game.ai]).filter((e) => e && !e.dead);
+  enemies.sort((a, b) => Math.hypot(a.x - f.x, a.z - f.z) - Math.hypot(b.x - f.x, b.z - f.z));
+  return enemies[0] || null;
+}
+function updateDrone(dt) {
+  const d = game.drone;
+  if (!d) return;
+  const p = game.player;
+  d.t += dt;
+  // Snett framför och ovanför roboten, så att den syns även med robotens ögon (V).
+  const tx = p.x + p.facing * 70;
+  const ty = p.y - p.h * 0.95 + Math.sin(d.t * 4) * 6;
+  const tz = p.z + 42;
+  const k = Math.min(1, dt * 6);
+  d.x += (tx - d.x) * k;
+  d.y += (ty - d.y) * k;
+  d.z += (tz - d.z) * k;
+  if (p.dead) return;
+  if (d.id === 'skold') {
+    if (p.droneShield) return;
+    d.cd -= dt;
+    if (d.cd <= 0) { d.cd = 10; p.droneShield = true; sparks(d.x, d.y, '#3ee8ff', 10, d.z); }
+    return;
+  }
+  d.cd -= dt;
+  if (d.cd > 0) return;
+  if (d.id === 'skytt') {
+    const e = nearestEnemy(p);
+    if (!e) return;
+    d.cd = 3;
+    const dir = Math.sign(e.x - d.x) || 1;
+    game.projectiles.push({ owner: p, x: d.x, y: e.y - e.h * 0.6, z: e.z, vx: dir * 760, dmg: 4, r: 6, color: '#ffd93d' });
+    Sound.special('projectile');
+  } else if (d.id === 'lakare') {
+    d.cd = 4;
+    if (p.hp < p.maxHp) {
+      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.04);
+      sparks(p.x, p.y - p.h * 0.6, '#3ddc84', 10, p.z);
+    }
+  }
+}
+
+// ---------- Överlevnad ----------
+// Vågor av robotar: fler och starkare för varje våg (högst fem åt gången). Mellan vågorna får man
+// tillbaka en del liv och full energi. Matchen tar slut när man själv ligger ner.
+function survivalPool(wave) {
+  const maxRank = Math.min(4, Math.floor((wave - 1) / 3));
+  return ROBOTS.filter((r) => !r.monster && !r.boss && !r.secret && !r.mimic && r.id !== 'wildcard' && r.rarity !== 'super' && RARITY[r.rarity].rank <= maxRank);
+}
+function spawnWave() {
+  const sv = game.survival;
+  const n = Math.min(5, 1 + Math.floor((sv.wave - 1) / 2));
+  const pool = survivalPool(sv.wave);
+  const hpMul = 1 + (sv.wave - 1) * 0.06;
+  const defs = [];
+  for (let i = 0; i < n; i++) {
+    const def = pool[Math.floor(Math.random() * pool.length)];
+    defs.push({ ...def, hp: Math.round(def.hp * hpMul) });
+  }
+  game.ai = new Fighter(defs[0], W * 0.85, -1);
+  game.ai.side = 'B';
+  game.brain = makeBrain(skillForLevel(Math.min(SKILL_MAX_LEVEL, sv.wave)));
+  game.foes = makeTeamSide(defs.slice(1), W * 0.9, -1, 'B');
+  game.superBanner = { name: `🌊 VÅG ${sv.wave}!`, t: 1.6, mine: true };
+  hud.nameAi.textContent = `🌊 ÖVERLEVNAD · VÅG ${sv.wave} · ${n === 1 ? 'en robot' : `${n} robotar`}`;
+}
+function nextWave() {
+  const sv = game.survival;
+  sv.wave += 1;
+  const p = game.player;
+  p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.3);
+  p.energy = MAX_ENERGY;
+  sparks(p.x, p.y - p.h * 0.6, '#3ddc84', 16, p.z);
+  Sound.quest();
+  spawnWave();
+}
+
+// ---------- Minispel ----------
+// Sumo: en rund ring. Den som hamnar utanför kanten (på marken) ramlar ner och förlorar. Träffar
+// gör ingen skada men knuffar längre och längre (se hurt()).
+const SUMO_RING = { x: W / 2, rx: 300, rz: 175 };
+const SUMO_ARENA = {
+  id: 'sumo', name: 'Sumoringen', hint: 'Putta ner motståndaren från ringen!',
+  gravityMul: 1, speedMul: 1, dmgMul: 1, sky: '#1d0f22', ground: '#0d0610', line: '#ff8ac0', ring: SUMO_RING,
+};
+// Robotfotboll: mål i varsin ände (mellan stolparna). Du anfaller åt höger. Först till 3 mål.
+const GOAL_Z = 95;
+const GOAL_X = [40, W - 40];
+const BALL_R = 16;
+const SOCCER_TOP = 3;
+const SOCCER_ARENA = {
+  id: 'soccer', name: 'Robotstadion', hint: 'Slå in bollen i målet till höger! Först till 3 mål.',
+  gravityMul: 1, speedMul: 1, dmgMul: 1, sky: '#0b1f14', ground: '#06140b', line: '#7fd94a',
+  obstacles: [
+    { x: GOAL_X[0], z: -GOAL_Z - 8, w: 14, d: 14, h: 110, kind: 'pillar' },
+    { x: GOAL_X[0], z: GOAL_Z + 8, w: 14, d: 14, h: 110, kind: 'pillar' },
+    { x: GOAL_X[1], z: -GOAL_Z - 8, w: 14, d: 14, h: 110, kind: 'pillar' },
+    { x: GOAL_X[1], z: GOAL_Z + 8, w: 14, d: 14, h: 110, kind: 'pillar' },
+  ],
+};
+function updateSumo() {
+  for (const f of [game.player, game.ai]) {
+    if (f.dead || !f.onGround) continue;
+    const out = ((f.x - SUMO_RING.x) / SUMO_RING.rx) ** 2 + (f.z / SUMO_RING.rz) ** 2 > 1;
+    if (!out) continue;
+    f.hp = 0;
+    f.dead = true;
+    sparks(f.x, f.y - 20, '#ff8ac0', 26, f.z);
+    game.shake = 0.5;
+    game.superBanner = { name: f === game.player ? 'Du ramlade ner!' : 'NER FRÅN RINGEN!', t: 1.6, mine: f !== game.player };
+    Sound.ko();
+  }
+}
+function setupSoccer() {
+  game.score = [0, 0];
+  game.ball = { x: W / 2, y: FLOOR - BALL_R, z: 0, vx: 0, vy: 0, vz: 0, spin: 0 };
+  // En osynlig "robot" som följer bollen: den är vad robotarna siktar och slår på (se updateSoccer).
+  game.ballF = new Fighter({ ...DUMMY, id: 'ball', name: 'Bollen', scale: 0.35, hp: 1e9 }, W / 2, 1);
+  hud.namePlayer.textContent = `DU · ⚽ 0`;
+  hud.nameAi.textContent = `⚽ 0 · ${game.ai.def.name}`;
+}
+function syncBallF() {
+  const b = game.ball;
+  const bf = game.ballF;
+  bf.x = b.x;
+  bf.z = b.z;
+  bf.y = b.y + BALL_R;
+  bf.kx = 0;
+  bf.invuln = 0;
+  bf.dead = false;
+  bf.hp = bf.maxHp;
+}
+// AI:n springer till platsen bakom bollen (sett från ditt mål) och slår den mot målet.
+function soccerInput(f, dt) {
+  const b = game.ball;
+  f.soccerT = (f.soccerT || 0) - dt;
+  const wrongSide = f.x < b.x - 10;
+  const tx = wrongSide ? b.x + 70 : b.x + 34;
+  const tz = wrongSide ? b.z + (f.z > b.z ? 70 : -70) : b.z;
+  const sp = game.brain.skill.speed * 0.9;
+  const dir = Math.abs(tx - f.x) > 10 ? Math.sign(tx - f.x) * sp : 0;
+  const depth = Math.abs(tz - f.z) > 10 ? Math.sign(tz - f.z) * sp : 0;
+  const near = !wrongSide && Math.abs(b.x - f.x) < f.w / 2 + 46 && Math.abs(b.z - f.z) < 26;
+  const attack = near && f.soccerT <= 0;
+  if (attack) f.soccerT = rand(0.35, 0.8);
+  return { dir, depth, jump: false, attack, special: false, block: false, super: false };
+}
+function updateSoccer(dt) {
+  const b = game.ball;
+  const bf = game.ballF;
+  // Ett slag som träffade bollen (hurt() gav den en knuff): en hård spark.
+  if (bf.kx) {
+    const dir = Math.sign(bf.kx);
+    b.vx = dir * 780;
+    b.vz = clamp((b.z - (dir > 0 ? game.player : game.ai).z) * 5, -260, 260);
+    b.vy = -360;
+  }
+  b.vy += 1400 * dt;
+  b.x += b.vx * dt;
+  b.y += b.vy * dt;
+  b.z += b.vz * dt;
+  b.spin += b.vx * dt * 0.05;
+  if (b.y > FLOOR - BALL_R) {
+    b.y = FLOOR - BALL_R;
+    b.vy = Math.abs(b.vy) > 120 ? -b.vy * 0.45 : 0;
+  }
+  if (b.y >= FLOOR - BALL_R - 1) { b.vx *= 1 - 1.1 * dt; b.vz *= 1 - 1.1 * dt; }
+  if (Math.abs(b.z) > DEPTH - BALL_R) { b.z = Math.sign(b.z) * (DEPTH - BALL_R); b.vz *= -0.8; }
+  // Robotarna knuffar bollen när de springer in i den.
+  for (const f of [game.player, game.ai]) {
+    if (f.dead) continue;
+    const dx = b.x - f.x;
+    const dz = b.z - f.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const minD = f.w / 2 + BALL_R;
+    if (dist < minD && b.y > f.y - f.h) {
+      b.x = f.x + (dx / dist) * minD;
+      b.z = f.z + (dz / dist) * minD;
+      const sp = Math.max(Math.hypot(b.vx, b.vz), 260);
+      b.vx = (dx / dist) * sp;
+      b.vz = (dz / dist) * sp;
+    }
+  }
+  // Mål, eller studs mot kortsidan.
+  for (const side of [0, 1]) {
+    const gx = GOAL_X[side];
+    const past = side === 0 ? b.x < gx : b.x > gx;
+    if (!past) continue;
+    if (Math.abs(b.z) < GOAL_Z) { goal(side === 1 ? 0 : 1); return; }
+    b.x = gx;
+    b.vx *= -0.8;
+  }
+  syncBallF();
+}
+function goal(who) {
+  game.score[who] += 1;
+  const [a, c] = game.score;
+  hud.namePlayer.textContent = `DU · ⚽ ${a}`;
+  hud.nameAi.textContent = `⚽ ${c} · ${game.ai.def.name}`;
+  sparks(game.ball.x, game.ball.y, who === 0 ? '#3ddc84' : '#ff4d4d', 40, game.ball.z);
+  game.shake = 0.5;
+  game.superBanner = { name: who === 0 ? `⚽ MÅÅÅL! ${a}–${c}` : `Motståndaren gjorde mål. ${a}–${c}`, t: 1.6, mine: who === 0 };
+  if (who === 0) Sound.fanfare(false); else Sound.lose();
+  if (game.score[who] >= SOCCER_TOP) {
+    const loser = who === 0 ? game.ai : game.player;
+    loser.hp = 0;
+    loser.dead = true;
+    return;
+  }
+  Object.assign(game.ball, { x: W / 2, y: FLOOR - BALL_R - 120, z: 0, vx: 0, vy: 0, vz: 0 });
+  game.player.x = W * 0.25; game.player.z = 0;
+  game.ai.x = W * 0.75; game.ai.z = 0;
+  syncBallF();
+}
+
+function showSurvival() {
+  game.phase = 'survival';
+  const best = game.acct.survivalBest || 0;
+  byId('survival-status').textContent = `🏅 Ditt rekord: ${best} ${best === 1 ? 'våg' : 'vågor'} · ${Shared.SURVIVAL_COINS} 🪙 per våg och en låda var ${Shared.SURVIVAL_BOX_EVERY}:e våg`;
+  showScreen('survival');
+}
+function showMinigames() {
+  game.phase = 'minigames';
+  const list = byId('minigame-list');
+  list.replaceChildren();
+  for (const m of Shared.MINIGAMES) {
+    list.append(worldButton(`${m.icon} ${m.name} — ${m.desc} (+${Shared.MINIGAME_COINS} 🪙)`, () => startMatch('mini', m.id)));
+  }
+  showScreen('minigames');
+}
+
+// ---------- Banbyggaren ----------
+// En egen bana byggs på ett rutnät (EDIT_COLS × EDIT_ROWS) och sparas som en kort kod, som
+// kompisar kan skriva in för att spela samma bana. Koden: tre inställningar och sedan tre tecken
+// per sak (sort, kolumn, rad). Bara banan är egen — matchen är en vanlig match mot AI.
+const EDIT_COLS = 12;
+const EDIT_ROWS = 5;
+const EDIT_MAX = 24;
+const EDIT_KINDS = {
+  c: { name: 'Låda', icon: '📦', color: '#c9a36b' },
+  p: { name: 'Pelare', icon: '🗿', color: '#8a7a9e' },
+  w: { name: 'Mur', icon: '🧱', color: '#6aa87a' },
+  l: { name: 'Lava', icon: '🔥', color: '#ff5a1a' },
+  s: { name: 'Studsmatta', icon: '🟢', color: '#3ddc84' },
+  x: { name: 'Sågklinga', icon: '⚙', color: '#d0d0d0' },
+};
+const cellX = (col) => 150 + col * ((W - 300) / (EDIT_COLS - 1));
+const cellZ = (row) => -180 + row * (360 / (EDIT_ROWS - 1));
+function arenaFromCode(code) {
+  const m = /^([0-2])([01])([0-2])-((?:[cpwlsx][0-9ab][0-4]){0,24})$/.exec(String(code || '').trim().toLowerCase());
+  if (!m) return null;
+  const [, g, e, sp, items] = m;
+  const arena = {
+    id: `custom-${code.trim().toLowerCase()}`, name: 'Egen bana', hint: 'Byggd i Banbyggaren',
+    gravityMul: [1, 0.6, 0.38][g], speedMul: [1, 1.3, 0.8][sp], dmgMul: 1, infiniteEnergy: e === '1',
+    sky: '#14102a', ground: '#0a0816', line: '#ffb347', obstacles: [], traps: [],
+  };
+  for (let i = 0; i < items.length; i += 3) {
+    const k = items[i];
+    const x = cellX(parseInt(items[i + 1], 12));
+    const z = cellZ(Number(items[i + 2]));
+    if (k === 'c') arena.obstacles.push({ x, z, w: 50, d: 50, h: 55, kind: 'crate' });
+    else if (k === 'p') arena.obstacles.push({ x, z, w: 44, d: 44, h: 210, kind: 'pillar' });
+    else if (k === 'w') arena.obstacles.push({ x, z, w: 26, d: 90, h: 120, kind: 'wall' });
+    else if (k === 'l') arena.traps.push({ kind: 'lava', x, z, r: 42 });
+    else if (k === 's') arena.traps.push({ kind: 'spring', x, z, r: 30 });
+    else if (k === 'x') arena.traps.push({ kind: 'saw', x, z, range: 120, speed: 1.2, phase: i });
+  }
+  return arena;
+}
+const editor = { items: [], tool: 'c', g: 0, e: 0, sp: 0 };
+function editorCode() {
+  return `${editor.g}${editor.e}${editor.sp}-${editor.items.map((it) => `${it.k}${it.col.toString(12)}${it.row}`).join('')}`;
+}
+function loadEditorCode(code) {
+  const m = /^([0-2])([01])([0-2])-((?:[cpwlsx][0-9ab][0-4]){0,24})$/.exec(String(code || '').trim().toLowerCase());
+  if (!m) return false;
+  editor.g = Number(m[1]); editor.e = Number(m[2]); editor.sp = Number(m[3]);
+  editor.items = [];
+  for (let i = 0; i < m[4].length; i += 3) editor.items.push({ k: m[4][i], col: parseInt(m[4][i + 1], 12), row: Number(m[4][i + 2]) });
+  return true;
+}
+function showEditor() {
+  game.phase = 'editor';
+  try { if (!editor.loaded) { editor.loaded = true; loadEditorCode(localStorage.getItem('robotbattle-bana')); } } catch (e) { /* ingen lagring */ }
+  const tools = byId('editor-tools');
+  tools.replaceChildren();
+  for (const [k, def] of [...Object.entries(EDIT_KINDS), ['-', { name: 'Sudd', icon: '🧽' }]]) {
+    const b = el('button', `secondary${editor.tool === k ? ' on' : ''}`, `${def.icon} ${def.name}`);
+    b.type = 'button';
+    b.addEventListener('click', () => { editor.tool = k; showEditor(); });
+    tools.append(b);
+  }
+  const opts = byId('editor-opts');
+  opts.replaceChildren();
+  for (const [key, labels] of [['g', ['🌍 Vanlig tyngdkraft', '🌙 Låg tyngdkraft', '🚀 Rymden']], ['e', ['🔋 Vanlig energi', '⚡ Oändlig energi']], ['sp', ['🏃 Vanlig fart', '💨 Snabbt', '🐢 Långsamt']]]) {
+    const b = el('button', 'secondary', labels[editor[key]]);
+    b.type = 'button';
+    b.addEventListener('click', () => { editor[key] = (editor[key] + 1) % labels.length; showEditor(); });
+    opts.append(b);
+  }
+  drawEditor();
+  byId('editor-code').textContent = editorCode();
+  byId('editor-count').textContent = `${editor.items.length}/${EDIT_MAX} saker`;
+  try { localStorage.setItem('robotbattle-bana', editorCode()); } catch (e) { /* ingen lagring */ }
+  showScreen('editor');
+}
+function drawEditor() {
+  const cv = byId('editor-grid');
+  const c = cv.getContext('2d');
+  const cw = cv.width / EDIT_COLS;
+  const ch = cv.height / EDIT_ROWS;
+  c.fillStyle = '#0a0816';
+  c.fillRect(0, 0, cv.width, cv.height);
+  c.strokeStyle = '#3a2f66';
+  for (let i = 0; i <= EDIT_COLS; i++) { c.beginPath(); c.moveTo(i * cw, 0); c.lineTo(i * cw, cv.height); c.stroke(); }
+  for (let j = 0; j <= EDIT_ROWS; j++) { c.beginPath(); c.moveTo(0, j * ch); c.lineTo(cv.width, j * ch); c.stroke(); }
+  c.font = `${Math.floor(ch * 0.55)}px sans-serif`;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillStyle = 'rgba(62,232,255,0.5)';
+  c.fillText('🤖', cw * 0.5, ch * 2.5);
+  c.fillStyle = 'rgba(255,77,77,0.5)';
+  c.fillText('🤖', cw * (EDIT_COLS - 0.5), ch * 2.5);
+  for (const it of editor.items) {
+    c.fillStyle = EDIT_KINDS[it.k].color;
+    c.globalAlpha = 0.35;
+    c.fillRect(it.col * cw + 2, it.row * ch + 2, cw - 4, ch - 4);
+    c.globalAlpha = 1;
+    c.fillText(EDIT_KINDS[it.k].icon, it.col * cw + cw / 2, it.row * ch + ch / 2);
+  }
+}
+function editorClick(ev) {
+  const cv = byId('editor-grid');
+  const r = cv.getBoundingClientRect();
+  const col = Math.floor(((ev.clientX - r.left) / r.width) * EDIT_COLS);
+  const row = Math.floor(((ev.clientY - r.top) / r.height) * EDIT_ROWS);
+  if (col < 0 || col >= EDIT_COLS || row < 0 || row >= EDIT_ROWS) return;
+  if (col === 0 || col === EDIT_COLS - 1) return; // där robotarna börjar
+  editor.items = editor.items.filter((it) => it.col !== col || it.row !== row);
+  if (editor.tool !== '-' && editor.items.length < EDIT_MAX) editor.items.push({ k: editor.tool, col, row });
+  showEditor();
+}
+function playEditor() {
+  game.nextArena = arenaFromCode(editorCode());
+  startMatch(undefined, undefined, true);
+}
+
 // ---------- Turneringen ----------
 // Lottningen: kvartsfinalerna du–field[0], field[1]–field[3], field[2]–field[4] och
 // field[5]–field[6]. Du möter field[1] i semifinalen och field[2] i finalen (se shared.js), så
@@ -2727,14 +3196,25 @@ function endMatch() {
   game.result = null;
   setTimeout(() => (won ? Sound.win() : Sound.lose()), 800); // efter K.O.-smällen
   const token = game.matchToken;
-  net.finishMatch(token, won, won && !game.hitTaken)
+  const extra = {
+    jumps: game.jumps || 0, noPunch: !game.punches, lowHp: game.player.hp > 0 && game.player.hp < game.player.maxHp * 0.05,
+    waves: game.survival ? game.survival.wave - 1 : 0,
+  };
+  net.finishMatch(token, won, won && !game.hitTaken, extra)
     .then((r) => { applyAcct(r.acct); game.result = r.result; })
     .catch((e) => { game.result = { won, stake: game.stake, gained: null, lost: null, error: e.message }; });
 }
 
 // "Kämpa igen": efter en tornmatch blir det nästa (eller samma) våning, annars en vanlig match.
 function fightAgain() {
-  if (game.story) {
+  if (game.survival) {
+    startMatch('survival');
+  } else if (game.mini) {
+    startMatch('mini', game.mini);
+  } else if (game.arena && String(game.arena.id).startsWith('custom-')) {
+    game.nextArena = arenaFromCode(game.arena.id.slice(7));
+    startMatch(undefined, undefined, true);
+  } else if (game.story) {
     if (game.result && game.result.story) showStory(); // läs nästa kapitel först
     else if ((game.acct.story || 1) <= Shared.STORY_TOP) startMatch('story');
     else showHub();
@@ -3110,6 +3590,24 @@ function showShop(message) {
     row.append(info, btn);
     list.append(row);
   }
+  // Drönare: flyger bredvid ens robot. Köp en gång, välj sedan vilken som följer med.
+  const drones = byId('shop-drones');
+  drones.replaceChildren(el('p', 'quests-title', '🛸 Drönare — flyger med din robot i alla matcher mot AI'));
+  const dgrid = el('div', 'shop-list');
+  for (const d of Shared.DRONES) {
+    const owned = (game.acct.drones || []).includes(d.id);
+    const on = game.acct.drone === d.id;
+    const row = el('div', `shop-item${owned ? ' owned' : ''}`);
+    const info = el('div', 'shop-info');
+    info.append(el('div', 'name', `${d.icon} ${d.name}`), el('div', 'stats', d.desc));
+    const btn = worldButton(on ? 'Med ✓ (ta av)' : owned ? 'Ta med' : `Köp · ${d.price} 🪙`, async () => {
+      try { const r = await net.setDrone(on ? null : d.id); applyAcct(r.acct); } catch (e) { showShop(e.message); return; }
+      showShop(on ? `${d.name} stannar hemma.` : `${d.name} flyger nu med din robot!`);
+    }, { disabled: !owned && (game.acct.coins || 0) < d.price });
+    row.append(info, btn);
+    dgrid.append(row);
+  }
+  drones.append(dgrid);
   // Skins: ändrar hur en robot ser ut. Sätts på i Garaget.
   const skins = byId('shop-skins');
   skins.replaceChildren(el('p', 'quests-title', '🎨 Skins — sätt på vilken robot du vill i Garaget'));
@@ -3821,6 +4319,29 @@ function renderAlbum() {
     el.append(head, cards);
     box.append(el);
   }
+  // Hemliga robotar: syns som silhuetter med en ledtråd tills man låst upp dem.
+  const sec = byId('album-secrets');
+  sec.replaceChildren();
+  const page = document.createElement('div');
+  page.className = 'album-page';
+  const head = document.createElement('div');
+  head.className = 'album-head';
+  const got = (acct.secrets || []).length;
+  head.append(el_('b', `🔓 Hemliga robotar (${got}/${Shared.SECRETS.length})`));
+  const cards = document.createElement('div');
+  cards.className = 'album-cards';
+  for (const sc of Shared.SECRETS) {
+    const has = (acct.secrets || []).includes(sc.id);
+    const wrap = document.createElement('div');
+    wrap.className = 'secret-card';
+    wrap.append(createCard(has ? myDef(robotById[sc.id]) : { ...robotById[sc.id], name: '???' }, { locked: !has, compact: true }));
+    let hint = sc.hint;
+    if (sc.id === 'hoppsan' && !has) hint += ` (${Math.min(Shared.SECRET_JUMPS, game.acct.secretJumps || 0)}/${Shared.SECRET_JUMPS})`;
+    wrap.append(el_('p', has ? '✅ Upplåst!' : `🤫 ${hint}`));
+    cards.append(wrap);
+  }
+  page.append(head, cards);
+  sec.append(page);
 }
 const el_ = (tag, text) => { const e = document.createElement(tag); e.textContent = text; return e; };
 
@@ -4045,6 +4566,9 @@ const STATIONS = [
   { id: 'clan', name: 'Klanhuset', emoji: '🛡', color: '#a07bff', x: 1620, z: -120 },
   { id: 'story', name: 'Berättelsen', emoji: '📚', color: '#ffb347', x: 1620, z: 120 },
   { id: 'wchallenge', name: 'Veckans utmaning', emoji: '🎯', color: '#ff4f7a', x: 1810, z: 120 },
+  { id: 'survival', name: 'Överlevnad', emoji: '🌊', color: '#3ea8ff', x: 1810, z: -120 },
+  { id: 'minigames', name: 'Minispel', emoji: '🎮', color: '#ffd93d', x: 2420, z: -120 },
+  { id: 'editor', name: 'Banbyggaren', emoji: '🧱', color: '#ffb347', x: 2420, z: 120 },
 
   { id: 'monsters', name: 'Monstervärlden', emoji: '👾', color: '#ff7a1a', x: 2000, z: -120 },
   { id: 'boss', name: 'Mystiska robotar', emoji: '❓', color: '#ff1744', x: 2000, z: 120 },
@@ -4072,6 +4596,9 @@ const STATION_HINT = {
   clan: 'gå med i en klan',
   royals: 'du och 4 robotar mot en kung eller drottningen',
   story: 'äventyret om Kraftkärnan — ett kapitel i taget',
+  survival: 'vågor av robotar — hur länge klarar du dig?',
+  minigames: 'sumo och robotfotboll',
+  editor: 'bygg en egen bana och dela koden med en kompis',
   wchallenge: 'en ny knasig regel varje vecka — vinn och få ett fint pris',
 };
 const HUB_HINT = 'Gå med WASD eller piltangenterna. Gå fram till en portal och tryck MELLANSLAG/J.';
@@ -4253,6 +4780,9 @@ function enterStation(id) {
     case 'album': showAlbum(); break;
     case 'daily': showDaily(); break;
     case 'story': showStory(); break;
+    case 'survival': showSurvival(); break;
+    case 'minigames': showMinigames(); break;
+    case 'editor': showEditor(); break;
     case 'wchallenge': showWChallenge(); break;
     case 'home': showHome(); break;
     case 'garage': game.fromHub = true; showSelect(); break;
@@ -4666,6 +5196,18 @@ byId('btn-tops-back').addEventListener('click', showHub);
 byId('btn-album-back').addEventListener('click', showHub);
 byId('btn-daily-back').addEventListener('click', showHub);
 byId('btn-story-back').addEventListener('click', showHub);
+byId('btn-survival-back').addEventListener('click', showHub);
+byId('btn-survival-start').addEventListener('click', () => startMatch('survival'));
+byId('btn-minigames-back').addEventListener('click', showHub);
+byId('btn-editor-back').addEventListener('click', showHub);
+byId('btn-editor-play').addEventListener('click', playEditor);
+byId('editor-grid').addEventListener('click', editorClick);
+byId('btn-editor-clear').addEventListener('click', () => { editor.items = []; showEditor(); });
+byId('btn-editor-load').addEventListener('click', () => {
+  const ok = loadEditorCode(byId('editor-input').value);
+  showEditor();
+  byId('editor-error').textContent = ok ? '✅ Banan är laddad!' : 'Den koden fungerar inte. Den ska se ut ungefär som 010-c42p81.';
+});
 byId('btn-story-fight').addEventListener('click', () => startMatch('story'));
 byId('btn-wchallenge-back').addEventListener('click', showHub);
 byId('btn-wchallenge-fight').addEventListener('click', async () => {
@@ -4811,6 +5353,16 @@ function showResult() {
       ? `👹 Ni besegrade jättebossen! Du fick ${Shared.EVENT_COINS} 🪙 och ${Shared.EVENT_BOXES === 1 ? 'en extra låda' : `${Shared.EVENT_BOXES} extra lådor`}!`
       : '👹 Ni besegrade jättebossen igen!';
     if (r.eventWon) celebrate('👹 JÄTTEBOSSEN ÄR BESEGRAD!', `${Shared.EVENT_COINS} 🪙 + ${Shared.EVENT_BOXES === 1 ? 'en låda' : `${Shared.EVENT_BOXES} lådor`}!`, true);
+  } else if (game.survival) {
+    const w = r.survival || 0;
+    text = w ? `🌊 Du klarade ${w} ${w === 1 ? 'våg' : 'vågor'}!${r.survivalBest ? ' Nytt rekord!' : ''}${r.survivalBoxes ? ` Du fick ${r.survivalBoxes === 1 ? 'en låda' : `${r.survivalBoxes} lådor`}!` : ''}`
+      : '🌊 Den första vågen var för svår den här gången. Försök igen!';
+    if (r.survivalBest) celebrate('🌊 NYTT REKORD!', `${w} ${w === 1 ? 'våg' : 'vågor'}!`, w >= 10);
+  } else if (game.mini) {
+    const m = Shared.MINIGAMES.find((x) => x.id === game.mini);
+    const score = game.mini === 'soccer' && game.score ? ` (${game.score[0]}–${game.score[1]})` : '';
+    text = r.won ? `${m.icon} Du vann ${m.name}${score}!` : `${m.icon} Du förlorade ${m.name}${score} den här gången. Försök igen!`;
+    if (r.won) celebrate(`${m.icon} DU VANN!`, m.name, false);
   } else if (r.won && r.story) {
     const c = Shared.STORY[r.story - 1];
     text = `📚 ${c.outro}`;
@@ -4900,6 +5452,11 @@ function showResult() {
     text += ` 🏅 Ny medalj: ${m.name}!`;
     celebrate(`🏅 NY MEDALJ!`, `${m.icon} ${m.name} — ${m.desc}`, true);
   }
+  for (const id of r.secrets || []) {
+    text += ` 🔓 Hemlig robot upplåst: ${robotById[id].name}!`;
+    rewardItem('HEMLIG ROBOT!', robotById[id], { isNew: true, n: invCount(id) });
+    celebrate('🔓 HEMLIG ROBOT!', `${robotById[id].name} är din!`, true);
+  }
   if (r.questBonus) text += ` Var tredje uppdrag ger en bonuslåda — du fick ${r.questBonus === 1 ? 'en' : r.questBonus}!`;
   for (const name of r.newQuests || []) text += ` ✨ Nytt uppdrag: ${name}.`;
   if (r.periodBonus) text += ` Alla vecko-/månadsuppdrag klara — ${r.periodBonus} bonuslådor!`;
@@ -4919,6 +5476,8 @@ function showResult() {
   const tr = game.acct.tourney;
   byId('btn-again').textContent = game.event ? '👹 Tillbaka till staden (Enter)'
     : game.story ? ((game.acct.story || 1) > Shared.STORY_TOP ? '🏆 Tillbaka till staden (Enter)' : r.story ? `📚 Till kapitel ${game.acct.story} (Enter)` : '📚 Försök igen (Enter)')
+    : game.survival ? '🌊 Försök igen (Enter)'
+    : game.mini ? '🎮 Spela igen (Enter)'
     : game.wchallenge ? (r.wchallenge ? '🏙 Tillbaka till staden (Enter)' : '🎯 Försök igen (Enter)')
     : game.tourney
     ? (tr ? `🏆 Till ${Shared.TOURNEY_ROUNDS[tr.round].toLowerCase()}en (Enter)` : '🏆 Till turneringen (Enter)')
@@ -5532,6 +6091,11 @@ function beginFriendMatch(isHost, payload) {
   game.bossPhases = false;
   game.wchallenge = null;
   game.story = 0;
+  game.mini = null;
+  game.weather = null;
+  game.survival = null;
+  game.drone = null;
+  game.ball = null;
   if (coop) {
     // Tillsammans: värden och gästen bredvid varandra till vänster, bossen till höger.
     const base = robotById[coop.boss];
@@ -6207,7 +6771,7 @@ function update(dt) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.z += (p.vz || 0) * dt;
-    p.vy += 700 * dt;
+    p.vy += (p.float ? 0 : 700) * dt;
     p.life -= dt;
   }
   game.particles = game.particles.filter((p) => p.life > 0);
@@ -6217,7 +6781,7 @@ function update(dt) {
 
   const { player, ai } = game;
   if (!player || game.phase === 'menu' || game.phase === 'select' || game.phase === 'auth'
-    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'daily' || game.phase === 'story' || game.phase === 'wchallenge' || game.phase === 'home' || game.phase === 'bygge' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
+    || game.phase === 'friend' || game.phase === 'box' || game.phase === 'world' || game.phase === 'trade' || game.phase === 'shop' || game.phase === 'teleport' || game.phase === 'clan' || game.phase === 'questboard' || game.phase === 'tower' || game.phase === 'teampick' || game.phase === 'tourneypick' || game.phase === 'tops' || game.phase === 'album' || game.phase === 'daily' || game.phase === 'story' || game.phase === 'survival' || game.phase === 'minigames' || game.phase === 'editor' || game.phase === 'wchallenge' || game.phase === 'home' || game.phase === 'bygge' || game.phase === 'mimikbuild' || game.phase === 'travel' || game.phase === 'royals') return;
 
   if (game.online) {
     updateFriendMatch(dt);
@@ -6239,9 +6803,12 @@ function update(dt) {
     } else {
       if (allies.length && fighting) chooseBossTarget(dt);
       const bossTarget = (allies.length && ai.target) || player;
-      player.step(dt, fighting ? playerInput() : IDLE, ai, fighting);
-      const aiIn = !fighting ? IDLE : game.training ? trainingInput(dt) : aiInput(ai, bossTarget, game.brain, dt);
-      ai.step(dt, aiIn, bossTarget, fighting);
+      const soccer = game.mini === 'soccer';
+      if (soccer) syncBallF();
+      const pIn = !fighting ? IDLE : soccer ? { ...playerInput(), special: false, super: false } : playerInput();
+      player.step(dt, pIn, soccer ? game.ballF : ai, fighting);
+      const aiIn = !fighting ? IDLE : game.training ? trainingInput(dt) : soccer ? soccerInput(ai, dt) : aiInput(ai, bossTarget, game.brain, dt);
+      ai.step(dt, aiIn, soccer ? game.ballF : bossTarget, fighting);
       for (const a of allies) a.f.step(dt, fighting ? aiInput(a.f, ai, a.brain, dt) : IDLE, ai, fighting);
       separate(player, ai);
       if (allies.length) {
@@ -6271,10 +6838,17 @@ function update(dt) {
     updateTides(dt);
     if (fighting) updateTraps(dt, [player, ai, ...game.allies.map((a) => a.f), ...game.foes.map((x) => x.f)]);
     updateSupers(dt);
+    if (fighting) {
+      updateWeather(dt);
+      updateDrone(dt);
+      if (game.mini === 'sumo') updateSumo();
+      if (game.mini === 'soccer') updateSoccer(dt);
+    }
 
     const lost = allies.length ? player.hp <= 0 && allies.every((a) => a.f.hp <= 0) : player.hp <= 0;
     const beaten = game.team ? teamDown(teamB()) : ai.hp <= 0;
     if (game.training) updateTraining(dt);
+    else if (fighting && game.survival && beaten && !player.dead) nextWave();
     else if (fighting && (lost || beaten)) endMatch();
   }
 
@@ -6302,6 +6876,19 @@ function drawAllyBars(project) {
   for (const a of game.allies) bar(a.f, '#3ddc84', '#cfe8d8', a.label || `🤖 ${a.f.def.name}`);
   if (!game.team) return;
   for (const f of teamB()) bar(f, '#ff4d4d', '#ffd0d0', `${f === game.player.target ? '🎯 ' : ''}${f.def.name}`);
+}
+
+// Sumo: hur långt man flyger av nästa träff, i procent (se hurt()).
+function drawSumoPct(project) {
+  if (game.mini !== 'sumo') return;
+  for (const f of [game.player, game.ai]) {
+    const at = project(f.x, f.y - f.h - 22, f.z);
+    const pct = Math.round(f.sumoPct || 0);
+    ctx.font = 'bold 18px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = pct > 80 ? '#ff4d4d' : pct > 40 ? '#ffd93d' : '#ffffff';
+    ctx.fillText(`${pct}%`, at.x, at.y);
+  }
 }
 
 function roundRect(c, x, y, w, h, r) {
@@ -6829,9 +7416,11 @@ function draw() {
       clocks: fighting ? game.clocks : none, meteors: fighting ? game.meteors : none,
       wolves: fighting ? game.wolves : none, roots: fighting ? game.roots : none, tethers: fighting ? game.tethers : none,
       tides: fighting ? game.tides : none,
+      ball: fighting ? game.ball : null, drone: fighting ? game.drone : null,
     });
     ctx.clearRect(0, 0, W, H);
     if (fighting) drawAllyBars(proj3d);
+    if (fighting) drawSumoPct(proj3d);
     if (fighting && game.training) drawTrainingStats();
     if (fighting) drawDamageNumbers(proj3d);
   } else {

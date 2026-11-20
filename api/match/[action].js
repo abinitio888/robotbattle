@@ -14,7 +14,7 @@ module.exports = dispatch({
       const session = await requireSession(req);
       const { robot, mode } = body;
       const acct = session.user.acct;
-      const wantMode = ['stake', 'boss', 'monster', 'street', 'tower', 'weekly', 'team', 'tourney', 'event', 'daily', 'wchallenge', 'story'].includes(mode) ? mode : 'normal';
+      const wantMode = ['stake', 'boss', 'monster', 'street', 'tower', 'weekly', 'team', 'tourney', 'event', 'daily', 'wchallenge', 'story', 'survival', 'mini'].includes(mode) ? mode : 'normal';
       // Dagens utmaning: dagen bestäms av servern, aldrig av klienten.
       const target = wantMode === 'daily' ? clock().today
         : typeof body.target === 'string' ? body.target : typeof body.monsterId === 'string' ? body.monsterId : null;
@@ -32,12 +32,21 @@ module.exports = dispatch({
     async handler(req, res, body) {
       const session = await requireSession(req);
       const { token, won, perfect } = body;
+      const rawExtra = body.extra && typeof body.extra === 'object' ? body.extra : {};
       const raw = typeof token === 'string' ? await redis.get(`match:${token}`) : null;
       const entry = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : null;
       if (!entry || entry.key !== session.key) throw new HttpError(400, 'Ingen match pågår.');
       if (Date.now() - entry.startedAt < MIN_MATCH_MS) throw new HttpError(400, 'Matchen var för kort.');
       await redis.del(`match:${token}`);
-      const result = S.finishMatch(session.user.acct, entry.match, won === true, randomFloat, clock().today, perfect === true);
+      // Överlevnad: man hinner inte klara fler vågor än tiden räcker till.
+      const maxWaves = Math.floor((Date.now() - entry.startedAt) / S.SURVIVAL_WAVE_MS);
+      const extra = {
+        waves: Math.min(maxWaves, Math.floor(Number(rawExtra.waves)) || 0),
+        jumps: Math.floor(Number(rawExtra.jumps)) || 0,
+        noPunch: rawExtra.noPunch === true,
+        lowHp: rawExtra.lowHp === true,
+      };
+      const result = S.finishMatch(session.user.acct, entry.match, won === true, randomFloat, clock().today, perfect === true, extra);
       // Klan: varje vinst ger klanpoäng (mer för svårare motståndare) och lite extra mynt.
       if (result.won && session.user.clan) {
         const opp = S.robotById[entry.match.opp];

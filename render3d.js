@@ -1395,6 +1395,20 @@
     back.position.set(midX, 1.5, -260);
     g.add(back);
 
+    // Sumoringen: en lysande ellips (utanför den ramlar man ner) och mörk mark runt omkring.
+    if (arena.ring) {
+      const { x, rx, rz } = arena.ring;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.97, 1.03, 64), new THREE.MeshBasicMaterial({ color: arena.line, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.scale.set(rx, rz, 1);
+      ring.position.set(wx(x), 2, 0);
+      g.add(ring);
+      const mat = new THREE.Mesh(new THREE.CircleGeometry(1, 64), new THREE.MeshBasicMaterial({ color: '#3a1838', transparent: true, opacity: 0.6 }));
+      mat.rotation.x = -Math.PI / 2;
+      mat.scale.set(rx, rz, 1);
+      mat.position.set(wx(x), 1, 0);
+      g.add(mat);
+    }
     // Banans hinder: stenpelare, murar och lådor (se ARENAS i shared.js).
     for (const o of arena.obstacles || []) {
       const mat = o.kind === 'crate'
@@ -1796,6 +1810,33 @@
     }
 
     // Robotar per kämpe (ett Fighter-objekt), plus spökkopior för dash.
+    // Fotbollen och drönaren (bara en av varje behövs).
+    const ball = new THREE.Group();
+    ball.add(new THREE.Mesh(new THREE.SphereGeometry(16, 20, 14), new THREE.MeshStandardMaterial({ color: '#f4f4f4', roughness: 0.5 })));
+    for (const [x, y, z] of [[16, 0, 0], [-16, 0, 0], [0, 16, 0], [0, -16, 0], [0, 0, 16], [0, 0, -16]]) {
+      const spot = new THREE.Mesh(new THREE.SphereGeometry(5.5, 10, 8), new THREE.MeshStandardMaterial({ color: '#1a1a1a' }));
+      spot.position.set(x * 0.9, y * 0.9, z * 0.9);
+      ball.add(spot);
+    }
+    ball.visible = false;
+    scene.add(ball);
+    const drone = new THREE.Group();
+    drone.add(new THREE.Mesh(new THREE.BoxGeometry(18, 8, 14), new THREE.MeshStandardMaterial({ color: '#c9d2e6', metalness: 0.6, roughness: 0.35 })));
+    const droneEye = new THREE.Mesh(new THREE.SphereGeometry(3.2, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffd93d' }));
+    droneEye.position.set(9, 0, 0);
+    drone.add(droneEye);
+    const droneRotor = new THREE.Group();
+    for (const a of [0, Math.PI / 2]) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(30, 1.2, 3), new THREE.MeshStandardMaterial({ color: '#2a3046' }));
+      blade.rotation.y = a;
+      droneRotor.add(blade);
+    }
+    droneRotor.position.y = 7;
+    drone.add(droneRotor);
+    drone.scale.setScalar(0.65);
+    drone.visible = false;
+    scene.add(drone);
+
     const rigs = new Map();
     function rigFor(owner, slot, def) {
       let byOwner = rigs.get(owner);
@@ -2278,6 +2319,19 @@
           c.position.set(x0, y, b.z);
           c.scale.setScalar(140 * (1 - k));
         }
+      }
+      // Robotfotbollens boll.
+      ball.visible = !!s.ball;
+      if (s.ball) {
+        ball.position.set(wx(s.ball.x), wy(s.ball.y), s.ball.z);
+        ball.rotation.z = -s.ball.spin;
+      }
+      // Drönaren: en liten kropp med en snurrande rotor.
+      drone.visible = !!s.drone;
+      if (s.drone) {
+        drone.position.set(wx(s.drone.x), wy(s.drone.y), s.drone.z);
+        droneRotor.rotation.y = s.drone.t * 30;
+        droneEye.material.color.set(s.drone.id === 'lakare' ? '#3ddc84' : s.drone.id === 'skold' ? '#3ee8ff' : '#ffd93d');
       }
       for (const [bi, b] of (s.bolts || []).entries()) {
         if (!b.done) continue;
