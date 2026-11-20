@@ -2308,6 +2308,13 @@ const totalRobots = () => (game.acct ? Object.values(game.acct.inv).reduce((a, b
 const canStake = () => totalRobots() >= 2;
 
 function applyAcct(acct) {
+  // En hemlig robot som låstes upp utanför en matchs slut (t.ex. när en match startar): fira!
+  const before = game.acct && game.acct.secrets;
+  if (before && Array.isArray(acct.secrets) && game.phase !== 'over') { // efter en match firas de i resultatet
+    for (const id of acct.secrets) {
+      if (!before.includes(id) && robotById[id]) setTimeout(() => celebrate('🔓 HEMLIG ROBOT!', `${robotById[id].name} är din! Titta i Garaget.`, true), 400);
+    }
+  }
   game.acct = acct;
   if (!acct.inv[game.selectedId]) game.selectedId = Object.keys(acct.inv)[0];
 }
@@ -3197,7 +3204,7 @@ function endMatch() {
   setTimeout(() => (won ? Sound.win() : Sound.lose()), 800); // efter K.O.-smällen
   const token = game.matchToken;
   const extra = {
-    jumps: game.jumps || 0, noPunch: !game.punches, lowHp: game.player.hp > 0 && game.player.hp < game.player.maxHp * 0.05,
+    jumps: game.jumps || 0, noPunch: (game.punches || 0) <= 5, lowHp: game.player.hp > 0 && game.player.hp < game.player.maxHp * 0.25,
     waves: game.survival ? game.survival.wave - 1 : 0,
   };
   net.finishMatch(token, won, won && !game.hitTaken, extra)

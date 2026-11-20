@@ -2068,11 +2068,11 @@
 
   // ---------- Hemliga robotar ----------
   // Hur man låser upp dem. ev kommer från finishMatch (extra = vad klienten säger hände i matchen).
-  const SECRET_JUMPS = 300;
-  const SECRET_LOSSES = 5;
+  const SECRET_JUMPS = 100;
+  const SECRET_LOSSES = 3;
   const SECRETS = [
-    { id: 'skuggis', hint: 'Vinn en match utan att slå ett enda vanligt slag.', check: (a, ev) => ev.won && ev.noPunch },
-    { id: 'fenix', hint: 'Vinn en match med mindre än 5 % liv kvar.', check: (a, ev) => ev.won && ev.lowHp },
+    { id: 'skuggis', hint: 'Vinn en match där du slår högst 5 vanliga slag (använd specialattacken!).', check: (a, ev) => ev.won && ev.noPunch },
+    { id: 'fenix', hint: 'Vinn en match med mindre än en fjärdedel av livet kvar.', check: (a, ev) => ev.won && ev.lowHp },
     { id: 'hoppsan', hint: `Hoppa ${SECRET_JUMPS} gånger i matcher.`, check: (a) => (a.secretJumps || 0) >= SECRET_JUMPS },
     { id: 'glitch', hint: `Förlora ${SECRET_LOSSES} matcher i rad. (Det är inte så farligt!)`, check: (a) => (a.lossRow || 0) >= SECRET_LOSSES },
     { id: 'karnvakt', hint: 'Rädda Robotstad i Berättelsen.', check: (a) => (a.story || 1) > STORY_TOP },
@@ -2354,6 +2354,7 @@
   // En stadsrobot (mode 'street', target = vilken) går att utmana en stund efter att gänget
   // bytts, så att den man just gått fram till inte försvinner mitt i utmaningen.
   function startMatch(acct, robotId, mode, rng, target, now = Date.now()) {
+    unlockSecrets(acct, {}); // t.ex. Kärnväktaren för den som redan klarat berättelsen
     if (!robotById[robotId] || count(acct, robotId) < 1) return { error: 'Du äger inte den roboten.' };
     if (mode === 'street') {
       for (const slot of [now, now - 60 * 1000].map(streetSlot)) {
@@ -2696,6 +2697,7 @@
   }
 
   function openBox(acct, rng, today) {
+    unlockSecrets(acct, {});
     if (acct.boxes <= 0) return null;
     acct.boxes -= 1;
     const gold = (acct.goldBoxes || 0) > 0;
@@ -2709,6 +2711,7 @@
   }
 
   function claimDaily(acct, today) {
+    unlockSecrets(acct, {});
     if (!(today > acct.daily)) return false;
     acct.boxes += 1;
     addCoins(acct, COINS.daily);
