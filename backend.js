@@ -161,6 +161,13 @@
       return { acct: this.view() };
     }
 
+    async restartStory() {
+      const result = S.restartStory(this.acct);
+      if (result.error) throw new Error(result.error);
+      this.save();
+      return { acct: this.view() };
+    }
+
     async setDrone(drone) {
       const result = S.setDrone(this.acct, drone);
       if (result.error) throw new Error(result.error);
@@ -307,6 +314,7 @@
     startMatch(robot, mode, target) { return this.api('/api/match/start', { robot, mode, target }); }
     finishMatch(match, won, perfect, extra) { return this.api('/api/match/finish', { token: match.token, won, perfect, extra }); }
     setDrone(drone) { return this.api('/api/drone', { drone }); }
+    restartStory() { return this.api('/api/story-restart', {}); }
     openBox() { return this.api('/api/box-open', {}); }
     claimDaily() { return this.api('/api/daily-claim', {}); }
     nameWildcard(name) { return this.api('/api/wildcard/name', { name }); }
@@ -466,6 +474,13 @@
 
     async upgradeRobot(robot) {
       const result = S.upgradeRobot(this.acct, robot);
+      if (result.error) throw new Error(result.error);
+      await this.save();
+      return { acct: this.view() };
+    }
+
+    async restartStory() {
+      const result = S.restartStory(this.acct);
       if (result.error) throw new Error(result.error);
       await this.save();
       return { acct: this.view() };

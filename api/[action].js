@@ -94,6 +94,10 @@ module.exports = dispatch({
     method: 'POST',
     handler: acctAction((acct, body) => S.buySkin(acct, typeof body.skin === 'string' ? body.skin : null)),
   },
+  'story-restart': {
+    method: 'POST',
+    handler: acctAction((acct) => S.restartStory(acct)),
+  },
   drone: {
     method: 'POST',
     handler: acctAction((acct, body) => S.setDrone(acct, typeof body.drone === 'string' ? body.drone : null)),

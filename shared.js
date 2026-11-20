@@ -1697,6 +1697,7 @@
       if (typeof raw.drone === 'string' && (acct.drones || []).includes(raw.drone)) acct.drone = raw.drone;
       if (Array.isArray(raw.secrets)) acct.secrets = [...new Set(raw.secrets.filter((id) => SECRETS.some((x) => x.id === id)))];
       for (const k of ['secretJumps', 'lossRow', 'survivalBest']) if (Number.isInteger(raw[k]) && raw[k] > 0) acct[k] = Math.min(1e6, raw[k]);
+      if (raw.storyBeaten === true) acct.storyBeaten = true;
       if (Number.isInteger(raw.story) && raw.story > 1) acct.story = Math.min(STORY_TOP + 1, raw.story);
       if (typeof raw.challengeWon === 'string' && /^\d{4}-v\d{1,2}$/.test(raw.challengeWon)) acct.challengeWon = raw.challengeWon;
       if (Number.isInteger(raw.eventBeaten) && raw.eventBeaten > 0) acct.eventBeaten = raw.eventBeaten;
@@ -2075,7 +2076,7 @@
     { id: 'fenix', hint: 'Vinn en match med mindre än en fjärdedel av livet kvar.', check: (a, ev) => ev.won && ev.lowHp },
     { id: 'hoppsan', hint: `Hoppa ${SECRET_JUMPS} gånger i matcher.`, check: (a) => (a.secretJumps || 0) >= SECRET_JUMPS },
     { id: 'glitch', hint: `Förlora ${SECRET_LOSSES} matcher i rad. (Det är inte så farligt!)`, check: (a) => (a.lossRow || 0) >= SECRET_LOSSES },
-    { id: 'karnvakt', hint: 'Rädda Robotstad i Berättelsen.', check: (a) => (a.story || 1) > STORY_TOP },
+    { id: 'karnvakt', hint: 'Rädda Robotstad i Berättelsen.', check: (a) => (a.story || 1) > STORY_TOP || !!a.storyBeaten },
   ];
   function unlockSecrets(acct, ev) {
     acct.secrets = acct.secrets || [];
@@ -2159,6 +2160,15 @@
   const STORY_TOP = STORY.length;
   const storyCoins = (ch) => 50 + ch * 25;
   const STORY_TOP_BOXES = 3;
+  // Spela berättelsen igen från kapitel 1 (bara när man klarat den). Slutpriset ges bara första
+  // gången (storyBeaten), kapitlens mynt varje gång.
+  function restartStory(acct) {
+    if (!((acct.story || 1) > STORY_TOP)) return { error: 'Du måste klara berättelsen först.' };
+    unlockSecrets(acct, {});
+    acct.storyBeaten = true;
+    acct.story = 1;
+    return { story: 1 };
+  }
 
   // ---------- Säsonger ----------
   // Var tredje månad en ny säsong (vinter dec–feb, vår mar–maj, sommar jun–aug, höst sep–nov,
@@ -2607,7 +2617,8 @@
           acct.story = match.story + 1;
           result.story = match.story;
           result.coins += addCoins(acct, storyCoins(match.story));
-          if (match.story === STORY_TOP) {
+          if (match.story === STORY_TOP && !acct.storyBeaten) {
+            acct.storyBeaten = true;
             let prize = rollBoxFrom(rng, 'legendary');
             while (prize.id === 'wildcard') prize = rollBoxFrom(rng, 'legendary');
             addRobot(acct, prize.id);
@@ -2769,6 +2780,7 @@
       tower: acct.tower || 1,
       weekly: { week: weekOf(Date.now()), floor: weeklyFloor(acct, weekOf(Date.now())) },
       story: acct.story || 1,
+      storyBeaten: !!acct.storyBeaten,
       drones: [...(acct.drones || [])],
       drone: acct.drone || null,
       secrets: [...(acct.secrets || [])],
@@ -3163,7 +3175,7 @@
     MEDALS, awardMedals,
     WEEKLY_TOP, WEEKLY_TOP_COINS, WEEKLY_TOP_BOXES, weekOf, weeklyOpponent, weeklyFloor,
     CHALLENGE_RULES, CHALLENGE_COINS, CHALLENGE_BOXES, challengeRule, challengeOpponent,
-    STORY, STORY_TOP, storyCoins, STORY_TOP_BOXES,
+    STORY, STORY_TOP, storyCoins, STORY_TOP_BOXES, restartStory,
     DRONES, droneById, setDrone, SECRETS, SECRET_JUMPS, SECRET_LOSSES, unlockSecrets,
     SURVIVAL_COINS, SURVIVAL_BOX_EVERY, SURVIVAL_MAX, SURVIVAL_WAVE_MS, MINIGAMES, MINIGAME_COINS,
     TOURNEY_ROUNDS, TOURNEY_COINS, TOURNEY_WIN_COINS, TOURNEY_WIN_BOXES,

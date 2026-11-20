@@ -4235,8 +4235,8 @@ function showStory() {
     const last = Shared.STORY[Shared.STORY_TOP - 1];
     byId('story-title').textContent = '🏆 Slut — du räddade Robotstad!';
     byId('story-text').textContent = last.outro;
-    if (!(game.acct.secrets || []).includes('karnvakt')) byId('story-text').textContent += ' 🔓 Spela en match till (vilken som helst) så får du den hemliga roboten Kärnväktaren!';
     btn.hidden = true;
+    byId('btn-story-restart').hidden = false;
   } else {
     const c = Shared.STORY[ch - 1];
     byId('story-title').textContent = `Kapitel ${ch}: ${c.title}`;
@@ -4244,6 +4244,7 @@ function showStory() {
     const def = robotById[c.opp];
     card.append(createCard(c.boss ? { ...def, name: 'Rostkungen' } : def, {}));
     btn.hidden = false;
+    byId('btn-story-restart').hidden = true;
     btn.textContent = c.boss ? '👑 Möt Rostkungen!' : `⚔ Strid mot ${def.name}! (+${Shared.storyCoins(ch)} 🪙)`;
   }
   showScreen('story');
@@ -5217,6 +5218,10 @@ byId('btn-editor-load').addEventListener('click', () => {
   byId('editor-error').textContent = ok ? '✅ Banan är laddad!' : 'Den koden fungerar inte. Den ska se ut ungefär som 010-c42p81.';
 });
 byId('btn-story-fight').addEventListener('click', () => startMatch('story'));
+byId('btn-story-restart').addEventListener('click', async () => {
+  try { const r = await net.restartStory(); applyAcct(r.acct); } catch (e) { byId('story-text').textContent = e.message; return; }
+  showStory();
+});
 byId('btn-wchallenge-back').addEventListener('click', showHub);
 byId('btn-wchallenge-fight').addEventListener('click', async () => {
   await startMatch('wchallenge');
@@ -5374,12 +5379,12 @@ function showResult() {
   } else if (r.won && r.story) {
     const c = Shared.STORY[r.story - 1];
     text = `📚 ${c.outro}`;
-    if (r.story === Shared.STORY_TOP) {
+    if (r.story === Shared.STORY_TOP && r.gained) {
       text += ` Du fick ${robotById[r.gained].name} och ${Shared.STORY_TOP_BOXES} lådor!`;
       rewardItem('HJÄLTENS PRIS!', robotById[r.gained], { isNew: true, n: invCount(r.gained) });
       celebrate('🏆 DU RÄDDADE ROBOTSTAD!', `${robotById[r.gained].name} + ${Shared.STORY_TOP_BOXES} lådor!`, true);
     } else {
-      celebrate(`📚 KAPITEL ${r.story} KLART!`, `Nästa: ${Shared.STORY[r.story].title}`, false);
+      celebrate(r.story === Shared.STORY_TOP ? '🏆 DU RÄDDADE ROBOTSTAD IGEN!' : `📚 KAPITEL ${r.story} KLART!`, r.story === Shared.STORY_TOP ? 'Rostkungen är besegrad!' : `Nästa: ${Shared.STORY[r.story].title}`, r.story === Shared.STORY_TOP);
     }
   } else if (r.won && r.wchallenge) {
     text = `🎯 Du klarade veckans utmaning! Du fick ${Shared.CHALLENGE_COINS} 🪙 och en låda.`;
